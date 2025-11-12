@@ -9,12 +9,11 @@
 ## Service Overview
 - Web archive backend modeled after archive.today but persisting each Browsertrix crawl as a WACZ package instead of HTML snapshots.
 - Every capture is aliased with a UUIDv4; keep the identifier stable across API contracts, storage, and internal metadata.
-- Optimization effort targets small WACZ payloads—tune crawler flags and post-processing to avoid redundant resources and keep compression ratios high.
-- A lightweight HTML/JS client will consume this backend to enqueue captures and list archives, but frontend behavior stays outside this codebase.
 
 ## Agent Environment Notes
 - ChatGPT agents can access every path declared in `CMakePresets.json`, including generated build directories such as `/tmp/build-webshot-san`; ensure sensitive data is kept elsewhere.
 - Before editing, using, drawing conclusions from, or recalling the contents of any file, ChatGPT must re-check that the file has not changed since it was last read (e.g., by re-reading it). If the file has changed, base all actions on the latest contents.
+- Local userver HTML docs are available at `/home/noofva/misc/src/userver-develop/build_san/docs/html/`.
 
 ## Build, Test, and Development Commands
 - `cmake --preset configure-preset-clang-san` configures a sanitizer-enabled Ninja build in `/tmp/build-webshot-san` with the expected `userver_DIR`.
@@ -23,7 +22,6 @@
 - `ctest --output-on-failure` from the same build directory executes registered suites once tests are added.
 
 ## Coding Style & Naming Conventions
-- Format C++ with `clang-format -i <files>`; automation is not wired up yet, so run it manually as needed while keeping the enforced 4-space indents, 100-character lines, WebKit brace placement, and LF endings.
 - Follow userver conventions: classes and components PascalCase (`V1Files`), constants prefixed `k`, functions lowerCamelCase, and request handlers suffixed with descriptive nouns.
 - Keep shared headers under `src/include/` guarded by `#pragma once`; limit namespace aliases to implementation files unless broadly reused.
 
