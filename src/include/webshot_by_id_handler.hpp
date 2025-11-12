@@ -1,7 +1,8 @@
 #pragma once
+#include "webshot_crud.hpp"
+
 #include <string_view>
 
-#include "webshot_crud.hpp"
 #include <userver/server/handlers/http_handler_base.hpp>
 
 namespace us = userver;

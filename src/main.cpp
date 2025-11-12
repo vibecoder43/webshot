@@ -1,12 +1,12 @@
+#include "include/webshot_by_id_handler.hpp"
+#include "include/webshot_crud.hpp"
+#include "include/webshot_handler.hpp"
+
 #include <userver/clients/dns/component.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
-
-#include "include/webshot_crud.hpp"
-#include "include/webshot_handler.hpp"
-#include "include/webshot_by_id_handler.hpp"
 
 namespace us = userver;
 int main(int argc, char *argv[])

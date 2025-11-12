@@ -1,9 +1,9 @@
 #pragma once
+#include "webshot_crud.hpp"
+
 #include <string_view>
 
 #include <userver/server/handlers/http_handler_base.hpp>
-
-#include "webshot_crud.hpp"
 
 namespace us = userver;
 namespace server = us::server;

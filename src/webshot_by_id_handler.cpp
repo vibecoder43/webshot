@@ -1,3 +1,5 @@
+#include "include/webshot_by_id_handler.hpp"
+
 #include <fmt/format.h>
 
 #include <userver/components/component.hpp>
@@ -8,8 +10,6 @@
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/boost_uuid4.hpp>
-
-#include "include/webshot_by_id_handler.hpp"
 
 using namespace v1;
 
