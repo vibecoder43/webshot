@@ -1,15 +1,16 @@
 #pragma once
 
+#include "schemas/webshot.hpp"
 #include "webshot.hpp"
-
-#include <boost/uuid/uuid.hpp>
 
 #include <string>
 #include <string_view>
+#include <vector>
+
+#include <boost/uuid/uuid.hpp>
 
 #include <userver/components/component_base.hpp>
 #include <userver/yaml_config/schema.hpp>
-#include <vector>
 
 namespace us = userver;
 
@@ -26,7 +27,8 @@ public:
 
     void createWebshot(std::string url);
     std::optional<Webshot> findWebshot(boost::uuids::uuid uuid);
-    std::vector<std::string> findWebshotByUrl(const std::string &url);
+
+    std::vector<dto::UuidWithTime> findWebshotByLink(const std::string &link);
     static us::yaml_config::Schema GetStaticConfigSchema();
 
 private:

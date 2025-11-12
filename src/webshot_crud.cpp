@@ -1,14 +1,20 @@
 #include "include/webshot_crud.hpp"
 #include "include/sql.hpp"
-
-#include <fmt/format.h>
+#include "schemas/webshot.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <userver/storages/postgres/io/row_types.hpp>
 #include <utility>
 
 #include <boost/uuid/uuid.hpp>
+
+#include <fmt/format.h>
+#include <unistd.h>
+
 #include <userver/components/component.hpp>
 #include <userver/components/component_base.hpp>
 #include <userver/concurrent/background_task_storage.hpp>
@@ -21,10 +27,12 @@
 #include <userver/fs/write.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/storages/postgres/cluster.hpp>
+#include <userver/storages/postgres/io/chrono.hpp>
 #include <userver/storages/postgres/io/uuid.hpp>
 #include <userver/storages/postgres/postgres.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/utils/boost_uuid4.hpp>
+#include <userver/utils/datetime/timepoint_tz.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
 
@@ -96,89 +104,93 @@ public:
     }
 };
 
-void WebshotCrud::createWebshot(std::string url)
+void WebshotCrud::createWebshot(std::string link)
 {
-    impl->backgroundTaskStorage.AsyncDetach("create-webshot-lambda", [this, url]() -> void {
-        engine::subprocess::ProcessStarter starter(engine::current_task::GetBlockingTaskProcessor()
-        );
-        const std::string kWaczName = "1";
-        auto archiveRoot = us::fs::blocking::TempDirectory::Create();
-        engine::subprocess::ExecOptions exec_opts;
-        exec_opts.use_path = true;
+    impl->backgroundTaskStorage.AsyncDetach(
+        "create-webshot-lambda",
+        [impl = impl.get(), link]() -> void {
+            engine::subprocess::ProcessStarter starter(
+                engine::current_task::GetBlockingTaskProcessor()
+            );
+            const std::string kWaczName = "1";
+            auto archiveRoot = us::fs::blocking::TempDirectory::Create();
+            engine::subprocess::ExecOptions execOpts;
+            execOpts.use_path = true;
 
-        auto child = starter.Exec(
-            "docker",
-            {"run",
-             "--rm",
-             "-v",
-             fmt::format("{}:/crawls", archiveRoot.GetPath()),
-             "--network",
-             "host",
-             "--shm-size",
-             "1g",
-             "webrecorder/browsertrix-crawler",
-             "crawl",
-             "--collection",
-             kWaczName,
-             "--generateWACZ",
-             "--workers",
-             "1",
-             "--headless",
-             "--scopeType",
-             "page-spa",
-             "--pageLimit",
-             "1",
-             "--pageLoadTimeout",
-             "10",
-             "--postLoadDelay",
-             "1",
-             "--netIdleWait",
-             "0",
-             "--pageExtraDelay",
-             "3",
-             "--behaviorTimeout",
-             "1",
-             "--waitUntil",
-             "load",
-             "--blockAds",
-             "--behaviors",
-             "",
-             "--lang",
-             "en",
-             "--context",
-             "general,worker,pageStatus,writer,storage,jsError,state,crawlStatus,fetch,wacz",
-             "--logLevel",
-             "debug,info",
-             "--logging",
-             "debug,stats,jserrors",
-             "--logExcludeContext",
-             "",
-             "--url",
-             url},
-            std::move(exec_opts)
-        );
-        auto status = child.Get();
+            auto url = fmt::format("http://{}", link);
 
-        if (!status.IsExited() || status.GetExitCode() != 0) {
-            LOG_INFO() << fmt::format("Failed to crawl {}, child process failed", url);
-            return;
+            auto child = starter.Exec(
+                "docker",
+                {"run",
+                 "--rm",
+                 "-v",
+                 fmt::format("{}:/crawls", archiveRoot.GetPath()),
+                 "--shm-size",
+                 "1g",
+                 "webrecorder/browsertrix-crawler",
+                 "crawl",
+                 "--collection",
+                 kWaczName,
+                 "--generateWACZ",
+                 "--workers",
+                 "1",
+                 "--headless",
+                 "--scopeType",
+                 "page-spa",
+                 "--pageLimit",
+                 "1",
+                 "--pageLoadTimeout",
+                 "10",
+                 "--postLoadDelay",
+                 "1",
+                 "--netIdleWait",
+                 "0",
+                 "--pageExtraDelay",
+                 "3",
+                 "--behaviorTimeout",
+                 "1",
+                 "--waitUntil",
+                 "load",
+                 "--blockAds",
+                 "--behaviors",
+                 "siteSpecific",
+                 "--lang",
+                 "en",
+                 "--context",
+                 "general,worker,pageStatus,writer,storage,jsError,state,crawlStatus,fetch,wacz",
+                 "--logLevel",
+                 "debug,info",
+                 "--logging",
+                 "debug,stats,jserrors",
+                 "--url",
+                 url},
+                std::move(execOpts)
+            );
+            auto status = child.Get();
+
+            if (!status.IsExited() || status.GetExitCode() != 0) {
+                LOG_INFO() << fmt::format("Failed to crawl {}, child process failed", url);
+                return;
+            }
+            const auto pathToWaczFile = fmt::format(
+                "{0}/collections/{1}/{1}.wacz", archiveRoot.GetPath(), kWaczName
+            );
+            if (!us::fs::FileExists(
+                    engine::current_task::GetBlockingTaskProcessor(), pathToWaczFile
+                )) {
+                LOG_INFO() << fmt::format("Failed to crawl {}, no WACZ", url);
+                return;
+            }
+            const auto uuid =
+                impl->readwrite(sql::kInsertWebshot.data(), link).AsSingleRow<boost::uuids::uuid>();
+            us::fs::CreateDirectories(
+                engine::current_task::GetBlockingTaskProcessor(), impl->webshotRoot
+            );
+            auto newPath = fmt::format("{}/{}", impl->webshotRoot, utils::ToString(uuid));
+            us::fs::blocking::Rename(pathToWaczFile, newPath);
+            assert(us::fs::FileExists(engine::current_task::GetBlockingTaskProcessor(), newPath));
         }
-        const auto pathToWaczFile = fmt::format(
-            "{0}/collections/{1}/{1}.wacz", archiveRoot.GetPath(), kWaczName
-        );
-        if (!us::fs::FileExists(engine::current_task::GetBlockingTaskProcessor(), pathToWaczFile)) {
-            LOG_INFO() << fmt::format("Failed to crawl {}, no WACZ", url);
-            return;
-        }
-        const auto uuid =
-            impl->readwrite(sql::kInsertWebshot.data(), url).AsSingleRow<boost::uuids::uuid>();
-        us::fs::CreateDirectories(
-            engine::current_task::GetBlockingTaskProcessor(), impl->webshotRoot
-        );
-        us::fs::blocking::Rename(
-            pathToWaczFile, fmt::format("{}/{}", impl->webshotRoot, utils::ToString(uuid))
-        );
-    });
+    );
 }
 
 std::optional<Webshot> WebshotCrud::findWebshot(boost::uuids::uuid uuid)
@@ -192,13 +204,24 @@ std::optional<Webshot> WebshotCrud::findWebshot(boost::uuids::uuid uuid)
     return {{fmt::format("{}/{}", impl->webshotStorageUrl, utils::ToString(*location))}};
 }
 
-std::vector<std::string> WebshotCrud::findWebshotByUrl(const std::string &url)
+std::vector<dto::UuidWithTime> WebshotCrud::findWebshotByLink(const std::string &link)
 {
-    const auto ids = impl->readonly(sql::kSelectWebshotByUrl.data(), url, impl->webshotsPageMax)
-                         .AsContainer<std::vector<boost::uuids::uuid>>();
-    std::vector<std::string> uuids;
-    std::transform(begin(ids), end(ids), std::back_inserter(uuids), [](auto id) {
-        return utils::ToString(id);
-    });
-    return uuids;
+    using Row = std::tuple<boost::uuids::uuid, pg::TimePointTz>;
+    const auto dbRows = impl->readonly(
+                                sql::kSelectWebshotByLink.data(), link, impl->webshotsPageMax
+    )
+                            .AsContainer<std::vector<Row>>(pg::kRowTag);
+    std::vector<dto::UuidWithTime> pairs;
+    std::transform(
+        begin(dbRows), end(dbRows), std::back_inserter(pairs),
+        [](auto row) -> dto::UuidWithTime {
+            return {
+                std::get<0>(row),
+                utils::datetime::TimePointTz(
+                    static_cast<std::chrono::system_clock::time_point>(std::get<1>(row))
+                )
+            };
+        }
+    );
+    return pairs;
 }

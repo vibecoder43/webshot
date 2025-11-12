@@ -5,9 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Enable standard CTest switch BUILD_TESTING
-include(CTest)
-
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic \
 -Wconversion -Wsign-conversion -Wfloat-equal \
 -Wdisabled-optimization -Wctad-maybe-unsupported")
@@ -43,6 +40,7 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE ada::ada)
 target_link_libraries(${PROJECT_NAME}_objs PUBLIC userver::core userver::postgresql)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_objs)
 
+include(CTest)
 if (BUILD_TESTING)
   add_executable(is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp)
   target_link_libraries(is_valid_webshot_url_test PRIVATE userver::utest ada::ada ${PROJECT_NAME}_objs)
@@ -58,15 +56,15 @@ if (USE_SANITIZERS)
 	#	target_link_options(${TARGET} PRIVATE "-fsanitize=undefined,thread")
 endif()
 
-#file(GLOB_RECURSE SCHEMAS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/*.yaml)
-#userver_target_generate_chaotic(
-#    ${PROJECT_NAME}-chgen
-#    # Generate serializers for responses
-#    GENERATE_SERIALIZERS
-#    # Map '/components/schemas/*' JSONSchema types to C++ types in 'samples::STEM' namespace
-#    LAYOUT "/components/schemas/([^/]*)/=dto::{0}"
-#    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/src
-#    SCHEMAS ${SCHEMAS}
-#    RELATIVE_TO ${CMAKE_CURRENT_SOURCE_DIR}
-#)
-#target_link_libraries(${PROJECT_NAME}_objs PRIVATE ${PROJECT_NAME}-chgen)
+file(GLOB_RECURSE SCHEMAS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/*.yaml)
+userver_target_generate_chaotic(
+    ${PROJECT_NAME}-chgen
+    GENERATE_SERIALIZERS
+    LAYOUT "/components/schemas/([^/]*)/=dto::{0}"
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/src
+    SCHEMAS ${SCHEMAS}
+    RELATIVE_TO ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}-chgen)
+target_include_directories(${PROJECT_NAME}_objs
+                           PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/)
