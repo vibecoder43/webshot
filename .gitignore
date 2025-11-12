@@ -1,2 +1,6 @@
 .clangd
 CMakePresets.json
+.clang-format
+.editorconfig
+*.sh
+*.py
