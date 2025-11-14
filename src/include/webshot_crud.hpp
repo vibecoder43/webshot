@@ -13,6 +13,7 @@
 #include <userver/yaml_config/schema.hpp>
 
 namespace us = userver;
+using Uuid = boost::uuids::uuid;
 
 namespace v1 {
 class [[nodiscard]] WebshotCrud : public us::components::ComponentBase {
@@ -26,9 +27,14 @@ public:
     ~WebshotCrud();
 
     void createWebshot(std::string url);
-    std::optional<Webshot> findWebshot(boost::uuids::uuid uuid);
+    std::optional<Webshot> findWebshot(Uuid uuid);
 
     std::vector<dto::UuidWithTime> findWebshotByLink(const std::string &link);
+    dto::PagedFindWebshotByUrlResponse
+    findWebshotByLinkPage(const std::string &link, const std::optional<std::string> &pageToken);
+    dto::PagedFindWebshotByPrefixResponse findWebshotsByPrefixPage(
+        const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
+    );
     static us::yaml_config::Schema GetStaticConfigSchema();
 
 private:

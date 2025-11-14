@@ -1,4 +1,5 @@
 #pragma once
+#include "webshot_config.hpp"
 #include "webshot_crud.hpp"
 
 #include <string_view>
@@ -9,11 +10,10 @@ namespace us = userver;
 namespace server = us::server;
 
 namespace v1 {
-class WebshotConfig;
-class [[nodiscard]] WebshotHandler : public server::handlers::HttpHandlerBase {
+class [[nodiscard]] WebshotsByPrefixHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-handler";
-    explicit WebshotHandler(
+    static constexpr std::string_view kName = "webshots-by-prefix";
+    explicit WebshotsByPrefixHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context
     );
@@ -25,6 +25,6 @@ public:
 
 private:
     WebshotCrud &crud;
-    const WebshotConfig &config;
+    const WebshotConfig &cfg;
 };
-}; // namespace v1
+} // namespace v1

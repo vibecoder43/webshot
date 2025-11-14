@@ -3,9 +3,11 @@ components_manager:
         main-task-processor:
             worker_threads: 4
         fs-task-processor:
-            worker_threads: 1
+            worker_threads: &blocking_num_workers 1
     default_task_processor: main-task-processor
     components:
+        webshot-config:
+            query-part-length-max: 1024
         dns-client:
             fs-task-processor: fs-task-processor
         testsuite-support:
@@ -20,9 +22,17 @@ components_manager:
                     file_path: '@stderr'
                     level: debug
                     overflow_behavior: discard
+        webshots-by-prefix:
+            path: /v1/webshot
+            method: GET
+            task_processor: main-task-processor
+        webshot-exact:
+            path: /v1/webshot/exact
+            method: GET
+            task_processor: main-task-processor
         webshot-handler:
             path: /v1/webshot
-            method: GET,POST
+            method: POST
             task_processor: main-task-processor
         webshot-by-id:
             path: /v1/webshot/{uuid}
@@ -30,8 +40,11 @@ components_manager:
             task_processor: main-task-processor
         webshot-crud:
             webshot-root: '/tmp/build-webshot-san/wacz'
-            webshots-page-max: 10
+            webshots-page-max: 2
             webshot-storage-url: 'http://localhost:8081'
+            crawl-concurrency: *blocking_num_workers
+            webshots-per-link-max: 2
+            webshots-links-per-page-max: 10
         webshot-db:
             dbconnection: 'postgresql://postgres@localhost:5432'
             blocking_task_processor: fs-task-processor

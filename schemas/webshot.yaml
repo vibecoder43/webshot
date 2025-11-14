@@ -8,29 +8,42 @@ servers:
 paths:
   /v1/webshot:
     get:
-      operationId: listWebshotsByUrl
-      summary: List capture UUIDs by URL
-      description: Returns an array of captures for the given URL (latest first).
+      operationId: listWebshotsByPrefix
+      summary: List capture UUIDs by link prefix
+      description: |
+        Returns captures for links whose normalized scheme-less form starts with the provided prefix.
+        
+        Ordering and paging:
+        - Results are ordered by link (ascending), then by created_at (descending), then by UUID (ascending).
+        - Each page includes up to N distinct links and up to M newest captures per link; N and M are server-configured caps.
+        - The page_token is opaque; it may resume within a specific link or advance to the next link group.
       parameters:
         - in: query
-          name: url
+          name: prefix
           required: true
+          description: Link prefix. Must include a full host; accepts a full HTTP/HTTPS link or a link without scheme.
+          schema:
+            $ref: '#/components/schemas/Link'
+          examples:
+            host-prefix:
+              value: example.com/a
+            absolute-prefix:
+              value: https://example.com/a
+        - in: query
+          name: page_token
+          required: false
           schema:
             type: string
-            format: uri
-          description: Page URL to list.
-          example: https://google.com
+          description: Opaque token from a previous response to get the next page.
       responses:
         '200':
-          description: Array of captures (latest first).
+          description: Paged list of captures matching the prefix (latest first).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FindWebshotByUrlResponse'
+                $ref: '#/components/schemas/PagedFindWebshotByPrefixResponse'
         '400':
-          description: Bad request (invalid URL).
-        '404':
-          description: No captures found for the given URL.
+          description: Bad request (invalid prefix or pagination parameters).
     post:
       operationId: createWebshot
       summary: Enqueue capture of a webshot
@@ -41,11 +54,53 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateWebshotRequest'
+            examples:
+              full-url:
+                summary: Full HTTP URL
+                value:
+                  link: https://example.org/path?q=1
+              host-without-scheme:
+                summary: Host with optional path
+                value:
+                  link: example.org/path?q=1
       responses:
         '201':
           description: Capture accepted for processing.
         '400':
           description: Invalid JSON or URL supplied.
+  /v1/webshot/exact:
+    get:
+      operationId: listWebshotsByUrl
+      summary: List capture UUIDs by exact URL
+      description: Returns an array of captures for the given URL (latest first).
+      parameters:
+        - in: query
+          name: link
+          required: true
+          description: Page link to list. Accepts either a full HTTP/HTTPS link or a link without scheme (host with optional path/query).
+          schema:
+            $ref: '#/components/schemas/Link'
+          examples:
+            full-url:
+              value: https://example.com/a?b=1
+            host-without-scheme:
+              value: example.com/a?b=1
+        - in: query
+          name: page_token
+          required: false
+          schema:
+            type: string
+          description: Opaque token from a previous response to get the next page.
+      responses:
+        '200':
+          description: Paged list of captures (latest first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedFindWebshotByUrlResponse'
+        '400':
+          description: Bad request (invalid URL or pagination parameters).
+
 
   /v1/webshot/{uuid}:
     get:
@@ -74,6 +129,21 @@ paths:
 
 components:
   schemas:
+    PaginationCursor:
+      type: object
+      additionalProperties: false
+      required: [t, i]
+      description: Opaque pagination cursor; microsecond epoch and UUID of last item
+      properties:
+        t:
+          type: integer
+          format: int64
+          description: Microseconds since Unix epoch
+          example: 1763037596000000
+        i:
+          type: string
+          format: uuid
+          description: UUID of the last item on the previous page
     ErrorResponse:
       type: object
       additionalProperties: false
@@ -85,12 +155,14 @@ components:
     CreateWebshotRequest:
       type: object
       additionalProperties: false
-      required: [url]
+      required: [link]
       properties:
-        url:
-          type: string
-          format: uri
-          example: https://google.com
+        link:
+          $ref: '#/components/schemas/Link'
+    Link:
+      type: string
+      description: "Either an absolute HTTP/HTTPS link (e.g., https://example.com/a) or a link without scheme (e.g., example.com/a). Must not start with '/'."
+      pattern: ^(?:[Hh][Tt][Tt][Pp][Ss]?://|[^/].+)$
     UuidWithTime:
       type: object
       additionalProperties: false
@@ -104,10 +176,74 @@ components:
           type: string
           format: date-time
           example: 2025-11-11T12:34:56+00:00
-    FindWebshotByUrlResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/UuidWithTime'
+    PagedFindWebshotByUrlResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UuidWithTime'
+        next_page_token:
+          type: string
+          nullable: true
+      required: [items, next_page_token]
       example:
-        - uuid: 123e4567-e89b-12d3-a456-426614174000
-          created_at: 2025-11-11T12:34:56+00:00
+        items:
+          - uuid: 123e4567-e89b-12d3-a456-426614174000
+            created_at: 2025-11-11T12:34:56+00:00
+        next_page_token: eyJ0IjoxNjk5ODMyMDAwMDAwLCJpIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIn0
+
+    UuidWithTimeLink:
+      type: object
+      additionalProperties: false
+      required: [uuid, created_at, link]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        link:
+          type: string
+      example:
+        uuid: 123e4567-e89b-12d3-a456-426614174000
+        created_at: 2025-11-11T12:34:56+00:00
+        link: example.com/a
+
+    PagedFindWebshotByPrefixResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UuidWithTimeLink'
+        next_page_token:
+          type: string
+          nullable: true
+      required: [items, next_page_token]
+    PaginationPrefixCursor:
+      type: object
+      additionalProperties: false
+      description: Opaque pagination cursor for prefix search
+      required: [p, l]
+      properties:
+        p:
+          type: string
+          description: Normalized prefix
+        l:
+          type: string
+          description: Last link processed
+        t:
+          type: integer
+          format: int64
+          nullable: true
+          description: Microseconds since Unix epoch of last item
+        i:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of last item when resuming mid-link
+ 

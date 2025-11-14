@@ -1,9 +1,10 @@
 #pragma once
 
+#include <stdexcept>
 #include <string>
 
-#include <ada.h>
-#include <ada/url_aggregator.h>
+std::string tryNormalizeLink(std::string in, size_t queryPartLengthMax);
 
-bool isValidForWebshotUrl(const ada::url_aggregator &url);
-std::string urlToLink(ada::url_aggregator url);
+struct InvalidLinkException : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};

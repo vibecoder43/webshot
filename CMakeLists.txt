@@ -1,50 +1,69 @@
 cmake_minimum_required(VERSION 3.25)
 project(webshot CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic \
--Wconversion -Wsign-conversion -Wfloat-equal \
--Wdisabled-optimization -Wctad-maybe-unsupported")
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-
-set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
-
 set(${PROJECT_NAME}_headers
     src/include/webshot_handler.hpp
+    src/include/webshot_exact_handler.hpp
+    src/include/webshots_by_prefix_handler.hpp
     src/include/webshot_by_id_handler.hpp
     src/include/webshot_crud.hpp
     src/include/common_definitions.hpp
+    src/include/webshot_config.hpp
     src/include/url_validation.hpp
 )
 add_library(${PROJECT_NAME}_objs OBJECT
     src/webshot_handler.cpp
+    src/webshot_exact_handler.cpp
+    src/webshots_by_prefix_handler.cpp
     src/webshot_by_id_handler.cpp
     src/webshot_crud.cpp
+    src/webshot_config.cpp
     src/url_validation.cpp
 	${${PROJECT_NAME}_headers}
 )
 target_precompile_headers(${PROJECT_NAME}_objs PRIVATE ${${PROJECT_NAME}_headers})
 
-add_executable(${PROJECT_NAME} src/main.cpp
+function(apply_defaults target)
+  set_property(TARGET ${target} PROPERTY CXX_STANDARD 20)
+  set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED ON)
+  set_property(TARGET ${target} PROPERTY CXX_EXTENSIONS OFF)
+  target_compile_options(${target} PRIVATE
+    -Wall -Wextra -Wpedantic
+    -Wconversion -Wsign-conversion -Wfloat-equal
+    -Wdisabled-optimization -Wctad-maybe-unsupported
+  )
+  target_compile_options(${target} PRIVATE
+    $<$<CONFIG:Debug>:-ggdb3>
+    $<$<CONFIG:Release>:-O3>
+  )
+  set_property(TARGET ${target} PROPERTY CXX_COMPILER_LAUNCHER ccache)
+endfunction()
+
+add_executable(${PROJECT_NAME}
+  src/main.cpp
+  $<TARGET_OBJECTS:${PROJECT_NAME}_objs>
 )
+apply_defaults(${PROJECT_NAME}_objs)
+apply_defaults(${PROJECT_NAME})
 
 find_package(userver CONFIG REQUIRED COMPONENTS core postgresql chaotic)
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE fmt::fmt)
 find_package(ada CONFIG REQUIRED COMPONENTS ada)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE ada::ada)
+# RE2 (static) on Debian/Ubuntu links against Abseil. Pull Abseil targets explicitly
+# so lld can resolve symbols exported by libre2.a.
+find_package(absl CONFIG REQUIRED)
+# RE2's static lib on Debian/Ubuntu depends on Abseil; propagate to consumers of the object lib
+target_link_libraries(${PROJECT_NAME}_objs PUBLIC absl::str_format absl::strings absl::log absl::raw_hash_set)
 target_link_libraries(${PROJECT_NAME}_objs PUBLIC userver::core userver::postgresql)
-target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_objs)
 
 include(CTest)
 if (BUILD_TESTING)
-  add_executable(is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp)
-  target_link_libraries(is_valid_webshot_url_test PRIVATE userver::utest ada::ada ${PROJECT_NAME}_objs)
+  add_executable(is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp src/url_validation.cpp)
+  target_link_libraries(is_valid_webshot_url_test PRIVATE userver::utest ada::ada)
   target_include_directories(is_valid_webshot_url_test PRIVATE src/include)
+  apply_defaults(is_valid_webshot_url_test)
   add_test(NAME is_valid_webshot_url COMMAND is_valid_webshot_url_test)
   set_tests_properties(is_valid_webshot_url PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
 endif()
@@ -65,6 +84,17 @@ userver_target_generate_chaotic(
     SCHEMAS ${SCHEMAS}
     RELATIVE_TO ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}-chgen)
+apply_defaults(${PROJECT_NAME}-chgen)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  ${PROJECT_NAME}-chgen
+  fmt::fmt
+  ada::ada
+  userver::core
+  userver::postgresql
+  absl::str_format
+  absl::strings
+  absl::log
+  absl::raw_hash_set
+)
 target_include_directories(${PROJECT_NAME}_objs
                            PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/)
