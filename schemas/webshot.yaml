@@ -44,6 +44,25 @@ paths:
                 $ref: '#/components/schemas/PagedFindWebshotByPrefixResponse'
         '400':
           description: Bad request (invalid prefix or pagination parameters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_prefix:
+                  value:
+                    error:
+                      message: "missing parameter: prefix"
+                bad_page_token:
+                  value:
+                    error:
+                      message: invalid page_token
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     post:
       operationId: createWebshot
       summary: Enqueue capture of a webshot
@@ -68,16 +87,51 @@ paths:
           description: Capture accepted for processing.
         '400':
           description: Invalid JSON or URL supplied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                bad_request:
+                  value:
+                    error:
+                      message: invalid request body
+                invalid_link:
+                  value:
+                    error:
+                      message: invalid link
+        '403':
+          description: Domain denylisted or denylist unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                denylisted:
+                  value:
+                    error:
+                      message: POST failed due to domain in denylist
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /v1/webshot/exact:
     get:
       operationId: listWebshotsByUrl
-      summary: List capture UUIDs by exact URL
-      description: Returns an array of captures for the given URL (latest first).
+      summary: List captures by exact link (paged)
+      description: |
+        Returns a paged list of captures for the exact normalized link.
+        
+        Ordering and paging:
+        - Items are ordered by created_at (descending), then by UUID (ascending).
+        - The page_token is opaque; it resumes after the last item of the previous page.
       parameters:
         - in: query
           name: link
           required: true
-          description: Page link to list. Accepts either a full HTTP/HTTPS link or a link without scheme (host with optional path/query).
+          description: Exact link to list. Accepts a full HTTP/HTTPS link or a link without scheme (host with optional path/query). The server normalizes scheme and host.
           schema:
             $ref: '#/components/schemas/Link'
           examples:
@@ -100,6 +154,25 @@ paths:
                 $ref: '#/components/schemas/PagedFindWebshotByUrlResponse'
         '400':
           description: Bad request (invalid URL or pagination parameters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                invalid_link:
+                  value:
+                    error:
+                      message: invalid link
+                bad_page_token:
+                  value:
+                    error:
+                      message: invalid page_token
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
 
   /v1/webshot/{uuid}:
@@ -126,6 +199,21 @@ paths:
                 format: uri
         '404':
           description: Webshot not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                not_found:
+                  value:
+                    error:
+                      message: webshot not found
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
 components:
   schemas:
@@ -144,14 +232,22 @@ components:
           type: string
           format: uuid
           description: UUID of the last item on the previous page
-    ErrorResponse:
+    ErrorEnvelope:
       type: object
       additionalProperties: false
+      required: [error]
       properties:
-        code:
-          type: string
-        message:
-          type: string
+        error:
+          type: object
+          additionalProperties: false
+          required: [message]
+          properties:
+            message:
+              type: string
+      example:
+        error:
+          message: internal server error
+    
     CreateWebshotRequest:
       type: object
       additionalProperties: false

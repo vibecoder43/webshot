@@ -1,7 +1,7 @@
 services:
-    webshotdb:
+    webshot-meta-db:
         image: postgres:15.10-bookworm
-        container_name: webshotdb
+        container_name: webshotmetadb
         dns: ["172.17.0.1"]
         environment:
             POSTGRES_HOST_AUTH_METHOD: trust
@@ -9,8 +9,20 @@ services:
             - 5432:5432
         volumes:
             - type: bind
-              source: ./sql/schema
-              target: /docker-entrypoint-initdb.d
+              source: ./sql/schema/webshot_meta_db_schema.sql
+              target: /docker-entrypoint-initdb.d/webshot_meta_db_schema.sql
+    webshot-denylist-db:
+        image: postgres:15.10-bookworm
+        container_name: webshotdenylistdb
+        dns: ["172.17.0.1"]
+        environment:
+            POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+            - 5433:5432
+        volumes:
+            - type: bind
+              source: ./sql/schema/denylist_db_schema.sql
+              target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
     webshot-storage-server:
         image: nginx:alpine
         container_name: webshot_storage_server

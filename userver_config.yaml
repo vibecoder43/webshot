@@ -46,6 +46,10 @@ components_manager:
             webshots-per-link-max: 2
             webshots-links-per-page-max: 10
             crawler-network: 'crawler_net'
-        webshot-db:
+        webshot-meta-db:
             dbconnection: 'postgresql://postgres@localhost:5432'
             blocking_task_processor: fs-task-processor
+        denylist-db:
+            dbconnection: 'postgresql://postgres@localhost:5433'
+            blocking_task_processor: fs-task-processor
+        webshot-denylist:

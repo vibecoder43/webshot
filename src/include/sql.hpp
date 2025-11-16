@@ -51,4 +51,12 @@ order by link asc
 limit $4
 )~";
 
+inline constexpr std::string_view kCheckDenylist = R"~(
+select 1
+from domain_denylist
+where $1 = domain or $1 like ('%.' || domain)
+order by length(domain) desc
+limit 1
+)~";
+
 }; // namespace sql

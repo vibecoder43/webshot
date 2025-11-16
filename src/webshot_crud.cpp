@@ -2,6 +2,7 @@
 #include "include/container_guard.hpp"
 #include "include/host_policy.hpp"
 #include "include/link.hpp"
+#include "include/server_errors.hpp"
 #include "include/sql.hpp"
 #include "include/utils.hpp"
 #include "schemas/webshot.hpp"
@@ -92,17 +93,7 @@ WebshotCrud::WebshotCrud(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : us::components::ComponentBase(config, context),
-      impl(std::make_unique<WebshotCrud::Impl>(
-          config["webshot-root"].As<std::string>(), config["webshots-page-max"].As<int64_t>(),
-          config["webshots-per-link-max"].As<int64_t>(2),
-          config["webshots-links-per-page-max"].As<int64_t>(10),
-          config["webshot-storage-url"].As<std::string>(),
-          config["crawler-network"].As<std::string>(),
-          context.FindComponent<us::components::Postgres>("webshot-db").GetCluster(),
-          context.FindComponent<us::clients::dns::Component>().GetResolver(),
-          engine::current_task::GetBlockingTaskProcessor(),
-          config["crawl-concurrency"].As<size_t>(1)
-      ))
+      impl(std::make_unique<WebshotCrud::Impl>(config, context))
 {
 }
 
@@ -121,17 +112,19 @@ public:
     engine::CancellableSemaphore crawlSlots;
     // must die first
     concurrent::BackgroundTaskStorage backgroundTaskStorage;
-    Impl(
-        std::string webshotRoot_, int64_t webshotsPageMax_, int64_t webshotsPerLinkMax_,
-        int64_t webshotsLinksPerPageMax_, std::string webshotStorageUrl_, std::string crawlerNet_,
-        pg::ClusterPtr cluster_, us::clients::dns::Resolver &resolver_, engine::TaskProcessor &tp_,
-        size_t concurrentCrawlRunsMax
+    explicit Impl(
+        const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
-        : webshotRoot(webshotRoot_), webshotsPageMax(webshotsPageMax_),
-          webshotsPerLinkMax(webshotsPerLinkMax_),
-          webshotsLinksPerPageMax(webshotsLinksPerPageMax_), webshotStorageUrl(webshotStorageUrl_),
-          crawlerNetwork(std::move(crawlerNet_)), cluster(std::move(cluster_)), resolver(resolver_),
-          crawlSlots(concurrentCrawlRunsMax), backgroundTaskStorage(tp_)
+        : webshotRoot(cfg["webshot-root"].As<std::string>()),
+          webshotsPageMax(cfg["webshots-page-max"].As<int64_t>()),
+          webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>(2)),
+          webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>(10)),
+          webshotStorageUrl(cfg["webshot-storage-url"].As<std::string>()),
+          crawlerNetwork(cfg["crawler-network"].As<std::string>()),
+          cluster(ctx.FindComponent<us::components::Postgres>("webshot-meta-db").GetCluster()),
+          resolver(ctx.FindComponent<us::clients::dns::Component>().GetResolver()),
+          crawlSlots(cfg["crawl-concurrency"].As<size_t>(1)),
+          backgroundTaskStorage(engine::current_task::GetBlockingTaskProcessor())
     {
     }
     template <typename... Ts> [[nodiscard]] auto readonly(Ts &&...args)
@@ -321,7 +314,7 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
     } else {
         auto cur = decodeToken(*pageToken);
         if (!cur)
-            throw std::runtime_error("invalid page_token");
+            throw errors::InvalidPageTokenException("invalid page_token");
         dbRows = impl->readonly(
                          sql::kSelectWebshotByLinkNext.data(), norm, impl->webshotsPageMax,
                          pg::TimePointTz(cur->createdAt), cur->id
@@ -416,7 +409,7 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     if (pageToken && !pageToken->empty()) {
         cur = decodePrefixToken(*pageToken);
         if (!cur || cur->prefix != normalizedPrefix)
-            throw std::runtime_error("invalid page_token");
+            throw errors::InvalidPageTokenException("invalid page_token");
     }
 
     std::vector<std::string> links;

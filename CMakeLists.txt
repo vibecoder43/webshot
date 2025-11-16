@@ -9,6 +9,9 @@ set(${PROJECT_NAME}_headers
     src/include/webshot_crud.hpp
     src/include/common_definitions.hpp
     src/include/webshot_config.hpp
+    src/include/error_utils.hpp
+    src/include/http_utils.hpp
+    src/include/webshot_denylist.hpp
     src/include/link.hpp
     src/include/host_policy.hpp
     src/include/ip_utils.hpp
@@ -19,6 +22,8 @@ add_library(${PROJECT_NAME}_objs OBJECT
     src/webshots_by_prefix_handler.cpp
     src/webshot_by_id_handler.cpp
     src/webshot_crud.cpp
+    src/error_utils.cpp
+    src/webshot_denylist.cpp
     src/link.cpp
     src/container_guard.cpp
     src/webshot_config.cpp
