@@ -56,7 +56,7 @@ add_executable(${PROJECT_NAME}
 apply_defaults(${PROJECT_NAME}_objs)
 apply_defaults(${PROJECT_NAME})
 
-find_package(userver CONFIG REQUIRED COMPONENTS core postgresql chaotic)
+find_package(userver CONFIG REQUIRED COMPONENTS core postgresql chaotic s3api)
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE fmt::fmt)
 find_package(ada CONFIG REQUIRED COMPONENTS ada)
@@ -66,7 +66,7 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE ada::ada)
 find_package(absl CONFIG REQUIRED)
 # RE2's static lib on Debian/Ubuntu depends on Abseil; propagate to consumers of the object lib
 target_link_libraries(${PROJECT_NAME}_objs PUBLIC absl::str_format absl::strings absl::log absl::raw_hash_set)
-target_link_libraries(${PROJECT_NAME}_objs PUBLIC userver::core userver::postgresql)
+target_link_libraries(${PROJECT_NAME}_objs PUBLIC userver::core userver::postgresql userver::s3api)
 
 include(CTest)
 if (BUILD_TESTING)
@@ -102,6 +102,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ada::ada
   userver::core
   userver::postgresql
+  userver::s3api
   absl::str_format
   absl::strings
   absl::log

@@ -19,6 +19,9 @@ public:
 
     bool isAllowedHost(const std::string &hostLowerPunycode) noexcept;
 
+    // Purge captures for a domain and its subdomains using reversed-host index
+    void purgeHostAndSubdomains(const std::string &hostLowerPunycode);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;

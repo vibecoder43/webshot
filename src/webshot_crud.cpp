@@ -2,9 +2,11 @@
 #include "include/container_guard.hpp"
 #include "include/host_policy.hpp"
 #include "include/link.hpp"
+#include "include/s3_secdist.hpp"
 #include "include/server_errors.hpp"
 #include "include/sql.hpp"
 #include "include/utils.hpp"
+#include "include/webshot_denylist.hpp"
 #include "schemas/webshot.hpp"
 
 #include <chrono>
@@ -18,6 +20,7 @@
 #include <fmt/format.h>
 
 #include <userver/clients/dns/component.hpp>
+#include <userver/clients/http/component.hpp>
 #include <userver/components/component.hpp>
 #include <userver/components/component_base.hpp>
 #include <userver/concurrent/background_task_storage.hpp>
@@ -27,6 +30,7 @@
 #include <userver/engine/task/current_task.hpp>
 #include <userver/engine/task/task_processor_fwd.hpp>
 #include <userver/formats/json.hpp>
+#include <userver/fs/blocking/read.hpp>
 #include <userver/fs/blocking/temp_directory.hpp>
 #include <userver/fs/blocking/write.hpp>
 #include <userver/fs/read.hpp>
@@ -37,11 +41,16 @@
 #include <userver/storages/postgres/io/row_types.hpp>
 #include <userver/storages/postgres/io/uuid.hpp>
 #include <userver/storages/postgres/postgres.hpp>
+#include <userver/storages/secdist/component.hpp>
+#include <userver/storages/secdist/secdist.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/utils/boost_uuid4.hpp>
 #include <userver/utils/datetime/timepoint_tz.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
+
+#include <userver/s3api/clients/s3api.hpp>
+#include <userver/s3api/models/s3api_connection_type.hpp>
 
 namespace pg = us::storages::postgres;
 namespace engine = us::engine;
@@ -61,9 +70,6 @@ type: object
 description: '.'
 additionalProperties: false
 properties:
-    webshot-root:
-        type: string
-        description: '.'
     webshots-page-max:
         type: integer
         minimum: 1
@@ -76,9 +82,6 @@ properties:
         type: integer
         minimum: 1
         description: 'Max distinct links in a prefix page'
-    webshot-storage-url:
-        type: string
-        description: '.'
     crawler-network:
         type: string
         description: 'Name of the Docker network to run crawlers on (scoped egress rules)'
@@ -86,6 +89,24 @@ properties:
         type: integer
         minimum: 1
         description: 'Max concurrent crawls; blocks above this'
+    storage-mode:
+        type: string
+        enum: [s3]
+        description: 'Storage backend'
+    s3-bucket:
+        type: string
+    s3-endpoint:
+        type: string
+    s3-region:
+        type: string
+        description: 'Optional region label'
+    public-base-url:
+        type: string
+        description: 'Public HTTP base for stored objects (bucket path-style)'
+    s3-timeout-ms:
+        type: integer
+        minimum: 1
+        description: 'HTTP timeout to S3'
 )");
 }
 
@@ -101,31 +122,61 @@ WebshotCrud::~WebshotCrud() = default;
 
 class [[nodiscard]] WebshotCrud::Impl {
 public:
-    const std::string webshotRoot;
     const int64_t webshotsPageMax;
     const int64_t webshotsPerLinkMax;
     const int64_t webshotsLinksPerPageMax;
-    const std::string webshotStorageUrl;
     const std::string crawlerNetwork;
+    const std::string storageMode;
+    const std::string s3Bucket;
+    const std::string s3Endpoint;
+    const std::string s3Region;
+    const std::string publicBaseUrl;
+    const std::chrono::milliseconds s3Timeout;
     pg::ClusterPtr cluster;
     us::clients::dns::Resolver &resolver;
+    us::clients::http::Client &httpClient;
+    us::s3api::ClientPtr s3Client;
+    v1::WebshotDenylist *denylist;
     engine::CancellableSemaphore crawlSlots;
     // must die first
     concurrent::BackgroundTaskStorage backgroundTaskStorage;
     explicit Impl(
         const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
-        : webshotRoot(cfg["webshot-root"].As<std::string>()),
-          webshotsPageMax(cfg["webshots-page-max"].As<int64_t>()),
+        : webshotsPageMax(cfg["webshots-page-max"].As<int64_t>()),
           webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>(2)),
           webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>(10)),
-          webshotStorageUrl(cfg["webshot-storage-url"].As<std::string>()),
           crawlerNetwork(cfg["crawler-network"].As<std::string>()),
+          storageMode(cfg["storage-mode"].As<std::string>("s3")),
+          s3Bucket(cfg["s3-bucket"].As<std::string>()),
+          s3Endpoint(cfg["s3-endpoint"].As<std::string>()),
+          s3Region(cfg["s3-region"].As<std::string>("")),
+          publicBaseUrl(cfg["public-base-url"].As<std::string>()),
+          s3Timeout(std::chrono::milliseconds(cfg["s3-timeout-ms"].As<int>(10000))),
           cluster(ctx.FindComponent<us::components::Postgres>("webshot-meta-db").GetCluster()),
           resolver(ctx.FindComponent<us::clients::dns::Component>().GetResolver()),
+          httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
           crawlSlots(cfg["crawl-concurrency"].As<size_t>(1)),
           backgroundTaskStorage(engine::current_task::GetBlockingTaskProcessor())
     {
+        if (storageMode != "s3") {
+            throw std::runtime_error("unsupported storage-mode; only 's3' is implemented");
+        }
+        // Build S3 connection and client
+        auto conn = us::s3api::MakeS3Connection(
+            httpClient, us::s3api::S3ConnectionType::kHttp, s3Endpoint,
+            us::s3api::ConnectionCfg{s3Timeout, 1}
+        );
+        // Load creds from secdist if present
+        const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
+        const auto &creds = secdist.Get<v1::S3CredentialsSecdist>();
+        if (!creds.access_key_id || !creds.secret_access_key)
+            throw std::runtime_error("missing required S3 secdist credentials (s3_credentials)");
+        auto auth = std::make_shared<us::s3api::authenticators::AccessKey>(
+            *creds.access_key_id, us::s3api::Secret(*creds.secret_access_key)
+        );
+        s3Client = us::s3api::GetS3Client(conn, auth, s3Bucket);
+        denylist = &ctx.FindComponent<v1::WebshotDenylist>();
     }
     template <typename... Ts> [[nodiscard]] auto readonly(Ts &&...args)
     {
@@ -138,7 +189,7 @@ public:
     }
 };
 
-struct Cursor {
+struct [[nodiscard]] Cursor {
     system_clock::time_point createdAt;
     Uuid id;
 };
@@ -272,15 +323,49 @@ void WebshotCrud::createWebshot(Link link)
                     LOG_INFO() << fmt::format("Failed to crawl {}, no WACZ", link.httpUrl());
                     return;
                 }
-                const auto uuid = impl->readwrite(sql::kInsertWebshot.data(), link.normalized())
-                                      .AsSingleRow<Uuid>();
-                us::fs::CreateDirectories(
-                    engine::current_task::GetBlockingTaskProcessor(), impl->webshotRoot
-                );
-                auto newPath = fmt::format("{}/{}", impl->webshotRoot, utils::ToString(uuid));
-                us::fs::blocking::Rename(pathToWaczFile, newPath);
-                assert(us::fs::FileExists(engine::current_task::GetBlockingTaskProcessor(), newPath)
-                );
+                // Generate UUID upfront and upload to S3 as <uuid>.wacz
+                const auto uuid = utils::generators::GenerateBoostUuid();
+                const auto key = fmt::format("{}.wacz", utils::ToString(uuid));
+                const auto data = us::fs::blocking::ReadFileContents(pathToWaczFile);
+                try {
+                    impl->s3Client->PutObject(
+                        key, data, std::nullopt, "application/zip", std::nullopt, std::nullopt
+                    );
+                } catch (const std::exception &e) {
+                    LOG_INFO() << fmt::format("S3 upload failed for {}: {}", key, e.what());
+                    return;
+                }
+                // Build host_rev from normalized host (already lowercase/punycode by Link)
+                auto host = link.host();
+                std::string hostRev(host.rbegin(), host.rend());
+                // Re-check denylist just before insert
+                if (impl->denylist && !impl->denylist->isAllowedHost(host)) {
+                    try {
+                        impl->s3Client->DeleteObject(key);
+                    } catch (std::exception &) {
+                        // empty
+                    }
+                    LOG_INFO() << fmt::format("Host became denylisted during crawl: {}", host);
+                    return;
+                }
+                const auto location = fmt::format("{}/{}", impl->publicBaseUrl, key);
+                // Insert DB row with explicit id
+                try {
+                    impl->readwrite(
+                            sql::kInsertWebshot.data(), uuid, link.normalized(), hostRev, location
+                    )
+                        .AsSingleRow<Uuid>();
+                } catch (const std::exception &e) {
+                    try {
+                        impl->s3Client->DeleteObject(key);
+                    } catch (std::exception &e) {
+                        // empty
+                    }
+                    LOG_INFO() << fmt::format(
+                        "DB insert failed for {}: {}", utils::ToString(uuid), e.what()
+                    );
+                    return;
+                }
             } catch (const engine::SemaphoreLockCancelledError &e) {
                 LOG_INFO() << "Crawl task cancelled while waiting for slot: " << e.what();
             }
@@ -291,12 +376,12 @@ void WebshotCrud::createWebshot(Link link)
 std::optional<Webshot> WebshotCrud::findWebshot(Uuid uuid)
 {
     const auto location =
-        impl->readonly(sql::kSelectWebshot.data(), uuid).AsOptionalSingleRow<Uuid>();
+        impl->readonly(sql::kSelectWebshot.data(), uuid).AsOptionalSingleRow<std::string>();
     if (!location) {
         LOG_INFO() << fmt::format("UUID not found: {}", us::utils::ToString(uuid));
         return {};
     }
-    return {{fmt::format("{}/{}", impl->webshotStorageUrl, utils::ToString(*location))}};
+    return {{*location}};
 }
 
 dto::PagedFindWebshotByUrlResponse

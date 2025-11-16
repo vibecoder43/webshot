@@ -4,13 +4,13 @@
 namespace sql {
 
 inline constexpr std::string_view kInsertWebshot = R"~(
-insert into webshot(id, created_at, link)
-values(default, default, $1)
+insert into webshot(id, created_at, link, host_rev, location)
+values($1, default, $2, $3, $4)
 returning id
 )~";
 
 inline constexpr std::string_view kSelectWebshot = R"~(
-select id from webshot where id = $1
+select location from webshot where id = $1
 )~";
 
 inline constexpr std::string_view kSelectWebshotByLinkFirst = R"~(
@@ -57,6 +57,18 @@ from domain_denylist
 where $1 = domain or $1 like ('%.' || domain)
 order by length(domain) desc
 limit 1
+)~";
+
+inline constexpr std::string_view kSelectIdsByHostOrSubdomainsPaged = R"~(
+select id
+from webshot
+where host_rev = $1 or host_rev like ($1 || '.%')
+order by created_at desc, id asc
+limit $2
+)~";
+
+inline constexpr std::string_view kDeleteWebshotsByIds = R"~(
+delete from webshot where id = any($1::uuid[])
 )~";
 
 }; // namespace sql

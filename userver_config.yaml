@@ -6,6 +6,13 @@ components_manager:
             worker_threads: &blocking_num_workers 1
     default_task_processor: main-task-processor
     components:
+        http-client:
+            fs-task-processor: fs-task-processor
+        secdist:
+        default-secdist-provider:
+            missing-ok: true
+            inline:
+                s3_credentials: {}
         webshot-config:
             query-part-length-max: 1024
         dns-client:
@@ -39,13 +46,17 @@ components_manager:
             method: GET
             task_processor: main-task-processor
         webshot-crud:
-            webshot-root: '/tmp/build-webshot-san/wacz'
             webshots-page-max: 2
-            webshot-storage-url: 'http://localhost:8081'
             crawl-concurrency: *blocking_num_workers
             webshots-per-link-max: 2
             webshots-links-per-page-max: 10
             crawler-network: 'crawler_net'
+            storage-mode: s3
+            s3-bucket: webshot
+            s3-endpoint: 'http://localhost:8333'
+            s3-region: 'local'
+            public-base-url: 'http://localhost:8333/webshot'
+            s3-timeout-ms: 10000
         webshot-meta-db:
             dbconnection: 'postgresql://postgres@localhost:5432'
             blocking_task_processor: fs-task-processor
@@ -53,3 +64,8 @@ components_manager:
             dbconnection: 'postgresql://postgres@localhost:5433'
             blocking_task_processor: fs-task-processor
         webshot-denylist:
+            # S3 settings to allow purges (mirror of crud)
+            s3-bucket: webshot
+            s3-endpoint: 'http://localhost:8333'
+            s3-region: 'local'
+            s3-timeout-ms: 10000
