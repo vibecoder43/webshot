@@ -194,7 +194,8 @@ struct [[nodiscard]] Cursor {
     Uuid id;
 };
 
-static std::string encodeToken(chrono::system_clock::time_point createdAt, const Uuid &id)
+[[nodiscard]] static std::string
+encodeToken(chrono::system_clock::time_point createdAt, const Uuid &id)
 {
     const auto micros =
         chrono::duration_cast<chrono::microseconds>(createdAt.time_since_epoch()).count();
@@ -203,7 +204,7 @@ static std::string encodeToken(chrono::system_clock::time_point createdAt, const
         json::ToString(json::ValueBuilder(cur).ExtractValue()), b64::Pad::kWithout
     );
 }
-static std::optional<Cursor> decodeToken(const std::string &token)
+[[nodiscard]] static std::optional<Cursor> decodeToken(const std::string &token)
 {
     try {
         const auto decoded = b64::Base64UrlDecode(token);
@@ -430,7 +431,7 @@ struct PrefixCursor {
     std::optional<Uuid> id;
 };
 
-std::optional<PrefixCursor> decodePrefixToken(const std::string &token)
+[[nodiscard]] std::optional<PrefixCursor> decodePrefixToken(const std::string &token)
 {
     try {
         const auto decoded = b64::Base64UrlDecode(token);

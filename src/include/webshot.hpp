@@ -4,7 +4,7 @@
 
 namespace v1 {
 
-struct Webshot {
+struct [[nodiscard]] Webshot {
     std::string location;
 };
 }; // namespace v1

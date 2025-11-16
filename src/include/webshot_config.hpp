@@ -9,7 +9,7 @@
 namespace us = userver;
 
 namespace v1 {
-class WebshotConfig final : public us::components::ComponentBase {
+class [[nodiscard]] WebshotConfig final : public us::components::ComponentBase {
 public:
     static constexpr std::string_view kName = "webshot-config";
 
@@ -18,9 +18,9 @@ public:
         const us::components::ComponentContext &context
     );
 
-    static us::yaml_config::Schema GetStaticConfigSchema();
+    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 
-    size_t queryPartLengthMax() const noexcept { return queryPartLengthMax_; }
+    [[nodiscard]] size_t queryPartLengthMax() const noexcept { return queryPartLengthMax_; }
 
 private:
     size_t queryPartLengthMax_;

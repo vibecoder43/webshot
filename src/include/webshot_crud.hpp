@@ -28,15 +28,15 @@ public:
     ~WebshotCrud();
 
     void createWebshot(Link link);
-    std::optional<Webshot> findWebshot(Uuid uuid);
+    [[nodiscard]] std::optional<Webshot> findWebshot(Uuid uuid);
 
-    std::vector<dto::UuidWithTime> findWebshotByLink(const Link &link);
-    dto::PagedFindWebshotByUrlResponse
+    [[nodiscard]] std::vector<dto::UuidWithTime> findWebshotByLink(const Link &link);
+    [[nodiscard]] dto::PagedFindWebshotByUrlResponse
     findWebshotByLinkPage(const Link &link, const std::optional<std::string> &pageToken);
-    dto::PagedFindWebshotByPrefixResponse findWebshotsByPrefixPage(
+    [[nodiscard]] dto::PagedFindWebshotByPrefixResponse findWebshotsByPrefixPage(
         const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
     );
-    static us::yaml_config::Schema GetStaticConfigSchema();
+    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 
 private:
     class Impl;

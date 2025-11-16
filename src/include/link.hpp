@@ -10,15 +10,15 @@ struct InvalidLinkException : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-struct Link {
+struct [[nodiscard]] Link {
     ada::url_aggregator url;
     std::string scheme_less;
 
-    static Link fromUserInput(std::string in, size_t queryPartLengthMax);
+    [[nodiscard]] static Link fromUserInput(std::string in, size_t queryPartLengthMax);
 
-    std::string host() const { return std::string(url.get_hostname()); }
-    std::string httpUrl() const { return std::string("http://") + scheme_less; }
-    const std::string &normalized() const { return scheme_less; }
+    [[nodiscard]] std::string host() const { return std::string(url.get_hostname()); }
+    [[nodiscard]] std::string httpUrl() const { return std::string("http://") + scheme_less; }
+    [[nodiscard]] const std::string &normalized() const { return scheme_less; }
 };
 
 } // namespace v1

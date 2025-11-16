@@ -17,9 +17,8 @@ public:
 
     ~WebshotDenylist();
 
-    bool isAllowedHost(const std::string &hostLowerPunycode) noexcept;
+    [[nodiscard]] bool isAllowedHost(const std::string &hostLowerPunycode) noexcept;
 
-    // Purge captures for a domain and its subdomains using reversed-host index
     void purgeHostAndSubdomains(const std::string &hostLowerPunycode);
 
 private:

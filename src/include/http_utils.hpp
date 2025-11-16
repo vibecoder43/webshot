@@ -17,21 +17,23 @@ namespace json = userver::formats::json;
 namespace http = userver::server::http;
 
 template <typename T>
-inline std::string respondJson(http::HttpResponse &resp, http::HttpStatus status, const T &body)
+[[nodiscard]] inline std::string
+respondJson(http::HttpResponse &resp, http::HttpStatus status, const T &body)
 {
     resp.SetStatus(status);
     resp.SetContentType(userver::http::content_type::kApplicationJson);
     return json::ToString(json::ValueBuilder(body).ExtractValue());
 }
 
-inline std::string respondJson(http::HttpResponse &resp, http::HttpStatus status, json::Value body)
+[[nodiscard]] inline std::string
+respondJson(http::HttpResponse &resp, http::HttpStatus status, json::Value body)
 {
     resp.SetStatus(status);
     resp.SetContentType(userver::http::content_type::kApplicationJson);
     return json::ToString(std::move(body));
 }
 
-inline std::string
+[[nodiscard]] inline std::string
 respondError(http::HttpResponse &resp, http::HttpStatus status, std::string_view message)
 {
     return respondJson(resp, status, v1::errors::makeError(message));
