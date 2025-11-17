@@ -1,4 +1,11 @@
 #include "include/link.hpp"
+/**
+ * @file
+ * @brief URL normalization and validation using ada.
+ *
+ * Contains helpers to sanitize user input, enforce scheme/host rules, and
+ * produce a stable scheme‑less key for storage and lookups.
+ */
 #include "include/ip_utils.hpp"
 
 #include <cctype>
@@ -7,36 +14,33 @@
 #include <ada.h>
 #include <ada/url_aggregator.h>
 
+#include <absl/strings/ascii.h>
+
+#include <fmt/format.h>
+
 namespace {
 
+/** Trim ASCII whitespace characters from both ends. */
 static std::string trimAsciiWhitespace(std::string s)
 {
-    auto is_space = [](char c) {
-        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
-    };
-    size_t start = 0;
-    while (start < s.size() && is_space(s[start]))
-        ++start;
-    size_t end = s.size();
-    while (end > start && is_space(s[end - 1]))
-        --end;
-    if (start > 0 || end < s.size())
-        s = s.substr(start, end - start);
+    absl::StripAsciiWhitespace(&s);
     return s;
 }
 
+/** ASCII letter check without locale side effects. */
 static bool isAsciiAlpha(char c) noexcept
 {
     const unsigned char u = static_cast<unsigned char>(c);
     return u < 0x80 && std::isalpha(u) != 0;
 }
+/** ASCII alnum check without locale side effects. */
 static bool isAsciiAlnum(char c) noexcept
 {
     const unsigned char u = static_cast<unsigned char>(c);
     return u < 0x80 && std::isalnum(u) != 0;
 }
 
-// RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+/** RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) */
 static bool isValidScheme(std::string_view sv) noexcept
 {
     if (sv.empty() || !isAsciiAlpha(sv.front()))
@@ -49,6 +53,7 @@ static bool isValidScheme(std::string_view sv) noexcept
     return true;
 }
 
+/** Build a scheme‑less canonical form for indexing. */
 static std::string buildSchemeLess(ada::url_aggregator &url)
 {
     url.set_protocol("http");
@@ -64,14 +69,14 @@ namespace v1 {
 
 Link Link::fromUserInput(std::string in, size_t queryPartLengthMax)
 {
-    in = trimAsciiWhitespace(std::move(in));
+    in = trimAsciiWhitespace(in);
     if (in.rfind("//", 0) == 0)
         throw InvalidLinkException("missing scheme");
 
     const auto scheme_pos = in.find("://");
     if (scheme_pos == std::string::npos ||
         !isValidScheme(std::string_view(in).substr(0, scheme_pos))) {
-        in = std::string("http://") + in;
+        in = fmt::format("http://{}", in);
     } else {
         std::string scheme = in.substr(0, scheme_pos);
         if (!(scheme == "http" || scheme == "https"))

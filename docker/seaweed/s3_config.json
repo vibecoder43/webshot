@@ -1,0 +1,16 @@
+{
+  "identities": [
+    {
+      "name": "anonymous",
+      "actions": ["Read"]
+    },
+    {
+      "name": "webshot_local",
+      "credentials": [
+        { "accessKey": "webshot_local", "secretKey": "webshot_local_secret" }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}
+

@@ -1,5 +1,10 @@
 #include "include/webshot_config.hpp"
+/**
+ * @file
+ * @brief Component that provides typed read‑only configuration.
+ */
 
+#include <chrono>
 #include <userver/components/component.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
@@ -8,7 +13,12 @@ WebshotConfig::WebshotConfig(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : us::components::ComponentBase(config, context),
-      queryPartLengthMax_(config["query-part-length-max"].As<size_t>(1024))
+      queryPartLengthMax_(config["query-part-length-max"].As<size_t>(1024)),
+      s3Bucket_(config["s3-bucket"].As<std::string>()),
+      s3Endpoint_(config["s3-endpoint"].As<std::string>()),
+      s3Region_(config["s3-region"].As<std::string>()),
+      publicBaseUrl_(config["public-base-url"].As<std::string>()),
+      s3Timeout_(std::chrono::milliseconds(config["s3-timeout-ms"].As<int>(10000)))
 {
 }
 
@@ -24,6 +34,22 @@ properties:
     minimum: 1
     description: Maximum allowed length of the query part in the URL
     defaultDescription: "1024"
+  s3-bucket:
+    type: string
+    description: Target bucket name
+  s3-endpoint:
+    type: string
+    description: S3 HTTP endpoint (e.g., http://localhost:8333)
+  s3-region:
+    type: string
+    description: Optional region label
+  public-base-url:
+    type: string
+    description: Public HTTP base for stored objects (bucket path-style)
+  s3-timeout-ms:
+    type: integer
+    minimum: 1
+    description: HTTP timeout to S3
 )");
 }
 } // namespace v1

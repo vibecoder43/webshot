@@ -9,6 +9,9 @@ namespace server = us::server;
 
 namespace v1 {
 class WebshotCrud;
+/**
+ * @brief HTTP handler that redirects to the stored capture by id.
+ */
 class [[nodiscard]] WebshotById : public server::handlers::HttpHandlerBase {
 public:
     static constexpr std::string_view kName = "webshot-by-id";

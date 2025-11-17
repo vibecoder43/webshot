@@ -1,4 +1,8 @@
 #include "include/ip_utils.hpp"
+/**
+ * @file
+ * @brief Helpers for validating hostnames and public‑routable IP ranges.
+ */
 
 #include <algorithm>
 #include <array>
@@ -8,6 +12,7 @@
 
 namespace IpUtils {
 
+/** See header for semantics. */
 bool isIpLiteralHostname(std::string_view hostname) noexcept
 {
     if (hostname.empty())
@@ -24,6 +29,7 @@ bool isIpLiteralHostname(std::string_view hostname) noexcept
     return inet_pton(AF_INET, hostStr.c_str(), &addr4) == 1;
 }
 
+/** Check if an IPv4 is within a CIDR range (arguments in host order). */
 static inline bool inRange(uint32_t ip, uint32_t net, uint32_t mask)
 {
     return (ip & mask) == (net & mask);
@@ -44,6 +50,8 @@ bool isPublicRoutableIPv4(uint32_t ipHostOrder) noexcept
     if (inRange(ipHostOrder, 0xAC100000u, 0xFFF00000u)) // 172.16.0.0/12
         return false;
     if (inRange(ipHostOrder, 0xC0A80000u, 0xFFFF0000u)) // 192.168.0.0/16
+        return false;
+    if (inRange(ipHostOrder, 0xC6120000u, 0xFFFE0000u)) // 198.18.0.0/15 (benchmarking/test net)
         return false;
     if (inRange(ipHostOrder, 0xE0000000u, 0xF0000000u)) // 224.0.0.0/4 (multicast)
         return false;

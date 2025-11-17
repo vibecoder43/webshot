@@ -10,11 +10,16 @@ components_manager:
             fs-task-processor: fs-task-processor
         secdist:
         default-secdist-provider:
-            missing-ok: true
-            inline:
-                s3_credentials: {}
+            missing-ok: false
+            config: /home/noofva/work/webshot/secrets/secdist.json
+            format: json
         webshot-config:
             query-part-length-max: 1024
+            s3-bucket: webshot
+            s3-endpoint: 'http://localhost:8333'
+            s3-region: 'local'
+            public-base-url: 'http://localhost:8333/webshot'
+            s3-timeout-ms: 10000
         dns-client:
             fs-task-processor: fs-task-processor
         testsuite-support:
@@ -29,16 +34,16 @@ components_manager:
                     file_path: '@stderr'
                     level: debug
                     overflow_behavior: discard
-        webshots-by-prefix:
-            path: /v1/webshot
-            method: GET
-            task_processor: main-task-processor
-        webshot-exact:
-            path: /v1/webshot/exact
-            method: GET
-            task_processor: main-task-processor
         webshot-handler:
             path: /v1/webshot
+            method: GET,POST
+            task_processor: main-task-processor
+        webshots-by-prefix:
+            path: /v1/webshot/prefix
+            method: GET
+            task_processor: main-task-processor
+        webshot-disallow-and-purge:
+            path: /v1/disallow-and-purge
             method: POST
             task_processor: main-task-processor
         webshot-by-id:
@@ -51,12 +56,17 @@ components_manager:
             webshots-per-link-max: 2
             webshots-links-per-page-max: 10
             crawler-network: 'crawler_net'
-            storage-mode: s3
-            s3-bucket: webshot
-            s3-endpoint: 'http://localhost:8333'
-            s3-region: 'local'
-            public-base-url: 'http://localhost:8333/webshot'
-            s3-timeout-ms: 10000
+            crawler-image: 'webrecorder/browsertrix-crawler'
+            crawler-collection-name: 'webshot'
+            crawler-workers: 1
+            crawler-page-limit: 1
+            crawler-page-load-timeout-sec: 10
+            crawler-post-load-delay-sec: 1
+            crawler-net-idle-wait-sec: 0
+            crawler-page-extra-delay-sec: 3
+            crawler-behavior-timeout-sec: 1
+            crawler-lang: 'en'
+            crawler-scope-type: 'page-spa'
         webshot-meta-db:
             dbconnection: 'postgresql://postgres@localhost:5432'
             blocking_task_processor: fs-task-processor
@@ -64,8 +74,3 @@ components_manager:
             dbconnection: 'postgresql://postgres@localhost:5433'
             blocking_task_processor: fs-task-processor
         webshot-denylist:
-            # S3 settings to allow purges (mirror of crud)
-            s3-bucket: webshot
-            s3-endpoint: 'http://localhost:8333'
-            s3-region: 'local'
-            s3-timeout-ms: 10000

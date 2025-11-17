@@ -1,8 +1,12 @@
+/**
+ * @file
+ * @brief Service entry point wiring userver components and HTTP handlers.
+ */
 #include "include/webshot_by_id_handler.hpp"
 #include "include/webshot_config.hpp"
 #include "include/webshot_crud.hpp"
 #include "include/webshot_denylist.hpp"
-#include "include/webshot_exact_handler.hpp"
+#include "include/webshot_disallow_and_purge_handler.hpp"
 #include "include/webshot_handler.hpp"
 #include "include/webshots_by_prefix_handler.hpp"
 
@@ -30,8 +34,8 @@ int main(int argc, char *argv[])
                               .Append<v1::WebshotConfig>()
                               .Append<v1::WebshotCrud>()
                               .Append<v1::WebshotsByPrefixHandler>()
-                              .Append<v1::WebshotExactHandler>()
                               .Append<v1::WebshotHandler>()
+                              .Append<v1::WebshotDisallowAndPurgeHandler>()
                               .Append<v1::WebshotById>();
     return us::utils::DaemonMain(argc, argv, component_list);
 }

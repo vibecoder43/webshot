@@ -8,11 +8,123 @@ servers:
 paths:
   /v1/webshot:
     get:
+      operationId: listWebshotsByUrl
+      summary: List captures by exact link (paged)
+      description: |
+        Returns a paged list of captures for the exact normalized link.
+
+        Ordering and paging:
+        - Items are ordered by created_at (descending), then by UUID (ascending).
+        - The page_token is opaque; it resumes after the last item of the previous page.
+      parameters:
+        - in: query
+          name: link
+          required: true
+          description: Exact link to list. Accepts a full HTTP/HTTPS link or a link without scheme (host with optional path/query). The server normalizes scheme and host.
+          schema:
+            $ref: '#/components/schemas/Link'
+          examples:
+            full-url:
+              value: https://example.com/a?b=1
+            host-without-scheme:
+              value: example.com/a?b=1
+        - in: query
+          name: page_token
+          required: false
+          schema:
+            type: string
+          description: Opaque token from a previous response to get the next page.
+      responses:
+        '200':
+          description: Paged list of captures (latest first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedFindWebshotByUrlResponse'
+        '400':
+          description: Bad request (invalid URL or pagination parameters).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_link:
+                  value:
+                    error:
+                      message: "missing parameter: link"
+                bad_page_token:
+                  value:
+                    error:
+                      message: invalid page_token
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    post:
+      operationId: createWebshot
+      summary: Enqueue capture of a webshot
+      description: Triggers asynchronous capture of the provided URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebshotRequest'
+            examples:
+              full-url:
+                summary: Full HTTP URL
+                value:
+                  link: https://example.org/path?q=1
+              host-without-scheme:
+                summary: Host with optional path
+                value:
+                  link: example.org/path?q=1
+      responses:
+        '201':
+          description: Capture accepted for processing.
+        '400':
+          description: Invalid JSON or URL supplied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                bad_request:
+                  value:
+                    error:
+                      message: invalid request body
+                bad_link:
+                  value:
+                    error:
+                      message: forbidden host
+        '403':
+          description: Domain is denylisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                denylisted:
+                  value:
+                    error:
+                      message: domain in denylist
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/webshot/prefix:
+    get:
       operationId: listWebshotsByPrefix
       summary: List capture UUIDs by link prefix
       description: |
         Returns captures for links whose normalized scheme-less form starts with the provided prefix.
-        
+
         Ordering and paging:
         - Results are ordered by link (ascending), then by created_at (descending), then by UUID (ascending).
         - Each page includes up to N distinct links and up to M newest captures per link; N and M are server-configured caps.
@@ -63,117 +175,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/disallow-and-purge:
     post:
-      operationId: createWebshot
-      summary: Enqueue capture of a webshot
-      description: Triggers asynchronous capture of the provided URL.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateWebshotRequest'
-            examples:
-              full-url:
-                summary: Full HTTP URL
-                value:
-                  link: https://example.org/path?q=1
-              host-without-scheme:
-                summary: Host with optional path
-                value:
-                  link: example.org/path?q=1
-      responses:
-        '201':
-          description: Capture accepted for processing.
-        '400':
-          description: Invalid JSON or URL supplied.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-              examples:
-                bad_request:
-                  value:
-                    error:
-                      message: invalid request body
-                invalid_link:
-                  value:
-                    error:
-                      message: invalid link
-        '403':
-          description: Domain denylisted or denylist unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-              examples:
-                denylisted:
-                  value:
-                    error:
-                      message: POST failed due to domain in denylist
-        '500':
-          description: Internal server error.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-  /v1/webshot/exact:
-    get:
-      operationId: listWebshotsByUrl
-      summary: List captures by exact link (paged)
+      operationId: disallowAndPurgeDomain
+      summary: Disallow a domain and enqueue purge
       description: |
-        Returns a paged list of captures for the exact normalized link.
-        
-        Ordering and paging:
-        - Items are ordered by created_at (descending), then by UUID (ascending).
-        - The page_token is opaque; it resumes after the last item of the previous page.
+        Normalizes the provided domain, inserts it into the denylist, and enqueues background
+        purge of all captures for that domain and its subdomains.
       parameters:
         - in: query
-          name: link
+          name: domain
           required: true
-          description: Exact link to list. Accepts a full HTTP/HTTPS link or a link without scheme (host with optional path/query). The server normalizes scheme and host.
-          schema:
-            $ref: '#/components/schemas/Link'
-          examples:
-            full-url:
-              value: https://example.com/a?b=1
-            host-without-scheme:
-              value: example.com/a?b=1
-        - in: query
-          name: page_token
-          required: false
+          description: Domain name to disallow. Must be a hostname (no path); will be normalized and punycoded.
           schema:
             type: string
-          description: Opaque token from a previous response to get the next page.
+          examples:
+            simple:
+              value: example.com
+            idn:
+              value: bücher.de
       responses:
-        '200':
-          description: Paged list of captures (latest first).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PagedFindWebshotByUrlResponse'
+        '202':
+          description: Purge successfully enqueued for the normalized domain.
         '400':
-          description: Bad request (invalid URL or pagination parameters).
+          description: Invalid or missing domain parameter.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
               examples:
-                invalid_link:
+                missing_domain:
                   value:
                     error:
-                      message: invalid link
-                bad_page_token:
+                      message: "missing parameter: domain"
+                invalid_domain:
                   value:
                     error:
-                      message: invalid page_token
+                      message: "invalid domain"
         '500':
           description: Internal server error.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
 
   /v1/webshot/{uuid}:
     get:
@@ -197,6 +242,17 @@ paths:
               schema:
                 type: string
                 format: uri
+        '400':
+          description: Bad request (missing or invalid UUID path parameter).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_uuid:
+                  value:
+                    error:
+                      message: "missing parameter: uuid"
         '404':
           description: Webshot not found.
           content:
@@ -342,4 +398,3 @@ components:
           format: uuid
           nullable: true
           description: UUID of last item when resuming mid-link
- 

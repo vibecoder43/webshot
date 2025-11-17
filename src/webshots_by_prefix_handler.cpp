@@ -1,4 +1,8 @@
 #include "include/webshots_by_prefix_handler.hpp"
+/**
+ * @file
+ * @brief Handler that lists captures grouped by normalized link prefix.
+ */
 #include "include/link.hpp"
 
 #include <string>
@@ -30,7 +34,6 @@ std::string WebshotsByPrefixHandler::
     HandleRequestThrow(const server::http::HttpRequest &request, server::request::RequestContext &)
         const
 {
-    using server::http::HttpMethod::kGet;
     using server::http::HttpStatus::kBadRequest;
     using server::http::HttpStatus::kInternalServerError;
     using server::http::HttpStatus::kMethodNotAllowed;
@@ -59,7 +62,7 @@ std::string WebshotsByPrefixHandler::
             return httpu::respondError(response, kBadRequest, "invalid page_token");
         }
     } catch (const std::exception &e) {
-        LOG_ERROR() << "Unhandled error in webshots_by_prefix_handler: " << e.what();
+        LOG_ERROR() << fmt::format("Unhandled error: ", e.what());
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 }

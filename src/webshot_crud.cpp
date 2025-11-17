@@ -1,11 +1,19 @@
 #include "include/webshot_crud.hpp"
+/**
+ * @file
+ * @brief Implementation of storage and crawl orchestration.
+ *
+ * Implements the `WebshotCrud` component, including background crawl startup,
+ * metadata writes, and various paged queries.
+ */
 #include "include/container_guard.hpp"
-#include "include/host_policy.hpp"
 #include "include/link.hpp"
 #include "include/s3_secdist.hpp"
+#include "include/s3_v4_client.hpp"
 #include "include/server_errors.hpp"
 #include "include/sql.hpp"
 #include "include/utils.hpp"
+#include "include/webshot_config.hpp"
 #include "include/webshot_denylist.hpp"
 #include "schemas/webshot.hpp"
 
@@ -13,6 +21,7 @@
 #include <exception>
 #include <optional>
 #include <string>
+#include <userver/utils/assert.hpp>
 #include <utility>
 
 #include <boost/uuid/uuid.hpp>
@@ -49,13 +58,9 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
 
-#include <userver/s3api/clients/s3api.hpp>
-#include <userver/s3api/models/s3api_connection_type.hpp>
-
 namespace pg = us::storages::postgres;
 namespace engine = us::engine;
 namespace concurrent = userver::concurrent;
-namespace utils = us::utils;
 namespace b64 = us::crypto::base64;
 namespace json = us::formats::json;
 namespace chrono = std::chrono;
@@ -89,24 +94,46 @@ properties:
         type: integer
         minimum: 1
         description: 'Max concurrent crawls; blocks above this'
-    storage-mode:
+    crawler-image:
         type: string
-        enum: [s3]
-        description: 'Storage backend'
-    s3-bucket:
+        description: 'Docker image used for the crawl container'
+    crawler-collection-name:
         type: string
-    s3-endpoint:
-        type: string
-    s3-region:
-        type: string
-        description: 'Optional region label'
-    public-base-url:
-        type: string
-        description: 'Public HTTP base for stored objects (bucket path-style)'
-    s3-timeout-ms:
+        description: 'Collection name used by the crawler for the capture'
+    crawler-workers:
         type: integer
         minimum: 1
-        description: 'HTTP timeout to S3'
+        description: 'Number of crawler workers per job'
+    crawler-page-limit:
+        type: integer
+        minimum: 1
+        description: 'Max pages to crawl per job'
+    crawler-page-load-timeout-sec:
+        type: integer
+        minimum: 1
+        description: 'Page load timeout in seconds'
+    crawler-post-load-delay-sec:
+        type: integer
+        minimum: 0
+        description: 'Post-load delay in seconds'
+    crawler-net-idle-wait-sec:
+        type: integer
+        minimum: 0
+        description: 'Extra wait for network idleness in seconds'
+    crawler-page-extra-delay-sec:
+        type: integer
+        minimum: 0
+        description: 'Extra delay before snapshot in seconds'
+    crawler-behavior-timeout-sec:
+        type: integer
+        minimum: 1
+        description: 'Behavior script timeout in seconds'
+    crawler-lang:
+        type: string
+        description: 'Language hint passed to the crawler'
+    crawler-scope-type:
+        type: string
+        description: 'Scope type passed to the crawler (e.g. page-spa)'
 )");
 }
 
@@ -120,63 +147,79 @@ WebshotCrud::WebshotCrud(
 
 WebshotCrud::~WebshotCrud() = default;
 
+/** @brief Private pimpl that holds dependencies and query helpers. */
+struct [[nodiscard]] CrawlContext;
+
 class [[nodiscard]] WebshotCrud::Impl {
 public:
     const int64_t webshotsPageMax;
     const int64_t webshotsPerLinkMax;
     const int64_t webshotsLinksPerPageMax;
     const std::string crawlerNetwork;
-    const std::string storageMode;
-    const std::string s3Bucket;
-    const std::string s3Endpoint;
-    const std::string s3Region;
-    const std::string publicBaseUrl;
-    const std::chrono::milliseconds s3Timeout;
+    const std::string crawlerImage;
+    const std::string crawlerCollectionName;
+    const int64_t crawlerWorkers;
+    const int64_t crawlerPageLimit;
+    const int64_t crawlerPageLoadTimeoutSec;
+    const int64_t crawlerPostLoadDelaySec;
+    const int64_t crawlerNetIdleWaitSec;
+    const int64_t crawlerPageExtraDelaySec;
+    const int64_t crawlerBehaviorTimeoutSec;
+    const std::string crawlerLang;
+    const std::string crawlerScopeType;
+    const WebshotConfig &svcCfg;
     pg::ClusterPtr cluster;
     us::clients::dns::Resolver &resolver;
     us::clients::http::Client &httpClient;
     us::s3api::ClientPtr s3Client;
-    v1::WebshotDenylist *denylist;
+    WebshotDenylist &denylist;
     engine::CancellableSemaphore crawlSlots;
     // must die first
     concurrent::BackgroundTaskStorage backgroundTaskStorage;
+
+    [[nodiscard]] CrawlContext makeCrawlContext(Link link, std::vector<std::string> pinnedIps);
+    [[nodiscard]] bool
+    runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
+    [[nodiscard]] bool persistMetadataForContext(const CrawlContext &ctx);
+    void purgeHostAndSubdomains(const std::string &hostLowerPunycode);
     explicit Impl(
         const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
         : webshotsPageMax(cfg["webshots-page-max"].As<int64_t>()),
-          webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>(2)),
-          webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>(10)),
+          webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>()),
+          webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>()),
           crawlerNetwork(cfg["crawler-network"].As<std::string>()),
-          storageMode(cfg["storage-mode"].As<std::string>("s3")),
-          s3Bucket(cfg["s3-bucket"].As<std::string>()),
-          s3Endpoint(cfg["s3-endpoint"].As<std::string>()),
-          s3Region(cfg["s3-region"].As<std::string>("")),
-          publicBaseUrl(cfg["public-base-url"].As<std::string>()),
-          s3Timeout(std::chrono::milliseconds(cfg["s3-timeout-ms"].As<int>(10000))),
+          crawlerImage(cfg["crawler-image"].As<std::string>("webrecorder/browsertrix-crawler")),
+          crawlerCollectionName(cfg["crawler-collection-name"].As<std::string>("webshot")),
+          crawlerWorkers(cfg["crawler-workers"].As<int64_t>()),
+          crawlerPageLimit(cfg["crawler-page-limit"].As<int64_t>()),
+          crawlerPageLoadTimeoutSec(cfg["crawler-page-load-timeout-sec"].As<int64_t>()),
+          crawlerPostLoadDelaySec(cfg["crawler-post-load-delay-sec"].As<int64_t>()),
+          crawlerNetIdleWaitSec(cfg["crawler-net-idle-wait-sec"].As<int64_t>()),
+          crawlerPageExtraDelaySec(cfg["crawler-page-extra-delay-sec"].As<int64_t>()),
+          crawlerBehaviorTimeoutSec(cfg["crawler-behavior-timeout-sec"].As<int64_t>()),
+          crawlerLang(cfg["crawler-lang"].As<std::string>("en")),
+          crawlerScopeType(cfg["crawler-scope-type"].As<std::string>("page-spa")),
+          svcCfg(ctx.FindComponent<WebshotConfig>()),
           cluster(ctx.FindComponent<us::components::Postgres>("webshot-meta-db").GetCluster()),
           resolver(ctx.FindComponent<us::clients::dns::Component>().GetResolver()),
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
-          crawlSlots(cfg["crawl-concurrency"].As<size_t>(1)),
+          denylist(ctx.FindComponent<WebshotDenylist>()),
+          crawlSlots(cfg["crawl-concurrency"].As<size_t>()),
           backgroundTaskStorage(engine::current_task::GetBlockingTaskProcessor())
     {
-        if (storageMode != "s3") {
-            throw std::runtime_error("unsupported storage-mode; only 's3' is implemented");
-        }
-        // Build S3 connection and client
-        auto conn = us::s3api::MakeS3Connection(
-            httpClient, us::s3api::S3ConnectionType::kHttp, s3Endpoint,
-            us::s3api::ConnectionCfg{s3Timeout, 1}
-        );
-        // Load creds from secdist if present
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
-        const auto &creds = secdist.Get<v1::S3CredentialsSecdist>();
+        const auto &creds = secdist.Get<S3CredentialsSecdist>();
         if (!creds.access_key_id || !creds.secret_access_key)
             throw std::runtime_error("missing required S3 secdist credentials (s3_credentials)");
-        auto auth = std::make_shared<us::s3api::authenticators::AccessKey>(
-            *creds.access_key_id, us::s3api::Secret(*creds.secret_access_key)
+        s3Client = s3v4::MakeS3ClientV4(
+            httpClient,
+            s3v4::S3V4Config{
+                svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), /*virtualHosted*/ false
+            },
+            s3v4::S3Credentials{*creds.access_key_id, *creds.secret_access_key, std::nullopt},
+            std::string{}
         );
-        s3Client = us::s3api::GetS3Client(conn, auth, s3Bucket);
-        denylist = &ctx.FindComponent<v1::WebshotDenylist>();
     }
     template <typename... Ts> [[nodiscard]] auto readonly(Ts &&...args)
     {
@@ -194,33 +237,259 @@ struct [[nodiscard]] Cursor {
     Uuid id;
 };
 
-[[nodiscard]] static std::string
-encodeToken(chrono::system_clock::time_point createdAt, const Uuid &id)
+/** Lightweight context shared across steps of a single crawl job. */
+struct [[nodiscard]] CrawlContext {
+    Link link;
+    std::string host;
+    std::vector<std::string> pinnedIps;
+    us::fs::blocking::TempDirectory archiveRoot;
+    Uuid id;
+    std::string keyOnly;
+    std::string s3Key;
+    std::string location;
+};
+
+[[nodiscard]] static int64_t timePointToMicros(system_clock::time_point tp)
 {
-    const auto micros =
-        chrono::duration_cast<chrono::microseconds>(createdAt.time_since_epoch()).count();
-    dto::PaginationCursor cur(micros, id);
-    return b64::Base64UrlEncode(
-        json::ToString(json::ValueBuilder(cur).ExtractValue()), b64::Pad::kWithout
-    );
+    return chrono::duration_cast<chrono::microseconds>(tp.time_since_epoch()).count();
 }
-[[nodiscard]] static std::optional<Cursor> decodeToken(const std::string &token)
+
+[[nodiscard]] static system_clock::time_point microsToTimePoint(int64_t micros)
+{
+    return system_clock::time_point(chrono::microseconds(micros));
+}
+
+template <typename Dto>
+[[nodiscard]] static std::optional<Dto> decodeTokenToDto(const std::string &token)
 {
     try {
         const auto decoded = b64::Base64UrlDecode(token);
         const auto val = json::FromString(decoded);
-        const auto cur = val.As<dto::PaginationCursor>();
-        return {{system_clock::time_point(chrono::microseconds(cur.t)), cur.i}};
-    } catch (std::exception &) {
-        return {};
+        return val.As<Dto>();
+    } catch (const std::exception &) {
+        return std::nullopt;
     }
 }
 
-void WebshotCrud::createWebshot(Link link)
+template <typename Dto> [[nodiscard]] static std::string encodeDtoToToken(const Dto &dto)
 {
+    return b64::Base64UrlEncode(
+        json::ToString(json::ValueBuilder(dto).ExtractValue()), b64::Pad::kWithout
+    );
+}
+
+[[nodiscard]] static std::string
+encodeToken(chrono::system_clock::time_point createdAt, const Uuid &id)
+{
+    const auto micros = timePointToMicros(createdAt);
+    dto::PaginationCursor cur(micros, id);
+    return encodeDtoToToken(cur);
+}
+
+[[nodiscard]] static std::optional<Cursor> decodeToken(const std::string &token)
+{
+    const auto dtoOpt = decodeTokenToDto<dto::PaginationCursor>(token);
+    if (!dtoOpt)
+        return std::nullopt;
+    const auto &cur = *dtoOpt;
+    return Cursor{microsToTimePoint(cur.t), cur.i};
+}
+
+[[nodiscard]] CrawlContext
+WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIps)
+{
+    CrawlContext ctx{std::move(link),
+                     std::string{},
+                     std::move(pinnedIps),
+                     us::fs::blocking::TempDirectory::Create(),
+                     Uuid{},
+                     std::string{},
+                     std::string{},
+                     std::string{}};
+    ctx.host = ctx.link.host();
+    ctx.id = us::utils::generators::GenerateBoostUuid();
+    ctx.keyOnly = us::utils::ToString(ctx.id);
+    ctx.s3Key = fmt::format("{}/{}", svcCfg.s3Bucket(), ctx.keyOnly);
+    ctx.location = fmt::format("{}/{}", svcCfg.publicBaseUrl(), ctx.keyOnly);
+    return ctx;
+}
+
+[[nodiscard]] bool WebshotCrud::Impl::runCrawlerForContext(
+    CrawlContext &ctx, engine::subprocess::ProcessStarter &starter
+)
+{
+    const auto cname = fmt::format(
+        "btcx-{}", us::utils::ToString(us::utils::generators::GenerateBoostUuid())
+    );
+
+    std::vector<std::string> createArgs = {
+        "create",
+        "-v",
+        fmt::format("{}:/crawls", ctx.archiveRoot.GetPath()),
+        "-e",
+        "CHROME_FLAGS=\"--dns-over-https-mode=off\"",
+        "--shm-size",
+        "1g",
+    };
+
+    createArgs.push_back("--network");
+    createArgs.push_back(crawlerNetwork);
+    for (const auto &ip : ctx.pinnedIps) {
+        createArgs.push_back("--add-host");
+        createArgs.push_back(fmt::format("{}:{}", ctx.host, ip));
+    }
+
+    const std::string &collection = crawlerCollectionName;
+    createArgs.push_back("--name");
+    createArgs.push_back(cname);
+    createArgs.push_back(crawlerImage);
+    createArgs.insert(
+        createArgs.end(),
+        {"crawl",
+         "--collection",
+         collection,
+         "--generateWACZ",
+         "--workers",
+         fmt::format("{}", crawlerWorkers),
+         "--headless",
+         "--scopeType",
+         crawlerScopeType,
+         "--pageLimit",
+         fmt::format("{}", crawlerPageLimit),
+         "--pageLoadTimeout",
+         fmt::format("{}", crawlerPageLoadTimeoutSec),
+         "--postLoadDelay",
+         fmt::format("{}", crawlerPostLoadDelaySec),
+         "--netIdleWait",
+         fmt::format("{}", crawlerNetIdleWaitSec),
+         "--pageExtraDelay",
+         fmt::format("{}", crawlerPageExtraDelaySec),
+         "--behaviorTimeout",
+         fmt::format("{}", crawlerBehaviorTimeoutSec),
+         "--waitUntil",
+         "load",
+         "--blockAds",
+         "--behaviors",
+         "siteSpecific",
+         "--lang",
+         crawlerLang,
+         "--context",
+         "general,worker,pageStatus,writer,storage,jsError,state,crawlStatus,fetch",
+         "wacz",
+         "--logLevel",
+         "debug,info",
+         "--logging",
+         "debug,stats,jserrors",
+         "--url",
+         ctx.link.httpUrl()}
+    );
+
+    ContainerGuard ctrGuard(starter, cname, createArgs);
+
+    auto startProc = starter.Exec(
+        "docker", std::vector<std::string>{"start", "-a", cname},
+        engine::subprocess::ExecOptions{.use_path = true}
+    );
+    auto status = startProc.Get();
+    if (!status.IsExited() || status.GetExitCode() != 0) {
+        LOG_INFO() << fmt::format("Failed to crawl {}, child process failed", ctx.link.httpUrl());
+        return false;
+    }
+    // do eagerly
+    ctrGuard.remove();
+
+    const auto pathToArchive = fmt::format(
+        "{0}/collections/{1}/{1}.wacz", ctx.archiveRoot.GetPath(), collection
+    );
+
+    if (!us::fs::FileExists(engine::current_task::GetBlockingTaskProcessor(), pathToArchive)) {
+        LOG_INFO() << fmt::format("Failed to crawl {}, no WACZ", ctx.link.httpUrl());
+        return false;
+    }
+
+    try {
+        s3Client->PutObject(
+            ctx.s3Key, us::fs::blocking::ReadFileContents(pathToArchive), std::nullopt,
+            "application/zip", std::nullopt, std::nullopt
+        );
+    } catch (const std::exception &e) {
+        LOG_ERROR() << fmt::format("S3 upload failed for {}: {}", ctx.s3Key, e.what());
+        return false;
+    }
+
+    return true;
+}
+
+[[nodiscard]] bool WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
+{
+    auto host = ctx.host;
+    std::string hostRev(rbegin(host), rend(host));
+
+    if (!denylist.isAllowedHost(host)) {
+        try {
+            s3Client->DeleteObject(ctx.s3Key);
+        } catch (const std::exception &) {
+            LOG_ERROR() << fmt::format("error deleting {}", ctx.s3Key);
+        }
+        LOG_INFO() << fmt::format("Host became denylisted during crawl: {}", host);
+        return false;
+    }
+
+    try {
+        readwrite(sql::kInsertWebshot.data(), ctx.id, ctx.link.normalized(), hostRev, ctx.location)
+            .AsSingleRow<Uuid>();
+    } catch (const std::exception &e) {
+        try {
+            s3Client->DeleteObject(ctx.s3Key);
+        } catch (const std::exception &) {
+            LOG_ERROR() << fmt::format("error deleting {}", ctx.s3Key);
+        }
+        LOG_ERROR(
+        ) << fmt::format("DB insert failed for {}: {}", us::utils::ToString(ctx.id), e.what());
+        return false;
+    }
+
+    return true;
+}
+
+void WebshotCrud::Impl::purgeHostAndSubdomains(const std::string &hostLowerPunycode)
+{
+    std::string d_rev(hostLowerPunycode.rbegin(), hostLowerPunycode.rend());
+    const std::size_t kBatch = 1000;
+    while (true) {
+        try {
+            auto res = readonly(
+                sql::kSelectIdsByHostOrSubdomainsPaged.data(), d_rev, static_cast<int64_t>(kBatch)
+            );
+            std::vector<Uuid> ids;
+            ids.reserve(res.Size());
+            for (auto row : res)
+                ids.emplace_back(row[0].As<Uuid>());
+            if (ids.empty())
+                break;
+            for (auto &&id : ids) {
+                const auto key = fmt::format("{}/{}", svcCfg.s3Bucket(), us::utils::ToString(id));
+                try {
+                    s3Client->DeleteObject(key);
+                } catch (const std::exception &e) {
+                    LOG_ERROR() << fmt::format("S3 delete failed for key {}: {}", key, e.what());
+                }
+            }
+            static_cast<void>(readwrite(sql::kDeleteWebshotsByIds.data(), ids));
+        } catch (const std::exception &e) {
+            LOG_ERROR(
+            ) << fmt::format("denylist purge failed for {}: {}", hostLowerPunycode, e.what());
+            break;
+        }
+    }
+}
+
+void WebshotCrud::createWebshot(Link link, std::vector<std::string> pinnedIps)
+{
+    UASSERT(!pinnedIps.empty());
     impl->backgroundTaskStorage.AsyncDetach(
         "create-webshot-lambda",
-        [impl = impl.get(), link]() -> void {
+        [impl = impl.get(), link = std::move(link), pinnedIps = std::move(pinnedIps)]() mutable {
             try {
                 std::shared_lock<engine::CancellableSemaphore> slotLock(impl->crawlSlots);
 
@@ -228,145 +497,13 @@ void WebshotCrud::createWebshot(Link link)
                     engine::current_task::GetBlockingTaskProcessor()
                 );
 
-                std::vector<std::string> pinIps = hostpolicy::resolvePublic(
-                    impl->resolver, link.host(), chrono::milliseconds(2000)
-                );
+                CrawlContext ctx = impl->makeCrawlContext(std::move(link), std::move(pinnedIps));
 
-                if (pinIps.empty()) {
-                    LOG_INFO(
-                    ) << fmt::format("crawl rejected: no public IPs for host {}", link.host());
+                if (!impl->runCrawlerForContext(ctx, starter))
                     return;
-                }
 
-                const auto cname = fmt::format(
-                    "btcx-{}", utils::ToString(utils::generators::GenerateBoostUuid())
-                );
-                auto archiveRoot = us::fs::blocking::TempDirectory::Create();
-                std::vector<std::string> create = {
-                    "create",
-                    "-v",
-                    fmt::format("{}:/crawls", archiveRoot.GetPath()),
-                    "-e",
-                    "CHROME_FLAGS=\"--dns-over-https-mode=off\"",
-                    "--shm-size",
-                    "1g",
-                };
-                create.push_back("--network");
-                create.push_back(impl->crawlerNetwork);
-                for (auto &&ip : pinIps) {
-                    create.push_back("--add-host");
-                    create.push_back(fmt::format("{}:{}", link.host(), ip));
-                }
-                const std::string kWaczName = "1";
-                create.push_back("--name");
-                create.push_back(cname);
-                create.push_back("webrecorder/browsertrix-crawler");
-                create.insert(
-                    create.end(),
-                    {"crawl",
-                     "--collection",
-                     kWaczName,
-                     "--generateWACZ",
-                     "--workers",
-                     "1",
-                     "--headless",
-                     "--scopeType",
-                     "page-spa",
-                     "--pageLimit",
-                     "1",
-                     "--pageLoadTimeout",
-                     "10",
-                     "--postLoadDelay",
-                     "1",
-                     "--netIdleWait",
-                     "0",
-                     "--pageExtraDelay",
-                     "3",
-                     "--behaviorTimeout",
-                     "1",
-                     "--waitUntil",
-                     "load",
-                     "--blockAds",
-                     "--behaviors",
-                     "siteSpecific",
-                     "--lang",
-                     "en",
-                     "--context",
-                     "general,worker,pageStatus,writer,storage,jsError,state,crawlStatus,fetch",
-                     "wacz",
-                     "--logLevel",
-                     "debug,info",
-                     "--logging",
-                     "debug,stats,jserrors",
-                     "--url",
-                     link.httpUrl()}
-                );
-                ContainerGuard ctrGuard(starter, cname, create);
-
-                auto start_proc = starter.Exec(
-                    "docker", std::vector<std::string>{"start", "-a", cname},
-                    engine::subprocess::ExecOptions{.use_path = true}
-                );
-                auto status = start_proc.Get();
-                if (!status.IsExited() || status.GetExitCode() != 0) {
-                    LOG_INFO(
-                    ) << fmt::format("Failed to crawl {}, child process failed", link.httpUrl());
+                if (!impl->persistMetadataForContext(ctx))
                     return;
-                }
-                // Remove container eagerly
-                ctrGuard.remove();
-                const auto pathToWaczFile = fmt::format(
-                    "{0}/collections/{1}/{1}.wacz", archiveRoot.GetPath(), kWaczName
-                );
-                if (!us::fs::FileExists(
-                        engine::current_task::GetBlockingTaskProcessor(), pathToWaczFile
-                    )) {
-                    LOG_INFO() << fmt::format("Failed to crawl {}, no WACZ", link.httpUrl());
-                    return;
-                }
-                // Generate UUID upfront and upload to S3 as <uuid>.wacz
-                const auto uuid = utils::generators::GenerateBoostUuid();
-                const auto key = fmt::format("{}.wacz", utils::ToString(uuid));
-                const auto data = us::fs::blocking::ReadFileContents(pathToWaczFile);
-                try {
-                    impl->s3Client->PutObject(
-                        key, data, std::nullopt, "application/zip", std::nullopt, std::nullopt
-                    );
-                } catch (const std::exception &e) {
-                    LOG_INFO() << fmt::format("S3 upload failed for {}: {}", key, e.what());
-                    return;
-                }
-                // Build host_rev from normalized host (already lowercase/punycode by Link)
-                auto host = link.host();
-                std::string hostRev(host.rbegin(), host.rend());
-                // Re-check denylist just before insert
-                if (impl->denylist && !impl->denylist->isAllowedHost(host)) {
-                    try {
-                        impl->s3Client->DeleteObject(key);
-                    } catch (std::exception &) {
-                        // empty
-                    }
-                    LOG_INFO() << fmt::format("Host became denylisted during crawl: {}", host);
-                    return;
-                }
-                const auto location = fmt::format("{}/{}", impl->publicBaseUrl, key);
-                // Insert DB row with explicit id
-                try {
-                    impl->readwrite(
-                            sql::kInsertWebshot.data(), uuid, link.normalized(), hostRev, location
-                    )
-                        .AsSingleRow<Uuid>();
-                } catch (const std::exception &e) {
-                    try {
-                        impl->s3Client->DeleteObject(key);
-                    } catch (std::exception &e) {
-                        // empty
-                    }
-                    LOG_INFO() << fmt::format(
-                        "DB insert failed for {}: {}", utils::ToString(uuid), e.what()
-                    );
-                    return;
-                }
             } catch (const engine::SemaphoreLockCancelledError &e) {
                 LOG_INFO() << "Crawl task cancelled while waiting for slot: " << e.what();
             }
@@ -412,11 +549,11 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
     for (const auto &row : dbRows) {
         items.emplace_back(
             row.uuid,
-            utils::datetime::TimePointTz(static_cast<system_clock::time_point>(row.timepoint))
+            us::utils::datetime::TimePointTz(static_cast<system_clock::time_point>(row.timepoint))
         );
     }
     std::optional<std::string> next;
-    if (::ssize(items) == impl->webshotsPageMax && !items.empty()) {
+    if (v1::utils::ssize(items) == impl->webshotsPageMax && !items.empty()) {
         const auto &last = items.back();
         auto tp = last.created_at.GetTimePoint();
         next = encodeToken(tp, last.uuid);
@@ -433,29 +570,25 @@ struct PrefixCursor {
 
 [[nodiscard]] std::optional<PrefixCursor> decodePrefixToken(const std::string &token)
 {
-    try {
-        const auto decoded = b64::Base64UrlDecode(token);
-        const auto val = json::FromString(decoded);
-        const auto cur = val.As<dto::PaginationPrefixCursor>();
-        PrefixCursor out;
-        out.prefix = cur.p;
-        out.link = cur.l;
-        if (cur.t && cur.i) {
-            out.createdAt = system_clock::time_point(chrono::microseconds(*cur.t));
-            out.id = *cur.i;
-        }
-        return out;
-    } catch (std::exception &) {
-        return {};
+    const auto dtoOpt = decodeTokenToDto<dto::PaginationPrefixCursor>(token);
+    if (!dtoOpt)
+        return std::nullopt;
+
+    const auto &cur = *dtoOpt;
+    PrefixCursor out;
+    out.prefix = cur.p;
+    out.link = cur.l;
+    if (cur.t && cur.i) {
+        out.createdAt = microsToTimePoint(*cur.t);
+        out.id = *cur.i;
     }
+    return out;
 }
 
 static std::string EncodePrefixToken(const std::string &prefix, const std::string &link)
 {
     dto::PaginationPrefixCursor cur(prefix, link);
-    return b64::Base64UrlEncode(
-        json::ToString(json::ValueBuilder(cur).ExtractValue()), b64::Pad::kWithout
-    );
+    return encodeDtoToToken(cur);
 }
 
 static std::string EncodePrefixToken(
@@ -463,17 +596,14 @@ static std::string EncodePrefixToken(
     const Uuid &id
 )
 {
-    const auto micros =
-        chrono::duration_cast<chrono::microseconds>(createdAt.time_since_epoch()).count();
+    const auto micros = timePointToMicros(createdAt);
     dto::PaginationPrefixCursor cur(prefix, link, micros, id);
-    return b64::Base64UrlEncode(
-        json::ToString(json::ValueBuilder(cur).ExtractValue()), b64::Pad::kWithout
-    );
+    return encodeDtoToToken(cur);
 }
 
 static std::optional<std::string> upperExclusiveBound(std::string s)
 {
-    for (int64_t i = ::ssize(s) - 1; i >= 0; i--) {
+    for (int64_t i = v1::utils::ssize(s) - 1; i >= 0; i--) {
         unsigned char c = static_cast<unsigned char>(s[static_cast<size_t>(i)]);
         if (c < 0xFF) {
             s[static_cast<size_t>(i)] = static_cast<char>(c + 1);
@@ -490,6 +620,7 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
 {
     const auto lower = normalizedPrefix;
     const auto upperOpt = upperExclusiveBound(normalizedPrefix);
+    const auto linksPerPage = impl->webshotsLinksPerPageMax;
 
     std::optional<PrefixCursor> cur;
     if (pageToken && !pageToken->empty()) {
@@ -498,32 +629,35 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
             throw errors::InvalidPageTokenException("invalid page_token");
     }
 
-    std::vector<std::string> links;
-    links.reserve(static_cast<size_t>(impl->webshotsLinksPerPageMax));
-    if (cur && cur->createdAt) {
-        links.push_back(cur->link);
-        if (impl->webshotsLinksPerPageMax > 1) {
-            const auto more = impl->readonly(
-                                      sql::kSelectDistinctLinksByPrefixNext.data(), lower, upperOpt,
-                                      cur->link, impl->webshotsLinksPerPageMax - 1
+    auto selectLinksFirst = [&](int64_t limit) {
+        return impl->readonly(sql::kSelectDistinctLinksByPrefixFirst.data(), lower, upperOpt, limit)
+            .AsContainer<std::vector<std::string>>();
+    };
+    auto selectLinksNext = [&](const std::string &fromLink, int64_t limit) {
+        return impl
+            ->readonly(
+                sql::kSelectDistinctLinksByPrefixNext.data(), lower, upperOpt, fromLink, limit
             )
-                                  .AsContainer<std::vector<std::string>>();
-            links.insert(end(links), begin(more), end(more));
+            .AsContainer<std::vector<std::string>>();
+    };
+
+    std::vector<std::string> links;
+    links.reserve(static_cast<size_t>(linksPerPage));
+    if (cur) {
+        const auto &cursorLink = cur->link;
+        if (cur->createdAt) {
+            links.push_back(cursorLink);
+            if (linksPerPage > 1) {
+                auto more = selectLinksNext(cursorLink, linksPerPage - 1);
+                links.insert(links.end(), more.begin(), more.end());
+            }
+        } else {
+            auto more = selectLinksNext(cursorLink, linksPerPage);
+            links.insert(links.end(), more.begin(), more.end());
         }
-    } else if (cur && !cur->createdAt) {
-        const auto more = impl->readonly(
-                                  sql::kSelectDistinctLinksByPrefixNext.data(), lower, upperOpt,
-                                  cur->link, impl->webshotsLinksPerPageMax
-        )
-                              .AsContainer<std::vector<std::string>>();
-        links.insert(end(links), begin(more), end(more));
     } else {
-        const auto first = impl->readonly(
-                                   sql::kSelectDistinctLinksByPrefixFirst.data(), lower, upperOpt,
-                                   impl->webshotsLinksPerPageMax
-        )
-                               .AsContainer<std::vector<std::string>>();
-        links.insert(end(links), begin(first), end(first));
+        auto first = selectLinksFirst(linksPerPage);
+        links.insert(links.end(), first.begin(), first.end());
     }
 
     struct Row {
@@ -536,31 +670,32 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     std::string lastLink;
     std::optional<Row> lastRow;
 
+    auto selectRowsForLink = [&](const std::string &link, size_t idx) {
+        if (idx == 0 && cur && cur->createdAt && cur->id) {
+            return impl
+                ->readonly(
+                    sql::kSelectWebshotByLinkNext.data(), link, impl->webshotsPerLinkMax,
+                    pg::TimePointTz(*cur->createdAt), *cur->id
+                )
+                .AsContainer<std::vector<Row>>(pg::kRowTag);
+        }
+        return impl->readonly(sql::kSelectWebshotByLinkFirst.data(), link, impl->webshotsPerLinkMax)
+            .AsContainer<std::vector<Row>>(pg::kRowTag);
+    };
+
     for (size_t idx = 0; idx < links.size(); idx++) {
         const auto &link = links[idx];
-        std::vector<Row> rows;
-        if (idx == 0 && cur && cur->createdAt && cur->id) {
-            rows = impl->readonly(
-                           sql::kSelectWebshotByLinkNext.data(), link, impl->webshotsPerLinkMax,
-                           pg::TimePointTz(*cur->createdAt), *cur->id
-            )
-                       .AsContainer<std::vector<Row>>(pg::kRowTag);
-        } else {
-            rows = impl->readonly(
-                           sql::kSelectWebshotByLinkFirst.data(), link, impl->webshotsPerLinkMax
-            )
-                       .AsContainer<std::vector<Row>>(pg::kRowTag);
-        }
+        auto rows = selectRowsForLink(link, idx);
         for (auto &&r : rows) {
             items.emplace_back(
-                r.uuid, utils::datetime::TimePointTz(static_cast<system_clock::time_point>(r.tp)),
-                link
+                r.uuid,
+                us::utils::datetime::TimePointTz(static_cast<system_clock::time_point>(r.tp)), link
             );
         }
         if (!rows.empty()) {
             lastRow = rows.back();
             lastLink = link;
-            if (::ssize(rows) == impl->webshotsPerLinkMax && idx == links.size() - 1) {
+            if (v1::utils::ssize(rows) == impl->webshotsPerLinkMax && idx == links.size() - 1) {
                 endedMidLink = true;
             }
         } else {
@@ -579,4 +714,23 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     }
 
     return {items, next};
+}
+
+void WebshotCrud::disallowAndPurgeDomain(std::string domain)
+{
+    impl->denylist.insertDomain(domain);
+
+    LOG_INFO() << fmt::format("enqueued for domain {}", domain);
+
+    impl->backgroundTaskStorage.AsyncDetach(
+        "purge-domain-lambda",
+        [implPtr = impl.get(), domain]() {
+            try {
+                LOG_INFO() << fmt::format("Starting purge for denylisted domain {}", domain);
+                implPtr->purgeHostAndSubdomains(domain);
+            } catch (const std::exception &e) {
+                LOG_ERROR() << fmt::format("Purge task failed for {}: {}", domain, e.what());
+            }
+        }
+    );
 }

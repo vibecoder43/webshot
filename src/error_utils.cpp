@@ -1,6 +1,11 @@
 #include "include/error_utils.hpp"
+/**
+ * @file
+ * @brief Helpers to produce JSON error envelopes used by handlers.
+ */
 #include "schemas/webshot.hpp"
 
+#include <fmt/format.h>
 #include <userver/formats/json/value_builder.hpp>
 
 namespace json = userver::formats::json;
@@ -16,7 +21,7 @@ json::Value makeError(std::string_view message)
 
 json::Value makeParamError(std::string_view fieldName, std::string_view message)
 {
-    return makeError(std::string(message) + ": " + std::string(fieldName));
+    return makeError(fmt::format("{}: {}", message, fieldName));
 }
 
 } // namespace v1::errors

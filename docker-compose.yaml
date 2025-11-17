@@ -23,21 +23,6 @@ services:
             - type: bind
               source: ./sql/schema/denylist_db_schema.sql
               target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
-    webshot-storage-server:
-        image: nginx:alpine
-        container_name: webshot_storage_server
-        dns: ["172.17.0.1"]
-        ports:
-            - 8081:80
-        volumes:
-            - type: bind
-              source: /tmp/build-webshot-san/wacz
-              target: /usr/share/nginx/html
-              read_only: true
-            - type: bind
-              source: ./docker/storage-nginx.conf
-              target: /etc/nginx/conf.d/default.conf
-              read_only: true
     scalar:
         image: scalarapi/api-reference:latest
         container_name: webshot_scalar
@@ -87,6 +72,30 @@ services:
         command: 
             - "apk add --no-cache iptables bash jq >/dev/null 2>&1 || true; /usr/local/bin/docker_user_netpol.sh apply-cidr 172.31.0.0/16; tail -f /dev/null"
         restart: unless-stopped
+    seaweedfs:
+        image: chrislusf/seaweedfs:latest
+        container_name: seaweedfs
+        command:
+            - server
+            - -s3
+            - -filer
+            - -ip.bind=0.0.0.0
+            - -dir=/data
+            - -metricsPort=9324
+            - -s3.config=/etc/seaweedfs/s3_config.json
+        ports:
+            - 8333:8333   # S3 gateway
+            - 9333:9333   # master UI/API
+            - 8888:8888   # filer UI/API
+            - 8082:8080   # volume HTTP (moved to avoid conflict with service on 8080)
+            - 9324:9324   # metrics (all-in-one)
+        volumes:
+            - seaweed_data:/data
+            - type: bind
+              source: ./docker/seaweed/s3_config.json
+              target: /etc/seaweedfs/s3_config.json
+              read_only: true
+        restart: unless-stopped
 
 networks:
     crawler_net:
@@ -95,3 +104,5 @@ networks:
         ipam:
             config:
                 - subnet: 172.31.0.0/16
+volumes:
+    seaweed_data:

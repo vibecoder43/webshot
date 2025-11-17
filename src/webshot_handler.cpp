@@ -1,4 +1,8 @@
 #include "include/webshot_handler.hpp"
+/**
+ * @file
+ * @brief Handler that creates captures and lists them by exact link.
+ */
 #include "include/host_policy.hpp"
 #include "include/http_utils.hpp"
 #include "include/link.hpp"
@@ -75,7 +79,7 @@ std::string WebshotHandler::
                     return httpu::respondError(
                         response, kForbidden, "POST failed due to domain in denylist"
                     );
-                crud.createWebshot(std::move(parsed));
+                crud.createWebshot(std::move(parsed), std::move(pubs));
                 response.SetStatus(kCreated);
                 return {};
             } catch (const InvalidLinkException &e) {
@@ -83,12 +87,12 @@ std::string WebshotHandler::
             }
         }
 
-        const std::string urlArg = request.GetArg("url");
-        if (urlArg.empty())
-            return httpu::respondError(response, kBadRequest, "missing parameter: url");
+        const std::string linkArg = request.GetArg("link");
+        if (linkArg.empty())
+            return httpu::respondError(response, kBadRequest, "missing parameter: link");
         Link link;
         try {
-            link = Link::fromUserInput(urlArg, config.queryPartLengthMax());
+            link = Link::fromUserInput(linkArg, config.queryPartLengthMax());
         } catch (const InvalidLinkException &e) {
             return httpu::respondError(response, kBadRequest, e.what());
         }
@@ -102,7 +106,7 @@ std::string WebshotHandler::
             return httpu::respondError(response, kBadRequest, "invalid page_token");
         }
     } catch (const std::exception &e) {
-        LOG_ERROR() << "Unhandled error in webshot_handler: " << e.what();
+        LOG_ERROR() << fmt::format("Unhandled error in webshot_handler: {}", e.what());
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 }

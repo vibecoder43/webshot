@@ -7,6 +7,12 @@
 
 namespace v1 {
 
+/**
+ * @brief Light wrapper to read S3 credentials from secdist.
+ *
+ * This type looks for the `s3_credentials` object with `access_key_id` and
+ * `secret_access_key` fields and exposes them as optionals.
+ */
 struct S3CredentialsSecdist {
     std::optional<std::string> access_key_id;
     std::optional<std::string> secret_access_key;

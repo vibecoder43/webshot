@@ -1,5 +1,8 @@
 #include "include/webshot_by_id_handler.hpp"
-#include "include/error_utils.hpp"
+/**
+ * @file
+ * @brief Handler that resolves a capture id to its public location via 302.
+ */
 #include "include/http_utils.hpp"
 
 #include <fmt/format.h>
@@ -48,7 +51,7 @@ std::string WebshotById::
         response.SetHeader(us::http::headers::kLocation, webshot->location);
         return {};
     } catch (const std::exception &e) {
-        LOG_ERROR() << "Unhandled error in webshot_by_id: " << e.what();
+        LOG_ERROR() << fmt::format("Unhandled error in webshot_by_id: {}", e.what());
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 }

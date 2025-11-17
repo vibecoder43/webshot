@@ -1,4 +1,8 @@
 #include "include/container_guard.hpp"
+/**
+ * @file
+ * @brief RAII wrapper that creates and then removes a Docker container.
+ */
 
 #include <exception>
 
@@ -10,6 +14,7 @@
 namespace engine = userver::engine;
 
 using engine::subprocess::ExecOptions;
+/** Make ExecOptions that resolve the executable from PATH. */
 static inline ExecOptions makeExecOpts()
 {
     ExecOptions o;
@@ -52,8 +57,6 @@ ContainerGuard &ContainerGuard::operator=(ContainerGuard &&o) noexcept
     }
     return *this;
 }
-
-// (sidecar / pause / unpause / wait removed in simplified model)
 
 void ContainerGuard::remove() noexcept
 {
