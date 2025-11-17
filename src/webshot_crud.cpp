@@ -14,7 +14,10 @@
 #include "include/sql.hpp"
 #include "include/utils.hpp"
 #include "include/webshot_config.hpp"
+#include "include/webshot_cursor.hpp"
 #include "include/webshot_denylist.hpp"
+#include "include/webshot_pagination.hpp"
+#include "include/webshot_prefix_pagination.hpp"
 #include "schemas/webshot.hpp"
 
 #include <chrono>
@@ -61,8 +64,6 @@
 namespace pg = us::storages::postgres;
 namespace engine = us::engine;
 namespace concurrent = userver::concurrent;
-namespace b64 = us::crypto::base64;
-namespace json = us::formats::json;
 namespace chrono = std::chrono;
 using namespace v1;
 using Uuid = boost::uuids::uuid;
@@ -210,8 +211,10 @@ public:
     {
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
-        if (!creds.access_key_id || !creds.secret_access_key)
-            throw std::runtime_error("missing required S3 secdist credentials (s3_credentials)");
+        UINVARIANT(
+            creds.access_key_id && creds.secret_access_key,
+            "missing required S3 secdist credentials"
+        );
         s3Client = s3v4::MakeS3ClientV4(
             httpClient,
             s3v4::S3V4Config{
@@ -232,11 +235,6 @@ public:
     }
 };
 
-struct [[nodiscard]] Cursor {
-    system_clock::time_point createdAt;
-    Uuid id;
-};
-
 /** Lightweight context shared across steps of a single crawl job. */
 struct [[nodiscard]] CrawlContext {
     Link link;
@@ -248,52 +246,6 @@ struct [[nodiscard]] CrawlContext {
     std::string s3Key;
     std::string location;
 };
-
-[[nodiscard]] static int64_t timePointToMicros(system_clock::time_point tp)
-{
-    return chrono::duration_cast<chrono::microseconds>(tp.time_since_epoch()).count();
-}
-
-[[nodiscard]] static system_clock::time_point microsToTimePoint(int64_t micros)
-{
-    return system_clock::time_point(chrono::microseconds(micros));
-}
-
-template <typename Dto>
-[[nodiscard]] static std::optional<Dto> decodeTokenToDto(const std::string &token)
-{
-    try {
-        const auto decoded = b64::Base64UrlDecode(token);
-        const auto val = json::FromString(decoded);
-        return val.As<Dto>();
-    } catch (const std::exception &) {
-        return std::nullopt;
-    }
-}
-
-template <typename Dto> [[nodiscard]] static std::string encodeDtoToToken(const Dto &dto)
-{
-    return b64::Base64UrlEncode(
-        json::ToString(json::ValueBuilder(dto).ExtractValue()), b64::Pad::kWithout
-    );
-}
-
-[[nodiscard]] static std::string
-encodeToken(chrono::system_clock::time_point createdAt, const Uuid &id)
-{
-    const auto micros = timePointToMicros(createdAt);
-    dto::PaginationCursor cur(micros, id);
-    return encodeDtoToToken(cur);
-}
-
-[[nodiscard]] static std::optional<Cursor> decodeToken(const std::string &token)
-{
-    const auto dtoOpt = decodeTokenToDto<dto::PaginationCursor>(token);
-    if (!dtoOpt)
-        return std::nullopt;
-    const auto &cur = *dtoOpt;
-    return Cursor{microsToTimePoint(cur.t), cur.i};
-}
 
 [[nodiscard]] CrawlContext
 WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIps)
@@ -486,7 +438,7 @@ void WebshotCrud::Impl::purgeHostAndSubdomains(const std::string &hostLowerPunyc
 
 void WebshotCrud::createWebshot(Link link, std::vector<std::string> pinnedIps)
 {
-    UASSERT(!pinnedIps.empty());
+    UINVARIANT(!pinnedIps.empty(), "can't crawl with no IPs");
     impl->backgroundTaskStorage.AsyncDetach(
         "create-webshot-lambda",
         [impl = impl.get(), link = std::move(link), pinnedIps = std::move(pinnedIps)]() mutable {
@@ -525,6 +477,8 @@ std::optional<Webshot> WebshotCrud::findWebshot(Uuid uuid)
 dto::PagedFindWebshotByUrlResponse
 WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::string> &pageToken)
 {
+    namespace crud = v1::crud;
+
     struct Row {
         Uuid uuid;
         pg::TimePointTz timepoint;
@@ -535,7 +489,7 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
         dbRows = impl->readonly(sql::kSelectWebshotByLinkFirst.data(), norm, impl->webshotsPageMax)
                      .AsContainer<std::vector<Row>>(pg::kRowTag);
     } else {
-        auto cur = decodeToken(*pageToken);
+        auto cur = crud::decodeCursor(*pageToken);
         if (!cur)
             throw errors::InvalidPageTokenException("invalid page_token");
         dbRows = impl->readonly(
@@ -556,75 +510,25 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
     if (v1::utils::ssize(items) == impl->webshotsPageMax && !items.empty()) {
         const auto &last = items.back();
         auto tp = last.created_at.GetTimePoint();
-        next = encodeToken(tp, last.uuid);
+        crud::Cursor cursor{tp, last.uuid};
+        next = crud::encodeCursor(cursor);
     }
     return {items, next};
-}
-
-struct PrefixCursor {
-    std::string prefix;
-    std::string link;
-    std::optional<system_clock::time_point> createdAt;
-    std::optional<Uuid> id;
-};
-
-[[nodiscard]] std::optional<PrefixCursor> decodePrefixToken(const std::string &token)
-{
-    const auto dtoOpt = decodeTokenToDto<dto::PaginationPrefixCursor>(token);
-    if (!dtoOpt)
-        return std::nullopt;
-
-    const auto &cur = *dtoOpt;
-    PrefixCursor out;
-    out.prefix = cur.p;
-    out.link = cur.l;
-    if (cur.t && cur.i) {
-        out.createdAt = microsToTimePoint(*cur.t);
-        out.id = *cur.i;
-    }
-    return out;
-}
-
-static std::string EncodePrefixToken(const std::string &prefix, const std::string &link)
-{
-    dto::PaginationPrefixCursor cur(prefix, link);
-    return encodeDtoToToken(cur);
-}
-
-static std::string EncodePrefixToken(
-    const std::string &prefix, const std::string &link, system_clock::time_point createdAt,
-    const Uuid &id
-)
-{
-    const auto micros = timePointToMicros(createdAt);
-    dto::PaginationPrefixCursor cur(prefix, link, micros, id);
-    return encodeDtoToToken(cur);
-}
-
-static std::optional<std::string> upperExclusiveBound(std::string s)
-{
-    for (int64_t i = v1::utils::ssize(s) - 1; i >= 0; i--) {
-        unsigned char c = static_cast<unsigned char>(s[static_cast<size_t>(i)]);
-        if (c < 0xFF) {
-            s[static_cast<size_t>(i)] = static_cast<char>(c + 1);
-            s.resize(static_cast<size_t>(i) + 1);
-            return s;
-        }
-    }
-    return {};
 }
 
 dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
 )
 {
+    namespace crud = v1::crud;
+
     const auto lower = normalizedPrefix;
-    const auto upperOpt = upperExclusiveBound(normalizedPrefix);
+    const auto upperOpt = crud::upperExclusiveBound(normalizedPrefix);
     const auto linksPerPage = impl->webshotsLinksPerPageMax;
 
-    std::optional<PrefixCursor> cur;
+    std::optional<crud::PrefixCursor> cur;
     if (pageToken && !pageToken->empty()) {
-        cur = decodePrefixToken(*pageToken);
+        cur = crud::decodePrefixCursor(*pageToken);
         if (!cur || cur->prefix != normalizedPrefix)
             throw errors::InvalidPageTokenException("invalid page_token");
     }
@@ -707,9 +611,9 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     if (!items.empty()) {
         if (endedMidLink && lastRow) {
             const auto tp = static_cast<system_clock::time_point>(lastRow->tp);
-            next = EncodePrefixToken(normalizedPrefix, lastLink, tp, lastRow->uuid);
+            next = crud::encodePrefixCursor(normalizedPrefix, lastLink, tp, lastRow->uuid);
         } else {
-            next = EncodePrefixToken(normalizedPrefix, lastLink);
+            next = crud::encodePrefixCursor(normalizedPrefix, lastLink);
         }
     }
 

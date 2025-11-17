@@ -1,150 +1,168 @@
 #include <string>
 
-#include <string>
-
 #include <userver/utest/utest.hpp>
 
-#include "url_validation.hpp"
+#include "link.hpp"
 
 namespace {
 constexpr size_t kLimit = 1024;
-}
 
-UTEST(TryNormalizeLink, AcceptsHttpsWithHostname)
+using v1::InvalidLinkException;
+using v1::Link;
+
+[[nodiscard]] std::string normalize(std::string input)
 {
-    EXPECT_NO_THROW({ auto link = tryNormalizeLink("https://example.com/", kLimit); });
+    return Link::fromUserInput(std::move(input), kLimit).normalized();
 }
+} // namespace
 
-UTEST(TryNormalizeLink, RejectsUnsupportedScheme)
+UTEST(LinkFromUserInput, AcceptsHttpsWithHostname)
 {
-    EXPECT_THROW(tryNormalizeLink("ftp://example.com/", kLimit), InvalidLinkException);
+    const auto link = Link::fromUserInput("https://example.com/", kLimit);
+    EXPECT_EQ(link.host(), std::string{"example.com"});
+    EXPECT_EQ(link.httpUrl(), std::string{"http://example.com"});
+    EXPECT_EQ(link.normalized(), std::string{"example.com"});
 }
 
-UTEST(TryNormalizeLink, RejectsMissingHostname)
+UTEST(LinkFromUserInput, RejectsUnsupportedScheme)
 {
-    EXPECT_THROW(tryNormalizeLink("http:///", kLimit), InvalidLinkException);
+    EXPECT_THROW(
+        { [[maybe_unused]] auto link = Link::fromUserInput("ftp://example.com/", kLimit); },
+        InvalidLinkException
+    );
 }
 
-UTEST(TryNormalizeLink, AcceptsQueryAtLimit)
+UTEST(LinkFromUserInput, RejectsMissingHostname)
+{
+    EXPECT_THROW(
+        { [[maybe_unused]] auto link = Link::fromUserInput("http:///", kLimit); },
+        InvalidLinkException
+    );
+}
+
+UTEST(LinkFromUserInput, AcceptsQueryAtLimit)
 {
     std::string url_string = "https://example.com/?";
     url_string.append(kLimit - 1, 'a');
-    EXPECT_NO_THROW(tryNormalizeLink(url_string, kLimit));
+    EXPECT_NO_THROW({
+        auto value = normalize(url_string);
+        EXPECT_FALSE(value.empty());
+    });
 }
 
-UTEST(TryNormalizeLink, RejectsQueryOverLimit)
+UTEST(LinkFromUserInput, RejectsQueryOverLimit)
 {
     std::string url_string = "https://example.com/?";
     url_string.append(kLimit + 1, 'a');
-    EXPECT_THROW(tryNormalizeLink(url_string, kLimit), InvalidLinkException);
+    EXPECT_THROW({ [[maybe_unused]] auto value = normalize(url_string); }, InvalidLinkException);
 }
 
-UTEST(TryNormalizeLink, NormalizesScheme)
+UTEST(LinkFromUserInput, NormalizesScheme)
 {
-    const auto http_link = tryNormalizeLink("http://example.com/path", kLimit);
-    const auto https_link = tryNormalizeLink("https://example.com/path", kLimit);
+    const auto http_link = normalize("http://example.com/path");
+    const auto https_link = normalize("https://example.com/path");
     EXPECT_EQ(http_link, https_link);
     EXPECT_EQ(http_link, std::string{"example.com/path"});
 }
 
-UTEST(TryNormalizeLink, RemovesTrailingSlash)
+UTEST(LinkFromUserInput, RemovesTrailingSlash)
 {
-    EXPECT_EQ(
-        tryNormalizeLink("https://example.com/path/", kLimit), std::string{"example.com/path"}
-    );
+    EXPECT_EQ(normalize("https://example.com/path/"), std::string{"example.com/path"});
 }
 
-UTEST(TryNormalizeLink, TrimsTrailingDotInHost)
+UTEST(LinkFromUserInput, TrimsTrailingDotInHost)
 {
-    EXPECT_EQ(tryNormalizeLink("https://example.com./", kLimit), std::string{"example.com"});
+    EXPECT_EQ(normalize("https://example.com./"), std::string{"example.com"});
 }
 
-UTEST(TryNormalizeLink, StripsCredentialsAndFragment)
+UTEST(LinkFromUserInput, StripsCredentialsAndFragment)
 {
-    EXPECT_EQ(
-        tryNormalizeLink("http://user:pass@example.com/a#frag", kLimit),
-        std::string{"example.com/a"}
-    );
+    EXPECT_EQ(normalize("http://user:pass@example.com/a#frag"), std::string{"example.com/a"});
 }
 
-UTEST(TryNormalizeLink, AcceptsBareHost)
+UTEST(LinkFromUserInput, AcceptsBareHost)
 {
-    EXPECT_EQ(tryNormalizeLink("example.com", kLimit), std::string{"example.com"});
+    EXPECT_EQ(normalize("example.com"), std::string{"example.com"});
 }
 
-UTEST(TryNormalizeLink, PreservesQueryWithinLimit)
+UTEST(LinkFromUserInput, PreservesQueryWithinLimit)
 {
-    auto link = tryNormalizeLink("https://example.com/?a=1&b=2", kLimit);
+    auto link = normalize("https://example.com/?a=1&b=2");
     EXPECT_EQ(link, std::string{"example.com/?a=1&b=2"});
 }
 
-UTEST(TryNormalizeLink, RejectsNetworkPathReference)
+UTEST(LinkFromUserInput, RejectsNetworkPathReference)
 {
-    EXPECT_THROW(tryNormalizeLink("//example.com/path", kLimit), InvalidLinkException);
-}
-
-UTEST(TryNormalizeLink, RejectsOverlargePort)
-{
-    EXPECT_THROW(tryNormalizeLink("http://example.com:99999/", kLimit), InvalidLinkException);
-}
-
-UTEST(TryNormalizeLink, RejectsIPv6Host)
-{
-    EXPECT_THROW(tryNormalizeLink("http://[::1]/", kLimit), InvalidLinkException);
-}
-
-UTEST(TryNormalizeLink, RejectsIPv4Host)
-{
-    EXPECT_THROW(tryNormalizeLink("http://192.0.2.1/", kLimit), InvalidLinkException);
-}
-
-UTEST(TryNormalizeLink, KeepsEscapedSlashInPath)
-{
-    EXPECT_EQ(
-        tryNormalizeLink("https://example.com/a%2Fb", kLimit), std::string{"example.com/a%2Fb"}
+    EXPECT_THROW(
+        { [[maybe_unused]] auto value = normalize("//example.com/path"); }, InvalidLinkException
     );
 }
 
-UTEST(TryNormalizeLink, DoesNotMisreadUtf8AsAsciiDelimiters)
+UTEST(LinkFromUserInput, RejectsOverlargePort)
+{
+    EXPECT_THROW(
+        { [[maybe_unused]] auto value = normalize("http://example.com:99999/"); },
+        InvalidLinkException
+    );
+}
+
+UTEST(LinkFromUserInput, RejectsIPv6Host)
+{
+    EXPECT_THROW(
+        { [[maybe_unused]] auto value = normalize("http://[::1]/"); }, InvalidLinkException
+    );
+}
+
+UTEST(LinkFromUserInput, RejectsIPv4Host)
+{
+    EXPECT_THROW(
+        { [[maybe_unused]] auto value = normalize("http://192.0.2.1/"); }, InvalidLinkException
+    );
+}
+
+UTEST(LinkFromUserInput, KeepsEscapedSlashInPath)
+{
+    EXPECT_EQ(normalize("https://example.com/a%2Fb"), std::string{"example.com/a%2Fb"});
+}
+
+UTEST(LinkFromUserInput, DoesNotMisreadUtf8AsAsciiDelimiters)
 {
     // '€' encodes to E2 82 AC in UTF-8 and must not be treated as '/' or '.'
-    EXPECT_EQ(
-        tryNormalizeLink("https://example.com/\xE2\x82\xAC", kLimit),
-        std::string{"example.com/%E2%82%AC"}
-    );
+    EXPECT_EQ(normalize("https://example.com/\xE2\x82\xAC"), std::string{"example.com/%E2%82%AC"});
 }
 
-UTEST(TryNormalizeLink, TreatsSchemeOnlyAtStart)
+UTEST(LinkFromUserInput, TreatsSchemeOnlyAtStart)
 {
     // "://" appearing later is part of the path and must not be misparsed as scheme
-    EXPECT_EQ(
-        tryNormalizeLink("example.com/http://foo", kLimit), std::string{"example.com/http://foo"}
-    );
+    EXPECT_EQ(normalize("example.com/http://foo"), std::string{"example.com/http://foo"});
 }
 
-UTEST(TryNormalizeLink, DoesNotTrimFullwidthSlash)
+UTEST(LinkFromUserInput, DoesNotTrimFullwidthSlash)
 {
     // U+FF0F FULLWIDTH SOLIDUS percent-encoded must not be trimmed as a trailing '/'
-    EXPECT_EQ(
-        tryNormalizeLink("https://example.com/%EF%BC%8F", kLimit),
-        std::string{"example.com/%EF%BC%8F"}
-    );
+    EXPECT_EQ(normalize("https://example.com/%EF%BC%8F"), std::string{"example.com/%EF%BC%8F"});
 }
 
-UTEST(TryNormalizeLink, AcceptsIDNHostname)
+UTEST(LinkFromUserInput, AcceptsIDNHostname)
 {
     // "bücher.de" should be converted to its punycode form
-    EXPECT_EQ(tryNormalizeLink("https://bücher.de/", kLimit), std::string{"xn--bcher-kva.de"});
+    EXPECT_EQ(normalize("https://bücher.de/"), std::string{"xn--bcher-kva.de"});
 }
 
-UTEST(TryNormalizeLink, TrimsSurroundingWhitespace)
+UTEST(LinkFromUserInput, TrimsSurroundingWhitespace)
 {
-    EXPECT_EQ(tryNormalizeLink("  https://example.com/x  ", kLimit), std::string{"example.com/x"});
+    EXPECT_EQ(normalize("  https://example.com/x  "), std::string{"example.com/x"});
 }
 
-UTEST(TryNormalizeLink, ResolvesDotSegments)
+UTEST(LinkFromUserInput, ResolvesDotSegments)
 {
-    EXPECT_EQ(
-        tryNormalizeLink("https://example.com/a/./b/../c", kLimit), std::string{"example.com/a/c"}
-    );
+    EXPECT_EQ(normalize("https://example.com/a/./b/../c"), std::string{"example.com/a/c"});
+}
+
+UTEST(LinkMembers, HostAndHttpUrlNormalized)
+{
+    const auto link = Link::fromUserInput("https://Example.com/Path/", kLimit);
+    EXPECT_EQ(link.host(), std::string{"example.com"});
+    EXPECT_EQ(link.httpUrl(), std::string{"http://example.com/Path"});
+    EXPECT_EQ(link.normalized(), std::string{"example.com/Path"});
 }
