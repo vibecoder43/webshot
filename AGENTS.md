@@ -28,8 +28,9 @@
 - Keep shared headers under `src/include/` guarded by `#pragma once`; limit namespace aliases to implementation files unless broadly reused.
 - Declarations must exactly match definitions (names and signatures).
 - Use parentheses for initialization, not brace init (except where aggregate-init is required).
-- Filenames must be snake_case (e.g., `ip_utils.cpp`, `webshot_handler.hpp`). Do not introduce PascalCase or camelCase filenames.
+- Filenames must be snake_case (e.g., `ip_utils.cpp`, `webshot_handler.hpp`).
 - Naming restriction: never introduce identifiers, filenames, configuration keys, env vars, database objects, Docker labels, or documentation terms that include the words "application", "app", or "system".
+- Avoid writing duplicate code when a reusable function can help, even if that requires adding functions, files, etc.
 
 ### [[nodiscard]] usage
 - Prefer `[[nodiscard]]` on any function that returns a value that should not be ignored (e.g., `std::optional<T>`, containers/DTOs, builders, find/query helpers, and JSON/HTTP response helpers).
