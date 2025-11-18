@@ -22,13 +22,13 @@ struct InvalidLinkException : public std::runtime_error {
  */
 struct [[nodiscard]] Link {
     ada::url_aggregator url;
-    std::string scheme_less;
+    std::string schemeLess;
 
     /**
      * @brief Construct a Link from user input.
      *
      * Performs trimming, default scheme insertion (http), validation of scheme
-     * and host, punycode handling via ada, clears credentials and fragment, and
+     * and host, punycode handling, clears credentials and fragment, and
      * enforces a limit on the query part length.
      *
      * @param in Raw user input.
@@ -38,12 +38,12 @@ struct [[nodiscard]] Link {
      */
     [[nodiscard]] static Link fromUserInput(std::string in, size_t queryPartLengthMax);
 
-    /** @return Lower‑cased hostname (punycode if applicable). */
+    /** @return Normalized, lower‑cased host, punycode if applicable. */
     [[nodiscard]] std::string host() const { return std::string(url.get_hostname()); }
     /** @return Full URL using the http scheme. */
-    [[nodiscard]] std::string httpUrl() const { return std::string("http://") + scheme_less; }
+    [[nodiscard]] std::string httpUrl() const { return std::string("http://") + schemeLess; }
     /** @return Scheme‑less normalized representation used for lookups. */
-    [[nodiscard]] const std::string &normalized() const { return scheme_less; }
+    [[nodiscard]] const std::string &normalized() const { return schemeLess; }
 };
 
 } // namespace v1

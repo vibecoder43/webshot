@@ -52,8 +52,8 @@ public:
     [[nodiscard]] dto::PagedFindWebshotByPrefixResponse findWebshotsByPrefixPage(
         const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
     );
-    /** @brief Disallow a domain and enqueue purge of its captures. */
-    void disallowAndPurgeDomain(std::string domain);
+    /** @brief Disallow a host and enqueue purge of its captures. */
+    void disallowAndPurgeHost(std::string host);
     /** @brief Static config schema for this component. */
     [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 

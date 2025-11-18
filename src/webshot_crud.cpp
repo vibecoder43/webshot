@@ -186,7 +186,7 @@ public:
     [[nodiscard]] bool
     runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
     [[nodiscard]] bool persistMetadataForContext(const CrawlContext &ctx);
-    void purgeHostAndSubdomains(const std::string &hostLowerPunycode);
+    void purgeHost(const std::string &host);
     explicit Impl(
         const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
@@ -222,9 +222,7 @@ public:
         );
         s3Client = s3v4::MakeS3ClientV4(
             httpClient,
-            s3v4::S3V4Config{
-                svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), /*virtualHosted*/ false
-            },
+            s3v4::S3V4Config{svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), false},
             s3v4::S3Credentials{*creds.access_key_id, *creds.secret_access_key, std::nullopt},
             std::string{}
         );
@@ -243,7 +241,6 @@ public:
 /** Lightweight context shared across steps of a single crawl job. */
 struct [[nodiscard]] CrawlContext {
     Link link;
-    std::string host;
     std::vector<std::string> pinnedIps;
     us::fs::blocking::TempDirectory archiveRoot;
     Uuid id;
@@ -255,15 +252,11 @@ struct [[nodiscard]] CrawlContext {
 [[nodiscard]] CrawlContext
 WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIps)
 {
-    CrawlContext ctx{std::move(link),
-                     std::string{},
-                     std::move(pinnedIps),
-                     us::fs::blocking::TempDirectory::Create(),
-                     Uuid{},
-                     std::string{},
-                     std::string{},
-                     std::string{}};
-    ctx.host = ctx.link.host();
+    CrawlContext ctx{
+        std::move(link), std::move(pinnedIps), us::fs::blocking::TempDirectory::Create(),
+        Uuid{},          std::string{},        std::string{},
+        std::string{}
+    };
     ctx.id = us::utils::generators::GenerateBoostUuid();
     ctx.keyOnly = us::utils::ToString(ctx.id);
     ctx.s3Key = fmt::format("{}/{}", svcCfg.s3Bucket(), ctx.keyOnly);
@@ -293,7 +286,7 @@ WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIp
     createArgs.push_back(crawlerNetwork);
     for (const auto &ip : ctx.pinnedIps) {
         createArgs.push_back("--add-host");
-        createArgs.push_back(fmt::format("{}:{}", ctx.host, ip));
+        createArgs.push_back(fmt::format("{}:{}", ctx.link.host(), ip));
     }
 
     const std::string &collection = crawlerCollectionName;
@@ -379,7 +372,7 @@ WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIp
 
 [[nodiscard]] bool WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
 {
-    auto host = ctx.host;
+    const auto &host = ctx.link.host();
     std::string hostRev(rbegin(host), rend(host));
 
     if (!denylist.isAllowedHost(host)) {
@@ -409,15 +402,13 @@ WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIp
     return true;
 }
 
-void WebshotCrud::Impl::purgeHostAndSubdomains(const std::string &hostLowerPunycode)
+void WebshotCrud::Impl::purgeHost(const std::string &host)
 {
-    std::string d_rev(hostLowerPunycode.rbegin(), hostLowerPunycode.rend());
-    const std::size_t kBatch = 1000;
+    std::string d_rev(rbegin(host), rend(host));
+    const int64_t kBatch = 1000;
     while (true) {
         try {
-            auto res = readonly(
-                sql::kSelectIdsByHostOrSubdomainsPaged.data(), d_rev, static_cast<int64_t>(kBatch)
-            );
+            auto res = readonly(sql::kSelectIdsByHostOrSubhostsPaged.data(), d_rev, kBatch);
             std::vector<Uuid> ids;
             ids.reserve(res.Size());
             for (auto row : res)
@@ -434,8 +425,7 @@ void WebshotCrud::Impl::purgeHostAndSubdomains(const std::string &hostLowerPunyc
             }
             static_cast<void>(readwrite(sql::kDeleteWebshotsByIds.data(), ids));
         } catch (const std::exception &e) {
-            LOG_ERROR(
-            ) << fmt::format("denylist purge failed for {}: {}", hostLowerPunycode, e.what());
+            LOG_ERROR() << fmt::format("denylist purge failed for {}: {}", host, e.what());
             break;
         }
     }
@@ -637,24 +627,21 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     return {items, next};
 }
 
-void WebshotCrud::disallowAndPurgeDomain(std::string domain)
+void WebshotCrud::disallowAndPurgeHost(std::string host)
 {
-    impl->denylist.insertDomain(domain);
+    impl->denylist.insertHost(host);
 
-    LOG_INFO() << fmt::format("enqueued for domain {}", domain);
+    LOG_INFO() << fmt::format("enqueued for host {}", host);
 
-    impl->backgroundTaskStorage.AsyncDetach(
-        "purge-domain-lambda",
-        [implPtr = impl.get(), domain]() {
-            try {
-                engine::current_task::SetDeadline(engine::Deadline::FromDuration(
-                    std::chrono::seconds(implPtr->purgeJobTimeoutSec)
-                ));
-                LOG_INFO() << fmt::format("Starting purge for denylisted domain {}", domain);
-                implPtr->purgeHostAndSubdomains(domain);
-            } catch (const std::exception &e) {
-                LOG_ERROR() << fmt::format("Purge task failed for {}: {}", domain, e.what());
-            }
+    impl->backgroundTaskStorage.AsyncDetach("purge-host-lambda", [implPtr = impl.get(), host]() {
+        try {
+            engine::current_task::SetDeadline(
+                engine::Deadline::FromDuration(std::chrono::seconds(implPtr->purgeJobTimeoutSec))
+            );
+            LOG_INFO() << fmt::format("Starting purge for denylisted host {}", host);
+            implPtr->purgeHost(host);
+        } catch (const std::exception &e) {
+            LOG_ERROR() << fmt::format("Purge task failed for {}: {}", host, e.what());
         }
-    );
+    });
 }

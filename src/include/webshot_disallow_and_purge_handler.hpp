@@ -14,9 +14,9 @@ class WebshotCrud;
 class WebshotConfig;
 
 /**
- * @brief HTTP handler that disallows a domain and enqueues purge.
+ * @brief HTTP handler that disallows a host and enqueues purge.
  *
- * Accepts a `domain` query argument, normalizes it via Crud, inserts it into
+ * Accepts a `host` query argument, normalizes it via Crud, inserts it into
  * the denylist, and enqueues background purge of matching captures.
  */
 class [[nodiscard]] WebshotDisallowAndPurgeHandler : public server::handlers::HttpHandlerBase {

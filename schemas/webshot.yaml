@@ -101,7 +101,7 @@ paths:
                     error:
                       message: forbidden host
         '403':
-          description: Domain is denylisted
+          description: Host is denylisted
           content:
             application/json:
               schema:
@@ -110,7 +110,7 @@ paths:
                 denylisted:
                   value:
                     error:
-                      message: domain in denylist
+                      message: POST failed due to host in denylist
         '500':
           description: Internal server error.
           content:
@@ -178,16 +178,16 @@ paths:
 
   /v1/disallow-and-purge:
     post:
-      operationId: disallowAndPurgeDomain
-      summary: Disallow a domain and enqueue purge
+      operationId: disallowAndPurgeHost
+      summary: Disallow a host and enqueue purge
       description: |
-        Normalizes the provided domain, inserts it into the denylist, and enqueues background
-        purge of all captures for that domain and its subdomains.
+        Normalizes the provided host, inserts it into the denylist, and enqueues background
+        purge of all captures for that host and its subhosts.
       parameters:
         - in: query
-          name: domain
+          name: host
           required: true
-          description: Domain name to disallow. Must be a hostname (no path); will be normalized and punycoded.
+          description: Host to disallow. Accepts a full HTTP/HTTPS link or a bare hostname; only the normalized host is used for denylisting.
           schema:
             type: string
           examples:
@@ -197,22 +197,22 @@ paths:
               value: bücher.de
       responses:
         '202':
-          description: Purge successfully enqueued for the normalized domain.
+          description: Purge successfully enqueued for the normalized host.
         '400':
-          description: Invalid or missing domain parameter.
+          description: Invalid or missing host parameter.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
               examples:
-                missing_domain:
+                missing_host:
                   value:
                     error:
-                      message: "missing parameter: domain"
-                invalid_domain:
+                      message: "missing parameter: host"
+                invalid_host:
                   value:
                     error:
-                      message: "invalid domain"
+                      message: "invalid host"
         '500':
           description: Internal server error.
           content:

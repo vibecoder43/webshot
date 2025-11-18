@@ -20,13 +20,6 @@
 
 namespace {
 
-/** Trim ASCII whitespace characters from both ends. */
-static std::string trimAsciiWhitespace(std::string s)
-{
-    absl::StripAsciiWhitespace(&s);
-    return s;
-}
-
 /** ASCII letter check without locale side effects. */
 static bool isAsciiAlpha(char c) noexcept
 {
@@ -69,7 +62,7 @@ namespace v1 {
 
 Link Link::fromUserInput(std::string in, size_t queryPartLengthMax)
 {
-    in = trimAsciiWhitespace(in);
+    absl::StripAsciiWhitespace(&in);
     if (in.rfind("//", 0) == 0)
         throw InvalidLinkException("missing scheme");
 
@@ -94,7 +87,7 @@ Link Link::fromUserInput(std::string in, size_t queryPartLengthMax)
         throw InvalidLinkException("ip address not allowed");
 
     if (!url->has_valid_domain())
-        throw InvalidLinkException("invalid domain");
+        throw InvalidLinkException("invalid host");
     if (url->get_search().size() > queryPartLengthMax)
         throw InvalidLinkException("query too long");
 
@@ -106,7 +99,7 @@ Link Link::fromUserInput(std::string in, size_t queryPartLengthMax)
 
     Link out;
     out.url = std::move(*url);
-    out.scheme_less = buildSchemeLess(out.url);
+    out.schemeLess = buildSchemeLess(out.url);
     return out;
 }
 

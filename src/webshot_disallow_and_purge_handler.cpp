@@ -1,7 +1,7 @@
 #include "include/webshot_disallow_and_purge_handler.hpp"
 /**
  * @file
- * @brief Handler that disallows a domain and enqueues purge of its captures.
+ * @brief Handler that disallows a host and enqueues purge of its captures.
  */
 #include "include/deadline_utils.hpp"
 #include "include/http_utils.hpp"
@@ -66,19 +66,19 @@ std::string WebshotDisallowAndPurgeHandler::
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 
-    const std::string domain = request.GetArg("domain");
-    if (domain.empty())
-        return httpu::respondError(response, kBadRequest, "missing parameter: domain");
+    const std::string host = request.GetArg("host");
+    if (host.empty())
+        return httpu::respondError(response, kBadRequest, "missing parameter: host");
     Link link;
     try {
-        link = Link::fromUserInput(domain, config.queryPartLengthMax());
+        link = Link::fromUserInput(host, config.queryPartLengthMax());
     } catch (const InvalidLinkException &e) {
-        LOG_INFO() << fmt::format("invalid domain: {}", e.what());
-        return httpu::respondError(response, kBadRequest, "invalid domain");
+        LOG_INFO() << fmt::format("invalid host: {}", e.what());
+        return httpu::respondError(response, kBadRequest, "invalid host");
     }
     LOG_INFO() << fmt::format("invoked for: {}", link.host());
     try {
-        crud.disallowAndPurgeDomain(link.host());
+        crud.disallowAndPurgeHost(link.host());
         response.SetStatus(kAccepted);
         return {};
     } catch (const std::exception &e) {

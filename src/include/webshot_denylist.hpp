@@ -8,10 +8,10 @@
 namespace v1 {
 
 /**
- * @brief Domain denylist management and purge helper.
+ * @brief Host denylist management and purge helper.
  *
  * Provides host checks used by the ingestion path and an administrative purge
- * that deletes all captures for a domain and its subdomains.
+ * that deletes all captures for a host and its subhosts.
  */
 class [[nodiscard]] WebshotDenylist : public userver::components::ComponentBase {
 public:
@@ -25,9 +25,9 @@ public:
     ~WebshotDenylist();
 
     /** @brief Returns true if the host is not deny‑listed. */
-    [[nodiscard]] bool isAllowedHost(const std::string &hostLowerPunycode) noexcept;
+    [[nodiscard]] bool isAllowedHost(const std::string &host) noexcept;
     /** @brief Insert a host into the denylist (noop if already present). */
-    void insertDomain(const std::string &hostLowerPunycode);
+    void insertHost(const std::string &host);
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:

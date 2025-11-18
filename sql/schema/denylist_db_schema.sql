@@ -1,12 +1,12 @@
-create table domain_denylist (
-    domain text collate "C" not null
-        check (domain = lower(domain))
-        check (position('.' in domain) > 0),
+create table host_denylist (
+    host text collate "C" not null
+        check (host = lower(host))
+        check (position('.' in host) > 0),
     created_at timestamptz not null default now(),
     reason text not null,
-    constraint domain_denylist_pk primary key (domain)
+    constraint host_denylist_pk primary key (host)
 );
 
-create index if not exists domain_denylist_created_at_idx
-    on domain_denylist (created_at desc);
+create index if not exists host_denylist_created_at_idx
+    on host_denylist (created_at desc);
 

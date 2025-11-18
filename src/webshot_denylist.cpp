@@ -1,7 +1,7 @@
 #include "include/webshot_denylist.hpp"
 /**
  * @file
- * @brief Domain denylist checks and persistence backed by Postgres.
+ * @brief Host denylist checks and persistence backed by Postgres.
  */
 #include "include/sql.hpp"
 
@@ -50,29 +50,26 @@ WebshotDenylist::WebshotDenylist(
 
 WebshotDenylist::~WebshotDenylist() = default;
 
-bool WebshotDenylist::isAllowedHost(const std::string &hostLowerPunycode) noexcept
+bool WebshotDenylist::isAllowedHost(const std::string &host) noexcept
 {
     try {
-        auto res = impl->cluster->Execute(
-            pg::ClusterHostType::kSlaveOrMaster, sql::kCheckDenylist.data(), hostLowerPunycode
-        );
-        const bool matched = res.Size() > 0;
-        return !matched;
+        return impl->cluster
+                   ->Execute(pg::ClusterHostType::kSlaveOrMaster, sql::kCheckDenylist.data(), host)
+                   .Size() > 0;
     } catch (const std::exception &e) {
         LOG_ERROR() << fmt::format("denylist check failed: {}", e.what());
         return false;
     }
 }
 
-void WebshotDenylist::insertDomain(const std::string &hostLowerPunycode)
+void WebshotDenylist::insertHost(const std::string &host)
 {
     try {
         static_cast<void>(impl->cluster->Execute(
-            pg::ClusterHostType::kMaster, sql::kInsertDenylistDomain.data(), hostLowerPunycode
+            pg::ClusterHostType::kMaster, sql::kInsertDenylistHost.data(), host
         ));
     } catch (const std::exception &e) {
-        LOG_ERROR(
-        ) << fmt::format("denylist insert failed for {}: {}", hostLowerPunycode, e.what());
+        LOG_ERROR() << fmt::format("denylist insert failed for {}: {}", host, e.what());
         throw;
     }
 }

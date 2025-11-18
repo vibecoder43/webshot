@@ -10,18 +10,20 @@
 #include <string>
 #include <string_view>
 
+#include <userver/engine/io/sockaddr.hpp>
+
 namespace us = userver;
 namespace engine = us::engine;
-namespace v1::hostpolicy {
+namespace v1::HostPolicy {
 
-bool IsBareName(const std::string &host_lower) { return host_lower.find('.') == std::string::npos; }
+bool IsBareName(const std::string &host) { return host.find('.') == std::string::npos; }
 
-bool IsDeniedHostname(const std::string &host_lower)
+bool IsDeniedHostname(const std::string &host)
 {
-    return (host_lower == "localhost" || host_lower == "host.docker.internal");
+    return (host == "localhost" || host == "host.docker.internal");
 }
 
-bool HasSpecialTldSuffix(std::string_view host_lower)
+bool HasSpecialTldSuffix(std::string_view host)
 {
     static const std::array<std::string_view, 5> kTlds{
         ".local", ".home.arpa", ".test", ".invalid", ".example"
@@ -29,14 +31,14 @@ bool HasSpecialTldSuffix(std::string_view host_lower)
 
     for (const auto tldWithDot : kTlds) {
         const auto tldSize = tldWithDot.size();
-        if (host_lower.size() >= tldSize) {
-            if (host_lower.compare(host_lower.size() - tldSize, tldSize, tldWithDot) == 0)
+        if (host.size() >= tldSize) {
+            if (host.compare(host.size() - tldSize, tldSize, tldWithDot) == 0)
                 return true;
         }
 
         const std::string_view plainTld = tldWithDot.substr(1);
-        if (host_lower == plainTld)
-            return true; // plain tld (e.g., "local") - unlikely after bare-name check
+        if (host == plainTld)
+            return true;
     }
     return false;
 }
@@ -77,9 +79,9 @@ std::vector<std::string> resolvePublic(
                 break;
         }
     } catch (std::exception &) {
-        // swallow, return empty to signal failure
+        // return empty to signal failure
     }
     return out;
 }
 
-} // namespace v1::hostpolicy
+} // namespace v1::HostPolicy

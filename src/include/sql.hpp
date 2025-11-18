@@ -66,26 +66,26 @@ order by link asc
 limit $4
 )~";
 
-/** Check if a domain or its parents are deny‑listed. Arg: domain. */
+/** Check if a host or its parents are deny‑listed. Arg: host. */
 inline constexpr std::string_view kCheckDenylist = R"~(
 select 1
-from domain_denylist
-where $1 = domain or $1 like ('%.' || domain)
-order by length(domain) desc
+from host_denylist
+where $1 = host or $1 like ('%.' || host)
+order by length(host) desc
 limit 1
 )~";
 
-/** Insert domain into denylist if not present. Arg: domain. */
-inline constexpr std::string_view kInsertDenylistDomain = R"~(
-insert into domain_denylist(domain)
+/** Insert host into denylist if not present. Arg: host. */
+inline constexpr std::string_view kInsertDenylistHost = R"~(
+insert into host_denylist(host)
 values ($1)
-on conflict (domain) do nothing
+on conflict (host) do nothing
 )~";
 
 /**
- * Page ids by reversed host for fast prefix match on subdomains. Args: host_rev, limit.
+ * Page ids by reversed host for fast prefix match on subhosts. Args: host_rev, limit.
  */
-inline constexpr std::string_view kSelectIdsByHostOrSubdomainsPaged = R"~(
+inline constexpr std::string_view kSelectIdsByHostOrSubhostsPaged = R"~(
 select id
 from webshot
 where host_rev = $1 or host_rev like ($1 || '.%')

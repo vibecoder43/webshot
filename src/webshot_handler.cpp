@@ -92,15 +92,15 @@ std::string WebshotHandler::
             try {
                 auto parsed = Link::fromUserInput(req.link, config.queryPartLengthMax());
                 std::string host = parsed.host();
-                if (hostpolicy::IsBareName(host) || hostpolicy::IsDeniedHostname(host) ||
-                    hostpolicy::HasSpecialTldSuffix(host))
+                if (HostPolicy::IsBareName(host) || HostPolicy::IsDeniedHostname(host) ||
+                    HostPolicy::HasSpecialTldSuffix(host))
                     throw InvalidLinkException("forbidden host");
-                auto pubs = hostpolicy::resolvePublic(resolver, host, finalDeadline);
+                auto pubs = HostPolicy::resolvePublic(resolver, host, finalDeadline);
                 if (pubs.empty())
                     throw InvalidLinkException("forbidden host");
                 if (!denylist.isAllowedHost(host))
                     return httpu::respondError(
-                        response, kForbidden, "POST failed due to domain in denylist"
+                        response, kForbidden, "POST failed due to host in denylist"
                     );
                 crud.createWebshot(std::move(parsed), std::move(pubs));
                 response.SetStatus(kCreated);
