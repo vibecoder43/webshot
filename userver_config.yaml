@@ -14,12 +14,12 @@ components_manager:
             config: /home/noofva/work/webshot/secrets/secdist.json
             format: json
         webshot-config:
-            query-part-length-max: 1024
+            query-part-length-max: 32768
             s3-bucket: webshot
             s3-endpoint: 'http://localhost:8333'
             s3-region: 'local'
             public-base-url: 'http://localhost:8333/webshot'
-            s3-timeout-ms: 10000
+            s3-timeout-ms: 30000
         dns-client:
             fs-task-processor: fs-task-processor
         testsuite-support:
@@ -38,18 +38,22 @@ components_manager:
             path: /v1/webshot
             method: GET,POST
             task_processor: main-task-processor
+            request-timeout-ms: 10000
         webshots-by-prefix:
             path: /v1/webshot/prefix
             method: GET
             task_processor: main-task-processor
+            request-timeout-ms: 10000
         webshot-disallow-and-purge:
             path: /v1/disallow-and-purge
             method: POST
             task_processor: main-task-processor
+            request-timeout-ms: 10000
         webshot-by-id:
             path: /v1/webshot/{uuid}
             method: GET
             task_processor: main-task-processor
+            request-timeout-ms: 10000
         webshot-crud:
             webshots-page-max: 2
             crawl-concurrency: *blocking_num_workers
@@ -59,12 +63,13 @@ components_manager:
             crawler-image: 'webrecorder/browsertrix-crawler'
             crawler-collection-name: 'webshot'
             crawler-workers: 1
-            crawler-page-limit: 1
             crawler-page-load-timeout-sec: 10
             crawler-post-load-delay-sec: 1
             crawler-net-idle-wait-sec: 0
             crawler-page-extra-delay-sec: 3
             crawler-behavior-timeout-sec: 1
+            crawler-overhead-timeout-sec: 45
+            purge-job-timeout-sec: 300
             crawler-lang: 'en'
             crawler-scope-type: 'page-spa'
         webshot-meta-db:

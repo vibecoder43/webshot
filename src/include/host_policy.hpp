@@ -1,11 +1,11 @@
 #pragma once
 
-#include <chrono>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <userver/clients/dns/resolver.hpp>
+#include <userver/engine/deadline.hpp>
 
 namespace us = userver;
 
@@ -26,11 +26,11 @@ bool HasSpecialTldSuffix(std::string_view host_lower);
  *
  * @param resolver userver DNS resolver.
  * @param host Hostname to resolve.
- * @param timeout Resolution timeout.
+ * @param deadline Resolution deadline.
  * @return List of public addresses (string form). Empty on failure.
  */
 std::vector<std::string> resolvePublic(
-    us::clients::dns::Resolver &resolver, const std::string &host, std::chrono::milliseconds timeout
+    us::clients::dns::Resolver &resolver, const std::string &host, us::engine::Deadline deadline
 );
 
 } // namespace v1::hostpolicy

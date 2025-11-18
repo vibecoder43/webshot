@@ -3,11 +3,16 @@
  * @file
  * @brief Handler that resolves a capture id to its public location via 302.
  */
+#include "include/deadline_utils.hpp"
 #include "include/http_utils.hpp"
+#include "include/webshot_crud.hpp"
+
+#include <chrono>
 
 #include <fmt/format.h>
 
 #include <userver/components/component.hpp>
+#include <userver/engine/task/current_task.hpp>
 #include <userver/http/common_headers.hpp>
 #include <userver/http/content_type.hpp>
 #include <userver/logging/log.hpp>
@@ -16,14 +21,31 @@
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/boost_uuid4.hpp>
+#include <userver/yaml_config/merge_schemas.hpp>
 
 using namespace v1;
+namespace engine = userver::engine;
 
 WebshotById::WebshotById(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), crud(context.FindComponent<WebshotCrud>())
+    : HttpHandlerBase(config, context), crud(context.FindComponent<WebshotCrud>()),
+      requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
 {
+}
+
+us::yaml_config::Schema WebshotById::GetStaticConfigSchema()
+{
+    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
+type: object
+description: Webshot-by-id handler static config
+additionalProperties: false
+properties:
+  request-timeout-ms:
+    type: integer
+    minimum: 1
+    description: Upper bound for /v1/webshot/{uuid} handler in milliseconds
+)");
 }
 
 std::string WebshotById::
@@ -38,6 +60,10 @@ std::string WebshotById::
 
     auto &response = request.GetHttpResponse();
     try {
+        const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+        auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
+        engine::current_task::SetDeadline(finalDeadline);
+
         const std::string uuidStr = request.GetPathArg("uuid");
         if (uuidStr.empty())
             return httpu::respondError(response, kBadRequest, "missing parameter: uuid");
@@ -51,7 +77,7 @@ std::string WebshotById::
         response.SetHeader(us::http::headers::kLocation, webshot->location);
         return {};
     } catch (const std::exception &e) {
-        LOG_ERROR() << fmt::format("Unhandled error in webshot_by_id: {}", e.what());
+        LOG_ERROR() << fmt::format("Unhandled error: {}", e.what());
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 }

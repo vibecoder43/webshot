@@ -35,8 +35,6 @@ add_library(
   src/webshot_pagination.cpp
   src/webshot_prefix_pagination.cpp
   ${${PROJECT_NAME}_headers})
-target_precompile_headers(${PROJECT_NAME}_objs PRIVATE
-                          ${${PROJECT_NAME}_headers})
 
 function(apply_defaults target)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD 20)
@@ -85,71 +83,91 @@ target_sources(
 
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(
-    is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp
-                              src/link.cpp src/ip_utils.cpp)
+  add_executable(is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp
+                                           src/link.cpp src/ip_utils.cpp)
   target_link_libraries(
     is_valid_webshot_url_test
-    PRIVATE userver::utest ada::ada fmt::fmt absl::str_format absl::strings
-            absl::log absl::raw_hash_set)
+    PRIVATE userver::utest
+            ada::ada
+            fmt::fmt
+            absl::str_format
+            absl::strings
+            absl::log
+            absl::raw_hash_set)
   target_include_directories(is_valid_webshot_url_test PRIVATE src/include)
   apply_defaults(is_valid_webshot_url_test)
   add_test(NAME is_valid_webshot_url COMMAND is_valid_webshot_url_test)
   set_tests_properties(is_valid_webshot_url
                        PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
 
-  add_executable(
-    s3_v4_client_test tests/s3_v4_client_test.cpp src/s3/sigv4_signer.cpp)
+  add_executable(s3_v4_client_test tests/s3_v4_client_test.cpp
+                                   src/s3/sigv4_signer.cpp)
   target_link_libraries(
-    s3_v4_client_test
-    PRIVATE userver::utest fmt::fmt absl::str_format absl::strings absl::log
-            absl::raw_hash_set)
+    s3_v4_client_test PRIVATE userver::utest fmt::fmt absl::str_format
+                              absl::strings absl::log absl::raw_hash_set)
   target_include_directories(s3_v4_client_test PRIVATE src src/include)
   apply_defaults(s3_v4_client_test)
   add_test(NAME s3_v4_client COMMAND s3_v4_client_test)
-  set_tests_properties(s3_v4_client
-                       PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
+  set_tests_properties(s3_v4_client PROPERTIES ENVIRONMENT
+                                               "LSAN_OPTIONS=detect_leaks=0")
 
-  add_executable(
-    webshot_cursor_test tests/webshot_cursor_test.cpp src/webshot_cursor.cpp)
+  add_executable(webshot_cursor_test tests/webshot_cursor_test.cpp
+                                     src/webshot_cursor.cpp)
   target_link_libraries(
     webshot_cursor_test
-    PRIVATE userver::utest fmt::fmt absl::str_format absl::strings absl::log
-            absl::raw_hash_set ${PROJECT_NAME}-chgen)
+    PRIVATE userver::utest
+            fmt::fmt
+            absl::str_format
+            absl::strings
+            absl::log
+            absl::raw_hash_set
+            ${PROJECT_NAME}-chgen)
   target_include_directories(
     webshot_cursor_test PRIVATE src/include ${CMAKE_CURRENT_BINARY_DIR}/src/)
   apply_defaults(webshot_cursor_test)
   add_test(NAME webshot_cursor COMMAND webshot_cursor_test)
-  set_tests_properties(webshot_cursor
-                       PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
+  set_tests_properties(webshot_cursor PROPERTIES ENVIRONMENT
+                                                 "LSAN_OPTIONS=detect_leaks=0")
 
   add_executable(
     webshot_pagination_test tests/webshot_pagination_test.cpp
                             src/webshot_cursor.cpp src/webshot_pagination.cpp)
   target_link_libraries(
     webshot_pagination_test
-    PRIVATE userver::utest fmt::fmt absl::str_format absl::strings absl::log
-            absl::raw_hash_set ${PROJECT_NAME}-chgen)
+    PRIVATE userver::utest
+            fmt::fmt
+            absl::str_format
+            absl::strings
+            absl::log
+            absl::raw_hash_set
+            ${PROJECT_NAME}-chgen)
   target_include_directories(
-    webshot_pagination_test PRIVATE src/include ${CMAKE_CURRENT_BINARY_DIR}/src/)
+    webshot_pagination_test PRIVATE src/include
+                                    ${CMAKE_CURRENT_BINARY_DIR}/src/)
   apply_defaults(webshot_pagination_test)
   add_test(NAME webshot_pagination COMMAND webshot_pagination_test)
   set_tests_properties(webshot_pagination
                        PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
 
   add_executable(
-    webshot_prefix_pagination_test tests/webshot_prefix_pagination_test.cpp
-                                   src/webshot_cursor.cpp
-                                   src/webshot_prefix_pagination.cpp)
+    webshot_prefix_pagination_test
+    tests/webshot_prefix_pagination_test.cpp src/webshot_cursor.cpp
+    src/webshot_prefix_pagination.cpp)
   target_link_libraries(
     webshot_prefix_pagination_test
-    PRIVATE userver::utest fmt::fmt absl::str_format absl::strings absl::log
-            absl::raw_hash_set ${PROJECT_NAME}-chgen)
+    PRIVATE userver::utest
+            fmt::fmt
+            absl::str_format
+            absl::strings
+            absl::log
+            absl::raw_hash_set
+            ${PROJECT_NAME}-chgen)
   target_include_directories(
     webshot_prefix_pagination_test PRIVATE src/include
                                            ${CMAKE_CURRENT_BINARY_DIR}/src/)
   apply_defaults(webshot_prefix_pagination_test)
-  add_test(NAME webshot_prefix_pagination COMMAND webshot_prefix_pagination_test)
+  add_test(NAME webshot_prefix_pagination
+           COMMAND webshot_prefix_pagination_test)
   set_tests_properties(webshot_prefix_pagination
                        PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
 endif()

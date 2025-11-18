@@ -14,7 +14,6 @@
 #include "include/sql.hpp"
 #include "include/utils.hpp"
 #include "include/webshot_config.hpp"
-#include "include/webshot_cursor.hpp"
 #include "include/webshot_denylist.hpp"
 #include "include/webshot_pagination.hpp"
 #include "include/webshot_prefix_pagination.hpp"
@@ -24,7 +23,6 @@
 #include <exception>
 #include <optional>
 #include <string>
-#include <userver/utils/assert.hpp>
 #include <utility>
 
 #include <boost/uuid/uuid.hpp>
@@ -55,6 +53,7 @@
 #include <userver/storages/postgres/postgres.hpp>
 #include <userver/storages/secdist/component.hpp>
 #include <userver/storages/secdist/secdist.hpp>
+#include <userver/utils/assert.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/utils/boost_uuid4.hpp>
 #include <userver/utils/datetime/timepoint_tz.hpp>
@@ -105,10 +104,6 @@ properties:
         type: integer
         minimum: 1
         description: 'Number of crawler workers per job'
-    crawler-page-limit:
-        type: integer
-        minimum: 1
-        description: 'Max pages to crawl per job'
     crawler-page-load-timeout-sec:
         type: integer
         minimum: 1
@@ -129,6 +124,14 @@ properties:
         type: integer
         minimum: 1
         description: 'Behavior script timeout in seconds'
+    crawler-overhead-timeout-sec:
+        type: integer
+        minimum: 1
+        description: 'Overhead timeout added to crawler stage timeouts in seconds'
+    purge-job-timeout-sec:
+        type: integer
+        minimum: 1
+        description: 'Upper bound for a single purge job in seconds'
     crawler-lang:
         type: string
         description: 'Language hint passed to the crawler'
@@ -160,12 +163,13 @@ public:
     const std::string crawlerImage;
     const std::string crawlerCollectionName;
     const int64_t crawlerWorkers;
-    const int64_t crawlerPageLimit;
     const int64_t crawlerPageLoadTimeoutSec;
     const int64_t crawlerPostLoadDelaySec;
     const int64_t crawlerNetIdleWaitSec;
     const int64_t crawlerPageExtraDelaySec;
     const int64_t crawlerBehaviorTimeoutSec;
+    const int64_t crawlerOverheadTimeoutSec;
+    const int64_t purgeJobTimeoutSec;
     const std::string crawlerLang;
     const std::string crawlerScopeType;
     const WebshotConfig &svcCfg;
@@ -193,12 +197,13 @@ public:
           crawlerImage(cfg["crawler-image"].As<std::string>("webrecorder/browsertrix-crawler")),
           crawlerCollectionName(cfg["crawler-collection-name"].As<std::string>("webshot")),
           crawlerWorkers(cfg["crawler-workers"].As<int64_t>()),
-          crawlerPageLimit(cfg["crawler-page-limit"].As<int64_t>()),
           crawlerPageLoadTimeoutSec(cfg["crawler-page-load-timeout-sec"].As<int64_t>()),
           crawlerPostLoadDelaySec(cfg["crawler-post-load-delay-sec"].As<int64_t>()),
           crawlerNetIdleWaitSec(cfg["crawler-net-idle-wait-sec"].As<int64_t>()),
           crawlerPageExtraDelaySec(cfg["crawler-page-extra-delay-sec"].As<int64_t>()),
           crawlerBehaviorTimeoutSec(cfg["crawler-behavior-timeout-sec"].As<int64_t>()),
+          crawlerOverheadTimeoutSec(cfg["crawler-overhead-timeout-sec"].As<int64_t>()),
+          purgeJobTimeoutSec(cfg["purge-job-timeout-sec"].As<int64_t>()),
           crawlerLang(cfg["crawler-lang"].As<std::string>("en")),
           crawlerScopeType(cfg["crawler-scope-type"].As<std::string>("page-spa")),
           svcCfg(ctx.FindComponent<WebshotConfig>()),
@@ -307,7 +312,7 @@ WebshotCrud::Impl::makeCrawlContext(Link link, std::vector<std::string> pinnedIp
          "--scopeType",
          crawlerScopeType,
          "--pageLimit",
-         fmt::format("{}", crawlerPageLimit),
+         "1",
          "--pageLoadTimeout",
          fmt::format("{}", crawlerPageLoadTimeoutSec),
          "--postLoadDelay",
@@ -443,6 +448,15 @@ void WebshotCrud::createWebshot(Link link, std::vector<std::string> pinnedIps)
         "create-webshot-lambda",
         [impl = impl.get(), link = std::move(link), pinnedIps = std::move(pinnedIps)]() mutable {
             try {
+                const auto totalSeconds = impl->crawlerOverheadTimeoutSec +
+                                          impl->crawlerPageLoadTimeoutSec +
+                                          impl->crawlerPostLoadDelaySec +
+                                          impl->crawlerNetIdleWaitSec +
+                                          impl->crawlerPageExtraDelaySec +
+                                          impl->crawlerBehaviorTimeoutSec;
+                engine::current_task::SetDeadline(
+                    engine::Deadline::FromDuration(std::chrono::seconds(totalSeconds))
+                );
                 std::shared_lock<engine::CancellableSemaphore> slotLock(impl->crawlSlots);
 
                 engine::subprocess::ProcessStarter starter(
@@ -457,7 +471,10 @@ void WebshotCrud::createWebshot(Link link, std::vector<std::string> pinnedIps)
                 if (!impl->persistMetadataForContext(ctx))
                     return;
             } catch (const engine::SemaphoreLockCancelledError &e) {
-                LOG_INFO() << "Crawl task cancelled while waiting for slot: " << e.what();
+                LOG_INFO(
+                ) << fmt::format("Crawl task cancelled while waiting for slot: ", e.what());
+            } catch (const std::exception &e) {
+                LOG_ERROR() << fmt::format("Crawl task failed: {}", e.what());
             }
         }
     );
@@ -630,6 +647,9 @@ void WebshotCrud::disallowAndPurgeDomain(std::string domain)
         "purge-domain-lambda",
         [implPtr = impl.get(), domain]() {
             try {
+                engine::current_task::SetDeadline(engine::Deadline::FromDuration(
+                    std::chrono::seconds(implPtr->purgeJobTimeoutSec)
+                ));
                 LOG_INFO() << fmt::format("Starting purge for denylisted domain {}", domain);
                 implPtr->purgeHostAndSubdomains(domain);
             } catch (const std::exception &e) {

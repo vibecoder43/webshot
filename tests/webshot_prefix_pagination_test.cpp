@@ -25,7 +25,7 @@ UTEST(WebshotPrefixPagination, UpperExclusiveBoundAllFFReturnsNullopt)
 {
     const std::string input(3, '\xFF');
     const auto upper = upperExclusiveBound(input);
-    EXPECT_FALSE(upper.has_value());
+    EXPECT_FALSE(upper);
 }
 
 UTEST(WebshotPrefixPagination, EncodeDecodeWithoutTimeOrId)

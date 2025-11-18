@@ -1,7 +1,10 @@
 #pragma once
+
+#include <cstdint>
 #include <string_view>
 
 #include <userver/server/handlers/http_handler_base.hpp>
+#include <userver/yaml_config/schema.hpp>
 
 namespace us = userver;
 namespace server = us::server;
@@ -22,6 +25,8 @@ public:
         const us::components::ComponentContext &context
     );
 
+    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
+
     [[nodiscard]]
     std::string
     HandleRequestThrow(const server::http::HttpRequest &request, server::request::RequestContext &)
@@ -30,5 +35,6 @@ public:
 private:
     WebshotCrud &crud;
     const WebshotConfig &cfg;
+    const int64_t requestTimeoutMs;
 };
 } // namespace v1

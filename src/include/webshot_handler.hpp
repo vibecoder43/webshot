@@ -1,8 +1,11 @@
 #pragma once
+
+#include <cstdint>
 #include <string_view>
 
 #include <userver/clients/dns/resolver.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
+#include <userver/yaml_config/schema.hpp>
 
 namespace us = userver;
 namespace server = us::server;
@@ -27,6 +30,8 @@ public:
         const us::components::ComponentContext &context
     );
 
+    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
+
     [[nodiscard]]
     std::string
     HandleRequestThrow(const server::http::HttpRequest &request, server::request::RequestContext &)
@@ -37,5 +42,6 @@ private:
     const WebshotConfig &config;
     userver::clients::dns::Resolver &resolver;
     WebshotDenylist &denylist;
+    const int64_t requestTimeoutMs;
 };
 }; // namespace v1

@@ -15,7 +15,7 @@ namespace v1::s3v4 {
 struct [[nodiscard]] S3V4Config {
     std::string endpoint; // e.g. http://localhost:8333 or s3.amazonaws.com
     std::string region;   // e.g. us-east-1, local, etc.
-    std::chrono::milliseconds timeout{10000};
+    std::chrono::milliseconds timeout;
     bool virtualHosted = false; // not used in v1; path-style addressing by default
 };
 

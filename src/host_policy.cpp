@@ -10,7 +10,6 @@
 #include <string>
 #include <string_view>
 
-using namespace std::chrono_literals;
 namespace us = userver;
 namespace engine = us::engine;
 namespace v1::hostpolicy {
@@ -51,12 +50,12 @@ static bool IsPublicV4(uint32_t ip_be)
 static bool IsPublicV6(const struct in6_addr &a) { return IpUtils::isPublicRoutableIPv6(a); }
 
 std::vector<std::string> resolvePublic(
-    us::clients::dns::Resolver &resolver, const std::string &host, std::chrono::milliseconds timeout
+    us::clients::dns::Resolver &resolver, const std::string &host, engine::Deadline deadline
 )
 {
     std::vector<std::string> out;
     try {
-        auto addrs = resolver.Resolve(host, engine::Deadline::FromDuration(timeout));
+        auto addrs = resolver.Resolve(host, deadline);
         for (const auto &sa : addrs) {
             switch (sa.Domain()) {
             case userver::engine::io::AddrDomain::kInet: {

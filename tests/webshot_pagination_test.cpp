@@ -21,7 +21,7 @@ UTEST(WebshotPagination, CursorRoundTrip)
 
     const auto token = encodeCursor(cursor);
     const auto decoded = decodeCursor(token);
-    ASSERT_TRUE(decoded.has_value());
+    ASSERT_TRUE(decoded);
     EXPECT_EQ(timePointToMicros(decoded->createdAt), timePointToMicros(cursor.createdAt));
     EXPECT_EQ(decoded->id, cursor.id);
 }
@@ -29,5 +29,5 @@ UTEST(WebshotPagination, CursorRoundTrip)
 UTEST(WebshotPagination, DecodeCursorInvalidReturnsNullopt)
 {
     const auto decoded = decodeCursor("invalid-token");
-    EXPECT_FALSE(decoded.has_value());
+    EXPECT_FALSE(decoded);
 }
