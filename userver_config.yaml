@@ -39,21 +39,25 @@ components_manager:
             method: GET,POST
             task_processor: main-task-processor
             request-timeout-ms: 10000
+            max_request_size: &max-data-per-request: 65536
         webshots-by-prefix:
             path: /v1/webshot/prefix
             method: GET
             task_processor: main-task-processor
             request-timeout-ms: 10000
+            max_request_size: *max-data-per-request
         webshot-disallow-and-purge:
             path: /v1/disallow-and-purge
             method: POST
             task_processor: main-task-processor
             request-timeout-ms: 10000
+            max_request_size: *max-data-per-request
         webshot-by-id:
             path: /v1/webshot/{uuid}
             method: GET
             task_processor: main-task-processor
             request-timeout-ms: 10000
+            max_request_size: *max-data-per-request
         webshot-crud:
             webshots-page-max: 2
             crawl-concurrency: *blocking_num_workers
