@@ -22,6 +22,7 @@
 - Classes: PascalCase (for example, `V1Files`).
 - Functions and variables: lowerCamelCase.
 - Constants: `kName` form.
+- Prefer `{}` instead of `std::nullopt` in return statements and obvious initialization sites when it clearly compiles.
 - Use `size_t`, `int64_t` (not `std::size_t` or `std::int64_t`).
 - Filenames in snake_case (for example, `ip_utils.cpp`, `webshot_handler.hpp`).
 - Declarations must exactly match definitions (names and signatures).
