@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 project(webshot CXX)
 
+if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
+  message(
+    FATAL_ERROR
+      "In-source builds are not supported. Please create a separate build directory and run CMake from there."
+  )
+endif()
+
 set(WEBSHOT_ENABLE_COVERAGE
     OFF
     CACHE BOOL
