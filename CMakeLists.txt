@@ -83,6 +83,12 @@ target_sources(
 
 include(CTest)
 if(BUILD_TESTING)
+
+  set(
+    WEBSHOT_TEST_DB_DSN
+    "postgresql://postgres@localhost:15434/postgres"
+    CACHE STRING "PostgreSQL DSN used by testsuite (--postgresql)"
+  )
   add_executable(is_valid_webshot_url_test tests/is_valid_webshot_url_test.cpp
                                            src/link.cpp src/ip_utils.cpp)
   target_link_libraries(
@@ -170,6 +176,22 @@ if(BUILD_TESTING)
            COMMAND webshot_prefix_pagination_test)
   set_tests_properties(webshot_prefix_pagination
                        PROPERTIES ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
+
+  if(USERVER_FEATURE_TESTSUITE)
+    add_custom_target(webshot-testsuite)
+    add_dependencies(webshot-testsuite ${PROJECT_NAME})
+
+    userver_testsuite_add(
+      SERVICE_TARGET webshot-testsuite
+      TEST_SUFFIX tests
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests
+      PYTEST_ARGS
+        --service-config=${CMAKE_CURRENT_SOURCE_DIR}/userver_config.yaml
+        --service-binary=$<TARGET_FILE:${PROJECT_NAME}>
+        --service-secdist=${CMAKE_CURRENT_SOURCE_DIR}/secrets/secdist.json
+        --service-source-dir=${CMAKE_CURRENT_SOURCE_DIR}
+        --postgresql=${WEBSHOT_TEST_DB_DSN})
+  endif()
 endif()
 
 if(USE_SANITIZERS)
@@ -178,6 +200,20 @@ if(USE_SANITIZERS)
   # target_compile_options(${TARGET} PRIVATE "-fsanitize=undefined,thread")
   # target_link_options(${TARGET} PRIVATE "-fsanitize=undefined,thread")
 endif()
+
+file(GLOB SQL_QUERY_FILES ${CMAKE_CURRENT_SOURCE_DIR}/sql/queries/*.sql)
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/src/sql_gen.hpp
+  COMMAND
+    python3 ${CMAKE_CURRENT_SOURCE_DIR}/sql/gen_sql_header.py
+    --input-dir ${CMAKE_CURRENT_SOURCE_DIR}/sql/queries
+    --output ${CMAKE_CURRENT_BINARY_DIR}/src/sql_gen.hpp
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sql/gen_sql_header.py ${SQL_QUERY_FILES}
+  COMMENT "Generating SQL header from sql/queries"
+  VERBATIM)
+add_custom_target(sql_gen DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/src/sql_gen.hpp)
+add_dependencies(${PROJECT_NAME}_objs sql_gen)
+add_dependencies(${PROJECT_NAME} sql_gen)
 
 file(GLOB_RECURSE SCHEMAS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/*.yaml)
 userver_target_generate_chaotic(

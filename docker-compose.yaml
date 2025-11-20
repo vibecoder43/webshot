@@ -23,6 +23,14 @@ services:
             - type: bind
               source: ./sql/schema/denylist_db_schema.sql
               target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
+    webshot-test-db:
+        image: postgres:15.10-bookworm
+        container_name: webshottestdb
+        dns: ["172.17.0.1"]
+        environment:
+            POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+            - 15434:5432
     scalar:
         image: scalarapi/api-reference:latest
         container_name: webshot_scalar
