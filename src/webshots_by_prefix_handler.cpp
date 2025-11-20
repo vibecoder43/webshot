@@ -88,7 +88,7 @@ std::string WebshotsByPrefixHandler::
             return httpu::respondError(response, kBadRequest, "invalid page_token");
         }
     } catch (const std::exception &e) {
-        LOG_ERROR() << fmt::format("Unhandled error: ", e.what());
+        LOG_ERROR() << fmt::format("Unhandled error: {}", e.what());
         return httpu::respondError(response, kInternalServerError, "internal server error");
     }
 }
