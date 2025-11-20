@@ -14,4 +14,3 @@ def insert_webshot_sql(service_source_dir: Path) -> str:
     path = service_source_dir / "sql" / "queries" / "insert_webshot.sql"
     raw = path.read_text()
     return _adapt_positional_to_psycopg(raw)
-

@@ -82,4 +82,3 @@ async def test_disallow_and_purge_invalid_host(service_client):
     assert response.status == 400
     body = response.json()
     assert body["error"]["message"] == "invalid host"
-
