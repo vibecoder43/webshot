@@ -208,3 +208,62 @@ UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)
 
     EXPECT_EQ(host, std::string{"bucket-name.s3.example.com"});
 }
+
+UTEST(S3SigV4Client, UnsupportedOperationsThrow)
+{
+    auto httpClient = userver::utest::CreateHttpClient();
+    auto cfg = makeConfig();
+    auto creds = makeCreds();
+    auto client = MakeS3ClientV4(*httpClient, cfg, creds, "bucket-name");
+
+    using S3Client = userver::s3api::Client;
+    S3Client::HeadersDataResponse headersResponse;
+    S3Client::HeaderDataRequest headerRequest;
+
+    EXPECT_THROW(
+        client->GetObject("key", std::nullopt, &headersResponse, headerRequest), std::runtime_error
+    );
+    EXPECT_THROW(
+        client->TryGetObject("key", std::nullopt, &headersResponse, headerRequest),
+        std::runtime_error
+    );
+    EXPECT_THROW(
+        client->GetPartialObject("key", "bytes=0-1", std::nullopt, &headersResponse, headerRequest),
+        std::runtime_error
+    );
+    EXPECT_THROW(
+        client->TryGetPartialObject(
+            "key", "bytes=0-1", std::nullopt, &headersResponse, headerRequest
+        ),
+        std::runtime_error
+    );
+    EXPECT_THROW(client->CopyObject("src", "dst", std::nullopt), std::runtime_error);
+    EXPECT_THROW(client->CopyObject("bucket", "src", "dst", std::nullopt), std::runtime_error);
+    EXPECT_THROW(client->ListBucketContents("bucket", 1, "", ""), std::runtime_error);
+    EXPECT_THROW(client->ListBucketContentsParsed("bucket"), std::runtime_error);
+    EXPECT_THROW(client->ListBucketDirectories("bucket"), std::runtime_error);
+
+    userver::s3api::ConnectionCfg newCfg{std::chrono::milliseconds{50}};
+    EXPECT_NO_THROW(client->UpdateConfig(std::move(newCfg)));
+    EXPECT_EQ(client->GetBucketName(), std::string_view{"bucket-name"});
+}
+
+UTEST(S3SigV4Client, UploadPresignIncludesContentType)
+{
+    auto httpClient = userver::utest::CreateHttpClient();
+    auto cfg = makeConfig();
+    cfg.endpoint = "s3.internal";
+    auto creds = makeCreds();
+    auto client = MakeS3ClientV4(*httpClient, cfg, creds, "bucket-name");
+
+    const auto expiresAt = std::chrono::system_clock::now() + std::chrono::seconds(120);
+    const std::string url = client->GenerateUploadUrlVirtualHostAddressing(
+        "ignored-body", "text/plain", "path/file.txt", expiresAt, "http"
+    );
+
+    const auto params = parseQuery(url);
+    auto shIt = params.find("X-Amz-SignedHeaders");
+    ASSERT_NE(shIt, params.end());
+    EXPECT_NE(shIt->second.find("content-type"), std::string::npos);
+    EXPECT_NE(shIt->second.find("host"), std::string::npos);
+}

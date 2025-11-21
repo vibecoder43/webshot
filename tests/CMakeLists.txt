@@ -95,6 +95,10 @@ webshot_add_cpp_test(
   ${CMAKE_CURRENT_SOURCE_DIR}/container_guard_test.cpp
   ${CMAKE_SOURCE_DIR}/src/container_guard.cpp LIBS userver::core)
 
+webshot_add_cpp_test(
+  error_utils_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/error_utils_test.cpp
+  ${CMAKE_SOURCE_DIR}/src/error_utils.cpp LIBS ${PROJECT_NAME}-chgen)
+
 add_executable(docker ${CMAKE_CURRENT_SOURCE_DIR}/docker_stub_main.cpp)
 apply_defaults(docker)
 

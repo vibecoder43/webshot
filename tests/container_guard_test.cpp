@@ -73,3 +73,25 @@ UTEST(ContainerGuard, MoveTransfersOwnership)
     ContainerGuard second(std::move(first));
     EXPECT_EQ(second.name(), name);
 }
+
+UTEST(ContainerGuard, MoveAssignmentRemovesPrevious)
+{
+    prependCurrentDirToPath();
+    auto starter = makeStarter();
+
+    ContainerGuard first(starter, "first-container", {"create", "first-container"});
+    ContainerGuard second(starter, "second-container", {"create", "second-container"});
+
+    second = std::move(first);
+    EXPECT_EQ(second.name(), std::string("first-container"));
+}
+
+UTEST(ContainerGuard, ExplicitRemoveIsIdempotent)
+{
+    prependCurrentDirToPath();
+    auto starter = makeStarter();
+
+    ContainerGuard guard(starter, "idempotent-container", {"create", "idempotent-container"});
+    guard.remove();
+    guard.remove(); // should be a no-op after first call
+}
