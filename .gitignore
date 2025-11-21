@@ -3,6 +3,7 @@ CMakePresets.json
 .clang-format
 .editorconfig
 dev.sh
+dev2.sh
 crawl.sh
 human_logs.py
 verify_netpol.sh
