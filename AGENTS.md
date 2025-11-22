@@ -20,6 +20,7 @@
 - Build and regenerate schema code: `cmake --build --preset build-preset-clang-san` after changing `schemas/`.
 - Run service from build directory: `./webshot --config userver_config.yaml` (override config path with `--config` for local variants).
 - Run tests: `ctest --output-on-failure` in the same build directory.
+- The project uses the Ninja generator; there is no need to pass `-j` to `cmake --build` (parallelism is handled by Ninja or `--parallel` if needed).
 - Compute test coverage: configure with `cmake --preset configure-preset-clang-cov` (outputs to `/tmp/build-webshot-cov`, enables `WEBSHOT_ENABLE_COVERAGE=ON`), then `cmake --build --preset build-preset-clang-cov --target webshot-coverage` to build instrumented binaries, run tests, and emit llvm-cov output under `/tmp/build-webshot-cov/tests/coverage`; optional HTML rendering with `--target webshot-coverage-html` writes colored reports to `/tmp/build-webshot-cov/tests/coverage/html`.
 - `WebshotConfig` is excluded from coverage accounting and shouldn’t be targeted by tests.
 
