@@ -13,9 +13,20 @@ set(WEBSHOT_ENABLE_COVERAGE
     CACHE BOOL
           "Enable LLVM coverage instrumentation for the webshot service binary")
 set(WEBSHOT_COVERAGE_FLAGS "-fprofile-instr-generate" "-fcoverage-mapping")
+option(WEBSHOT_USE_MOLD "Use mold linker if available" ON)
+if(WEBSHOT_USE_MOLD)
+  find_program(WEBSHOT_MOLD_BIN NAMES mold)
+  if(WEBSHOT_MOLD_BIN)
+    message(STATUS "Using mold linker: ${WEBSHOT_MOLD_BIN}")
+    # Prefer the built-in CMake linker type flag when available. This lets CMake
+    # choose the right flags for the current toolchain.
+    set(CMAKE_LINKER_TYPE MOLD)
+  endif()
+endif()
 
-if(NOT CMAKE_CXX_CLANG_TIDY)
-  find_program(WEBSHOT_CLANG_TIDY_BIN NAMES clang-tidy)
+if(NOT DEFINED CMAKE_CXX_CLANG_TIDY)
+  find_program(WEBSHOT_CLANG_TIDY_BIN NAMES clang-tidy clang-tidy-21
+                                            clang-tidy-20)
   if(WEBSHOT_CLANG_TIDY_BIN)
     set(CMAKE_CXX_CLANG_TIDY "${WEBSHOT_CLANG_TIDY_BIN}")
   else()
