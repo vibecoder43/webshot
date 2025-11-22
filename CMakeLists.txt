@@ -15,23 +15,24 @@ set(WEBSHOT_ENABLE_COVERAGE
 set(WEBSHOT_COVERAGE_FLAGS "-fprofile-instr-generate" "-fcoverage-mapping")
 
 set(${PROJECT_NAME}_headers
-    src/include/s3_credentials_types.hpp
-    src/include/s3_sts_client.hpp
-    src/include/webshot_handler.hpp
-    src/include/webshots_by_prefix_handler.hpp
-    src/include/webshot_by_id_handler.hpp
-    src/include/webshot_disallow_and_purge_handler.hpp
-    src/include/webshot_crud.hpp
-    src/include/webshot_config.hpp
-    src/include/error_utils.hpp
-    src/include/http_utils.hpp
-    src/include/webshot_denylist.hpp
-    src/include/link.hpp
-    src/include/host_policy.hpp
-    src/include/ip_utils.hpp
-    src/include/webshot_cursor.hpp
-    src/include/webshot_pagination.hpp
-    src/include/webshot_prefix_pagination.hpp)
+    include/s3_credentials_types.hpp
+    include/s3/s3_sts_client.hpp
+    include/s3/s3_v4_client.hpp
+    include/webshot_handler.hpp
+    include/webshots_by_prefix_handler.hpp
+    include/webshot_by_id_handler.hpp
+    include/webshot_disallow_and_purge_handler.hpp
+    include/webshot_crud.hpp
+    include/webshot_config.hpp
+    include/error_utils.hpp
+    include/http_utils.hpp
+    include/webshot_denylist.hpp
+    include/link.hpp
+    include/host_policy.hpp
+    include/ip_utils.hpp
+    include/webshot_cursor.hpp
+    include/webshot_pagination.hpp
+    include/webshot_prefix_pagination.hpp)
 add_library(
   ${PROJECT_NAME}_objs OBJECT
   src/webshot_handler.cpp
@@ -97,8 +98,9 @@ target_link_libraries(
 target_link_libraries(${PROJECT_NAME}_objs
                       PUBLIC userver::core userver::postgresql userver::s3api)
 target_sources(
-  ${PROJECT_NAME}_objs PRIVATE src/s3/sigv4_signer.cpp src/s3/s3_v4_client.cpp
-                               src/s3/s3_sts_client.cpp src/s3/sigv4_signer.hpp)
+  ${PROJECT_NAME}_objs
+  PRIVATE src/s3/sigv4_signer.cpp src/s3/s3_v4_client.cpp
+          src/s3/s3_sts_client.cpp include/s3/sigv4_signer.hpp)
 
 include(CTest)
 if(BUILD_TESTING)
@@ -151,5 +153,6 @@ target_link_libraries(
           absl::strings
           absl::log
           absl::raw_hash_set)
-target_include_directories(${PROJECT_NAME}_objs
-                           PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/)
+target_include_directories(
+  ${PROJECT_NAME}_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/
+                               ${CMAKE_CURRENT_SOURCE_DIR}/include)

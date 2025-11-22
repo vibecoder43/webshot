@@ -1,9 +1,9 @@
-#include "include/host_policy.hpp"
+#include "host_policy.hpp"
 /**
  * @file
  * @brief Host policy checks and DNS resolution for public addresses.
  */
-#include "include/ip_utils.hpp"
+#include "ip_utils.hpp"
 
 #include <array>
 #include <exception>

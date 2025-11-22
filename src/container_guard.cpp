@@ -1,4 +1,4 @@
-#include "include/container_guard.hpp"
+#include "container_guard.hpp"
 /**
  * @file
  * @brief RAII wrapper that creates and then removes a Docker container.

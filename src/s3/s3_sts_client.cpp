@@ -1,7 +1,7 @@
-#include "../include/s3_sts_client.hpp"
+#include "s3/s3_sts_client.hpp"
 
-#include "../include/link.hpp"
-#include "sigv4_signer.hpp"
+#include "link.hpp"
+#include "s3/sigv4_signer.hpp"
 
 #include <stdexcept>
 #include <string>

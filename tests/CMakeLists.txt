@@ -23,8 +23,8 @@ function(webshot_add_cpp_test target)
             absl::raw_hash_set
             ${ARGS_LIBS})
   target_include_directories(
-    ${target} PRIVATE ${CMAKE_SOURCE_DIR}/src/include ${PROJECT_BINARY_DIR}/src
-                      ${ARGS_INCLUDE_DIRS})
+    ${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include
+                      ${PROJECT_BINARY_DIR}/src ${ARGS_INCLUDE_DIRS})
   apply_defaults(${target})
   add_test(NAME ${target} COMMAND ${target})
   set(test_env "LSAN_OPTIONS=detect_leaks=0")

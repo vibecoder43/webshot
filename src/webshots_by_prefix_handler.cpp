@@ -1,18 +1,18 @@
-#include "include/webshots_by_prefix_handler.hpp"
+#include "webshots_by_prefix_handler.hpp"
 /**
  * @file
  * @brief Handler that lists captures grouped by normalized link prefix.
  */
-#include "include/deadline_utils.hpp"
-#include "include/link.hpp"
-#include "include/webshot_config.hpp"
-#include "include/webshot_crud.hpp"
+#include "deadline_utils.hpp"
+#include "link.hpp"
+#include "webshot_config.hpp"
+#include "webshot_crud.hpp"
 
 #include <chrono>
 #include <string>
 
-#include "include/http_utils.hpp"
-#include "include/server_errors.hpp"
+#include "http_utils.hpp"
+#include "server_errors.hpp"
 #include <userver/components/component.hpp>
 #include <userver/engine/task/current_task.hpp>
 #include <userver/formats/json.hpp>

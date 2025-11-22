@@ -1,4 +1,4 @@
-#include "include/link.hpp"
+#include "link.hpp"
 /**
  * @file
  * @brief URL normalization and validation using ada.
@@ -6,7 +6,7 @@
  * Contains helpers to sanitize user input, enforce scheme/host rules, and
  * produce a stable scheme‑less key for storage and lookups.
  */
-#include "include/ip_utils.hpp"
+#include "ip_utils.hpp"
 
 #include <cctype>
 #include <string_view>

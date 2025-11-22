@@ -2,7 +2,7 @@
 
 ## Project Structure
 - `src/` holds the userver service; `src/main.cpp` wires core components.
-- Shared handlers/components live in `src/include/` (for example, `webshot_handler.hpp`, `webshot_crud.hpp`), headers use `#pragma once`.
+- Shared handlers/components live in `include/` (for example, `webshot_handler.hpp`, `webshot_crud.hpp`), headers use `#pragma once`.
 - Public HTTP API is defined in `schemas/webshot.yaml`; keep schemas and handlers aligned so generated serializers stay in sync.
 - Database schemas live in `sql/schema/`.
 - Tooling configs at repo root (`.clang-format`, `.editorconfig`, `.pre-commit-config.yaml`) define formatting and checks.

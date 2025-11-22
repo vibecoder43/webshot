@@ -3,7 +3,7 @@
  * @brief Implementation of helpers for pagination by exact link.
  */
 
-#include "include/webshot_pagination.hpp"
+#include "webshot_pagination.hpp"
 
 #include "schemas/webshot.hpp"
 

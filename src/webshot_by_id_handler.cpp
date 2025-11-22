@@ -1,11 +1,11 @@
-#include "include/webshot_by_id_handler.hpp"
+#include "webshot_by_id_handler.hpp"
 /**
  * @file
  * @brief Handler that resolves a capture id to its public location via 302.
  */
-#include "include/deadline_utils.hpp"
-#include "include/http_utils.hpp"
-#include "include/webshot_crud.hpp"
+#include "deadline_utils.hpp"
+#include "http_utils.hpp"
+#include "webshot_crud.hpp"
 
 #include <chrono>
 

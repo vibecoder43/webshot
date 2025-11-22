@@ -2,13 +2,13 @@
  * @file
  * @brief Service entry point wiring userver components and HTTP handlers.
  */
-#include "include/webshot_by_id_handler.hpp"
-#include "include/webshot_config.hpp"
-#include "include/webshot_crud.hpp"
-#include "include/webshot_denylist.hpp"
-#include "include/webshot_disallow_and_purge_handler.hpp"
-#include "include/webshot_handler.hpp"
-#include "include/webshots_by_prefix_handler.hpp"
+#include "webshot_by_id_handler.hpp"
+#include "webshot_config.hpp"
+#include "webshot_crud.hpp"
+#include "webshot_denylist.hpp"
+#include "webshot_disallow_and_purge_handler.hpp"
+#include "webshot_handler.hpp"
+#include "webshots_by_prefix_handler.hpp"
 
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component.hpp>

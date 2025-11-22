@@ -1,9 +1,9 @@
-#include "include/webshot_denylist.hpp"
+#include "webshot_denylist.hpp"
 /**
  * @file
  * @brief Host denylist checks and persistence backed by Postgres.
  */
-#include "include/sql.hpp"
+#include "sql.hpp"
 
 #include <string>
 

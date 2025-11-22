@@ -1,4 +1,4 @@
-#include "include/webshot_crud.hpp"
+#include "webshot_crud.hpp"
 /**
  * @file
  * @brief Implementation of storage and crawl orchestration.
@@ -6,19 +6,19 @@
  * Implements the `WebshotCrud` component, including background crawl startup,
  * metadata writes, and various paged queries.
  */
-#include "include/container_guard.hpp"
-#include "include/link.hpp"
-#include "include/s3_secdist.hpp"
-#include "include/s3_sts_client.hpp"
-#include "include/s3_v4_client.hpp"
-#include "include/server_errors.hpp"
-#include "include/sql.hpp"
-#include "include/utils.hpp"
-#include "include/webshot_config.hpp"
-#include "include/webshot_denylist.hpp"
-#include "include/webshot_pagination.hpp"
-#include "include/webshot_prefix_pagination.hpp"
+#include "container_guard.hpp"
+#include "link.hpp"
+#include "s3/s3_sts_client.hpp"
+#include "s3/s3_v4_client.hpp"
+#include "s3_secdist.hpp"
 #include "schemas/webshot.hpp"
+#include "server_errors.hpp"
+#include "sql.hpp"
+#include "utils.hpp"
+#include "webshot_config.hpp"
+#include "webshot_denylist.hpp"
+#include "webshot_pagination.hpp"
+#include "webshot_prefix_pagination.hpp"
 
 #include <chrono>
 #include <exception>

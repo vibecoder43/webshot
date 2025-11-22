@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../include/s3_credentials_types.hpp"
+#include "s3_credentials_types.hpp"
 
 namespace v1::s3v4 {
 

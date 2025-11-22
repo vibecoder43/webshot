@@ -3,7 +3,7 @@
  * @brief Implementation of time and token helpers for pagination cursors.
  */
 
-#include "include/webshot_cursor.hpp"
+#include "webshot_cursor.hpp"
 
 namespace v1::crud {
 

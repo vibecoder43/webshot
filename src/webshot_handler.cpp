@@ -1,17 +1,17 @@
-#include "include/webshot_handler.hpp"
+#include "webshot_handler.hpp"
 /**
  * @file
  * @brief Handler that creates captures and lists them by exact link.
  */
-#include "include/deadline_utils.hpp"
-#include "include/host_policy.hpp"
-#include "include/http_utils.hpp"
-#include "include/link.hpp"
-#include "include/server_errors.hpp"
-#include "include/webshot_config.hpp"
-#include "include/webshot_crud.hpp"
-#include "include/webshot_denylist.hpp"
+#include "deadline_utils.hpp"
+#include "host_policy.hpp"
+#include "http_utils.hpp"
+#include "link.hpp"
 #include "schemas/webshot.hpp"
+#include "server_errors.hpp"
+#include "webshot_config.hpp"
+#include "webshot_crud.hpp"
+#include "webshot_denylist.hpp"
 
 #include <chrono>
 #include <string>

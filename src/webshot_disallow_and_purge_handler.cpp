@@ -1,13 +1,13 @@
-#include "include/webshot_disallow_and_purge_handler.hpp"
+#include "webshot_disallow_and_purge_handler.hpp"
 /**
  * @file
  * @brief Handler that disallows a host and enqueues purge of its captures.
  */
-#include "include/deadline_utils.hpp"
-#include "include/http_utils.hpp"
-#include "include/link.hpp"
-#include "include/webshot_config.hpp"
-#include "include/webshot_crud.hpp"
+#include "deadline_utils.hpp"
+#include "http_utils.hpp"
+#include "link.hpp"
+#include "webshot_config.hpp"
+#include "webshot_crud.hpp"
 
 #include <chrono>
 #include <string>

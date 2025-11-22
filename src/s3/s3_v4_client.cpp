@@ -2,11 +2,11 @@
  * @file
  * @brief Minimal S3 client that signs requests with AWS Signature V4.
  *
- * Implements the subset of methods required by this service (PUT, HEAD, DELETE
- * and presign helpers). It relies on userver HTTP client for transport.
+ * Implements the subset of methods required by this service (PUT, HEAD, DELETE)
+ * and presign helpers. It relies on userver HTTP client for transport.
  */
-#include "../include/s3_v4_client.hpp"
-#include "sigv4_signer.hpp"
+#include "s3/s3_v4_client.hpp"
+#include "s3/sigv4_signer.hpp"
 
 #include <algorithm>
 #include <stdexcept>

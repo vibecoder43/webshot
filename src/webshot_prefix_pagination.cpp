@@ -3,7 +3,7 @@
  * @brief Implementation of helpers for pagination by link prefix.
  */
 
-#include "include/webshot_prefix_pagination.hpp"
+#include "webshot_prefix_pagination.hpp"
 
 #include "schemas/webshot.hpp"
 

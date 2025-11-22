@@ -5,8 +5,8 @@
 #include <userver/utest/http_client.hpp>
 #include <userver/utest/utest.hpp>
 
+#include "s3/s3_v4_client.hpp"
 #include "s3/sigv4_signer.hpp"
-#include "s3_v4_client.hpp"
 
 using v1::s3v4::AccessKeyId;
 using v1::s3v4::BuildCanonicalRequest;
