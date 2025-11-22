@@ -14,6 +14,23 @@ set(WEBSHOT_ENABLE_COVERAGE
           "Enable LLVM coverage instrumentation for the webshot service binary")
 set(WEBSHOT_COVERAGE_FLAGS "-fprofile-instr-generate" "-fcoverage-mapping")
 
+if(NOT CMAKE_CXX_CLANG_TIDY)
+  find_program(WEBSHOT_CLANG_TIDY_BIN NAMES clang-tidy)
+  if(WEBSHOT_CLANG_TIDY_BIN)
+    set(CMAKE_CXX_CLANG_TIDY "${WEBSHOT_CLANG_TIDY_BIN}")
+  else()
+    message(WARNING "clang-tidy not found; static analysis disabled")
+  endif()
+endif()
+
+if(WEBSHOT_CLANG_FORMAT)
+  set(CLANG_FORMAT_BIN "${WEBSHOT_CLANG_FORMAT}")
+elseif(NOT CLANG_FORMAT_BIN OR CLANG_FORMAT_BIN STREQUAL
+                               "CLANG_FORMAT_BIN-NOTFOUND")
+  find_program(CLANG_FORMAT_BIN NAMES clang-format clang-format-21
+                                      clang-format-20)
+endif()
+
 set(${PROJECT_NAME}_headers
     include/s3_credentials_types.hpp
     include/s3/s3_sts_client.hpp
