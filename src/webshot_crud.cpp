@@ -599,8 +599,8 @@ dto::UuidWithTimeLink WebshotCrud::createWebshot(Link link, std::vector<std::str
     auto *implPtr = impl.get();
     return us::utils::Async(
                implPtr->crawlingTaskProcessor, "create-webshot",
-               [implPtr, link = std::move(link), pinned = std::move(pinnedIps)]() mutable {
-                   return implPtr->runCrawlJob(std::move(link), std::move(pinned));
+               [implPtr, link = std::move(link), pinned = std::move(pinnedIps)]() {
+                   return implPtr->runCrawlJob(link, pinned);
                }
     ).Get();
 }
