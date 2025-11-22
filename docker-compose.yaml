@@ -1,3 +1,4 @@
+---
 services:
     webshot-meta-db:
         image: postgres:15.10-bookworm
@@ -64,7 +65,7 @@ services:
     crawler-netkeeper:
         image: alpine:3.20
         container_name: crawler-netkeeper
-        command: ["sh","-lc","sleep infinity"]
+        command: ["sh", "-lc", "sleep infinity"]
         restart: unless-stopped
         networks:
             - crawler_net
@@ -76,8 +77,8 @@ services:
         network_mode: host
         volumes:
             - ./docker/docker_user_netpol.sh:/usr/local/bin/docker_user_netpol.sh:ro
-        entrypoint: ["/bin/sh","-lc"]
-        command: 
+        entrypoint: ["/bin/sh", "-lc"]
+        command:
             - "apk add --no-cache iptables bash jq >/dev/null 2>&1 || true; /usr/local/bin/docker_user_netpol.sh apply-cidr 172.31.0.0/16; tail -f /dev/null"
         restart: unless-stopped
     seaweedfs:
