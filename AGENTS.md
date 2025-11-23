@@ -37,6 +37,7 @@
 - Declarations must exactly match definitions (names and signatures).
 - Avoid duplicate code; prefer reusable helpers.
 - Do not introduce identifiers, filenames, configuration keys, environment variables, database objects, Docker labels, or documentation terms containing the words "application", "app", or "system".
+- Class members must not use a trailing underscore naming style; use regular lowerCamelCase for member variables.
 
 ## [[nodiscard]] Usage
 - Prefer `[[nodiscard]]` on functions that return values that should not be ignored (such as `std::optional<T>`, containers or DTOs, find or query helpers, and JSON or HTTP helpers).
