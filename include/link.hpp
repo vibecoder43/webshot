@@ -16,9 +16,7 @@ struct InvalidLinkException : public std::runtime_error {
 /**
  * @brief Parsed and normalized URL used as an index key.
  *
- * This type encapsulates a normalized representation of a link. It stores the
- * parsed `ada::url_aggregator` and a scheme‑less canonical string used for
- * comparisons and database keys.
+ * This type encapsulates a normalized representation of a link.
  */
 struct [[nodiscard]] Link {
     ada::url_aggregator url;
@@ -39,11 +37,13 @@ struct [[nodiscard]] Link {
     [[nodiscard]] static Link fromUserInput(std::string in, size_t queryPartLengthMax);
 
     /** @return Normalized, lower‑cased host, punycode if applicable. */
-    [[nodiscard]] std::string host() const { return std::string(url.get_hostname()); }
+    [[nodiscard]] std::string host() const;
     /** @return Full URL using the http scheme. */
-    [[nodiscard]] std::string httpUrl() const { return std::string("http://") + schemeLess; }
+    [[nodiscard]] std::string httpUrl() const;
+    /** @return Full URL using the https scheme. */
+    [[nodiscard]] std::string httpsUrl() const;
     /** @return Scheme‑less normalized representation used for lookups. */
-    [[nodiscard]] const std::string &normalized() const { return schemeLess; }
+    [[nodiscard]] std::string normalized() const;
 };
 
 } // namespace v1

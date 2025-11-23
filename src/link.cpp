@@ -47,10 +47,11 @@ static bool isValidScheme(std::string_view sv) noexcept
 }
 
 /** Build a scheme‑less canonical form for indexing. */
-static std::string buildSchemeLess(ada::url_aggregator &url)
+static std::string buildSchemeLess(const ada::url_aggregator &url)
 {
-    url.set_protocol("http");
-    auto href = std::string(url.get_href().substr(7));
+    auto copy = url;
+    copy.set_protocol("http");
+    auto href = std::string(copy.get_href().substr(7));
     if (!href.empty() && href.back() == '/')
         href.pop_back();
     return href;
@@ -102,5 +103,13 @@ Link Link::fromUserInput(std::string in, size_t queryPartLengthMax)
     out.schemeLess = buildSchemeLess(out.url);
     return out;
 }
+
+std::string Link::host() const { return std::string(url.get_hostname()); }
+
+std::string Link::httpUrl() const { return std::string("http://") + schemeLess; }
+
+std::string Link::httpsUrl() const { return std::string("https://") + schemeLess; }
+
+std::string Link::normalized() const { return schemeLess; }
 
 } // namespace v1
