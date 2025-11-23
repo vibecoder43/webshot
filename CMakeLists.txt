@@ -13,6 +13,12 @@ set(WEBSHOT_ENABLE_COVERAGE
     CACHE BOOL
           "Enable LLVM coverage instrumentation for the webshot service binary")
 set(WEBSHOT_COVERAGE_FLAGS "-fprofile-instr-generate" "-fcoverage-mapping")
+option(WEBSHOT_ENABLE_LLVM_SYMBOLIZER
+       "Enable llvm-symbolizer integration for sanitizer stack traces" ON)
+set(WEBSHOT_LLVM_SYMBOLIZER_BIN
+    "llvm-symbolizer-21"
+    CACHE STRING "llvm-symbolizer binary used for sanitizer stack traces")
+
 option(WEBSHOT_USE_MOLD "Use mold linker if available" ON)
 if(WEBSHOT_USE_MOLD)
   find_program(WEBSHOT_MOLD_BIN NAMES mold)
