@@ -19,6 +19,7 @@
 - Configure sanitizer build: `cmake --preset configure-preset-clang-san` (outputs to `/tmp/build-webshot-san`).
 - Build and regenerate schema code: `cmake --build --preset build-preset-clang-san` after changing `schemas/`.
 - Run service from build directory: `./webshot --config userver_config.yaml` (override config path with `--config` for local variants).
+- When passing config vars on the CLI, use `--config_vars` (underscore); userver does not support a `--config-vars` (dash) flag even though some upstream docs mention it.
 - Run tests: `ctest --output-on-failure` in the same build directory.
 - The project uses the Ninja generator; there is no need to pass `-j` to `cmake --build` (parallelism is handled by Ninja or `--parallel` if needed).
 - Compute test coverage: configure with `cmake --preset configure-preset-clang-cov` (outputs to `/tmp/build-webshot-cov`, enables `WEBSHOT_ENABLE_COVERAGE=ON`), then `cmake --build --preset build-preset-clang-cov --target webshot-coverage` to build instrumented binaries, run tests, and emit llvm-cov output under `/tmp/build-webshot-cov/tests/coverage`; optional HTML rendering with `--target webshot-coverage-html` writes colored reports to `/tmp/build-webshot-cov/tests/coverage/html`.
@@ -38,6 +39,7 @@
 - Avoid duplicate code; prefer reusable helpers.
 - Do not introduce identifiers, filenames, configuration keys, environment variables, database objects, Docker labels, or documentation terms containing the words "application", "app", or "system".
 - Class members must not use a trailing underscore naming style; use regular lowerCamelCase for member variables.
+- Never call `std::chrono::system_clock::now()`; use `userver::utils::datetime::Now()` instead.
 
 ## [[nodiscard]] Usage
 - Prefer `[[nodiscard]]` on functions that return values that should not be ignored (such as `std::optional<T>`, containers or DTOs, find or query helpers, and JSON or HTTP helpers).
