@@ -23,6 +23,7 @@
 #include <userver/http/common_headers.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
+#include <userver/utils/datetime.hpp>
 
 namespace s3 = userver::s3api;
 namespace http = userver::clients::http;
@@ -331,7 +332,7 @@ void S3V4Client::SignRequest(
     http::Headers &headers, const std::string &payload_hash
 ) const
 {
-    const auto now = std::chrono::system_clock::now();
+    const auto now = userver::utils::datetime::Now();
     const SigV4Params params = MakeSigV4Params(now);
 
     auto to_sign = detail::PrepareSignedHeaders(std::string(host), headers);
@@ -432,7 +433,7 @@ std::string S3V4Client::PresignVirtualHost(
     std::optional<http::Headers> extra_headers
 ) const
 {
-    const auto now = std::chrono::system_clock::now();
+    const auto now = userver::utils::datetime::Now();
     const auto ttl = ComputePresignTtl(now, expires_at);
 
     const auto built = MakeVirtualHostUrl(path, protocol);
@@ -495,7 +496,7 @@ std::string S3V4Client::PresignPathStyle(
     const std::chrono::system_clock::time_point &expires_at, std::string_view protocol
 ) const
 {
-    const auto now = std::chrono::system_clock::now();
+    const auto now = userver::utils::datetime::Now();
     const auto ttl = ComputePresignTtl(now, expires_at);
 
     const auto built = MakePathStyleUrl(path, protocol);

@@ -16,6 +16,7 @@
 #include <userver/clients/http/response.hpp>
 #include <userver/http/common_headers.hpp>
 #include <userver/logging/log.hpp>
+#include <userver/utils/datetime.hpp>
 #include <userver/utils/datetime/from_string_saturating.hpp>
 
 namespace http = userver::clients::http;
@@ -118,7 +119,7 @@ StsCredentials FetchStsCredentials(
 
     const std::string payloadHash = s3v4::Sha256Hex(body);
 
-    const auto now = std::chrono::system_clock::now();
+    const auto now = userver::utils::datetime::Now();
     s3v4::SigV4Params params;
     params.region = region;
     params.service = "sts";

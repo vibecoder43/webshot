@@ -384,7 +384,7 @@ void WebshotCrud::Impl::runS3RefreshLoop()
 {
     while (!engine::current_task::ShouldCancel()) {
         auto snapshot = s3State.Read();
-        const auto now = chrono::system_clock::now();
+        const auto now = us::utils::datetime::Now();
         auto refreshDelay = snapshot->expiresAt - now -
                             chrono::seconds{s3CredentialsRefreshMarginSec};
         if (refreshDelay < chrono::seconds{0})

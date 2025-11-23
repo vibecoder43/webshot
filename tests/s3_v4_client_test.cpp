@@ -4,6 +4,7 @@
 
 #include <userver/utest/http_client.hpp>
 #include <userver/utest/utest.hpp>
+#include <userver/utils/datetime.hpp>
 
 #include "s3/s3_v4_client.hpp"
 #include "s3/sigv4_signer.hpp"
@@ -203,7 +204,7 @@ UTEST(S3SigV4Client, VirtualHostRequiresBucket)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, std::string{});
 
-    const auto expiresAt = std::chrono::system_clock::now() + std::chrono::seconds(60);
+    const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds(60);
     EXPECT_THROW(
         client->GenerateDownloadUrlVirtualHostAddressing("obj", expiresAt, "https"),
         std::runtime_error
@@ -218,7 +219,7 @@ UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "bucket-name");
 
-    const auto expiresAt = std::chrono::system_clock::now() + std::chrono::seconds(60);
+    const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds(60);
     const std::string url = client->GenerateDownloadUrlVirtualHostAddressing(
         "path/object", expiresAt, "https"
     );
@@ -280,7 +281,7 @@ UTEST(S3SigV4Client, UploadPresignIncludesContentType)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "bucket-name");
 
-    const auto expiresAt = std::chrono::system_clock::now() + std::chrono::seconds(120);
+    const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds(120);
     const std::string url = client->GenerateUploadUrlVirtualHostAddressing(
         "ignored-body", "text/plain", "path/file.txt", expiresAt, "http"
     );
