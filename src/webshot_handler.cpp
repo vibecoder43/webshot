@@ -119,9 +119,7 @@ std::string WebshotHandler::HandleRequestThrow(
         }
         const auto token = request.GetArg("page_token");
         try {
-            auto page = crud.findWebshotByLinkPage(
-                link, token.empty() ? std::nullopt : std::make_optional(token)
-            );
+            auto page = crud.findWebshotByLinkPage(link, token);
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondError(response, kBadRequest, "invalid page_token");

@@ -51,11 +51,10 @@ public:
     [[nodiscard]] std::vector<dto::UuidWithTime> findWebshotByLink(const Link &link);
     /** @brief Paged variant for capture ids by link. */
     [[nodiscard]] dto::PagedFindWebshotByUrlResponse
-    findWebshotByLinkPage(const Link &link, const std::optional<std::string> &pageToken);
+    findWebshotByLinkPage(const Link &link, std::string pageToken);
     /** @brief Paged list of captures grouped by normalized link prefix. */
-    [[nodiscard]] dto::PagedFindWebshotByPrefixResponse findWebshotsByPrefixPage(
-        const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
-    );
+    [[nodiscard]] dto::PagedFindWebshotByPrefixResponse
+    findWebshotsByPrefixPage(const std::string &normalizedPrefix, std::string pageToken);
     /** @brief Disallow a host and enqueue purge of its captures. */
     void disallowAndPurgeHost(std::string host);
     /** @brief Static config schema for this component. */

@@ -619,7 +619,7 @@ std::optional<Webshot> WebshotCrud::findWebshot(Uuid uuid)
 }
 
 dto::PagedFindWebshotByUrlResponse
-WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::string> &pageToken)
+WebshotCrud::findWebshotByLinkPage(const Link &link, std::string pageToken)
 {
     namespace crud = v1::crud;
 
@@ -629,11 +629,11 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
     };
     std::vector<Row> dbRows;
     const auto &norm = link.normalized();
-    if (!pageToken || pageToken->empty()) {
+    if (pageToken.empty()) {
         dbRows = impl->readonly(sql::kSelectWebshotByLinkFirst.data(), norm, impl->webshotsPageMax)
                      .AsContainer<std::vector<Row>>(pg::kRowTag);
     } else {
-        auto cur = crud::decodeCursor(*pageToken);
+        auto cur = crud::decodeCursor(pageToken);
         if (!cur)
             throw errors::InvalidPageTokenException("invalid page_token");
         dbRows = impl->readonly(
@@ -660,9 +660,8 @@ WebshotCrud::findWebshotByLinkPage(const Link &link, const std::optional<std::st
     return {items, next};
 }
 
-dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
-    const std::string &normalizedPrefix, const std::optional<std::string> &pageToken
-)
+dto::PagedFindWebshotByPrefixResponse
+WebshotCrud::findWebshotsByPrefixPage(const std::string &normalizedPrefix, std::string pageToken)
 {
     namespace crud = v1::crud;
 
@@ -671,8 +670,8 @@ dto::PagedFindWebshotByPrefixResponse WebshotCrud::findWebshotsByPrefixPage(
     const auto linksPerPage = impl->webshotsLinksPerPageMax;
 
     std::optional<crud::PrefixCursor> cur;
-    if (pageToken && !pageToken->empty()) {
-        cur = crud::decodePrefixCursor(*pageToken);
+    if (!pageToken.empty()) {
+        cur = crud::decodePrefixCursor(pageToken);
         if (!cur || cur->prefix != normalizedPrefix)
             throw errors::InvalidPageTokenException("invalid page_token");
     }

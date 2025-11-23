@@ -80,9 +80,7 @@ std::string WebshotsByPrefixHandler::HandleRequestThrow(
         const auto token = request.GetArg("page_token");
 
         try {
-            auto page = crud.findWebshotsByPrefixPage(
-                normalizedPrefix, token.empty() ? std::nullopt : std::optional<std::string>(token)
-            );
+            auto page = crud.findWebshotsByPrefixPage(normalizedPrefix, token);
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondError(response, kBadRequest, "invalid page_token");
