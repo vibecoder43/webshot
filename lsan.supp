@@ -1,2 +1,4 @@
 # Ignore OpenSSL init leak reported by LSAN.
 leak:CRYPTO_malloc
+leak:OPENSSL_init_crypto
+leak:libcrypto

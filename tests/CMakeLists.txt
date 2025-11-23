@@ -28,6 +28,9 @@ function(webshot_add_cpp_test target)
   apply_defaults(${target})
   add_test(NAME ${target} COMMAND ${target})
   set(test_env "PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{PATH}")
+  # Keep leak reports clean: rely on project-wide LSAN suppression file.
+  set(test_env
+      "${test_env};LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/lsan.supp")
   set_tests_properties(${target} PROPERTIES ENVIRONMENT "${test_env}")
 
   if(WEBSHOT_ENABLE_COVERAGE)
@@ -48,6 +51,8 @@ webshot_add_cpp_test(
   ${CMAKE_CURRENT_SOURCE_DIR}/s3_v4_client_test.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/s3_v4_client.cpp
+  ${CMAKE_SOURCE_DIR}/src/link.cpp
+  ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp
   LIBS
   userver::core
   INCLUDE_DIRS
@@ -180,11 +185,6 @@ get_property(
   PROPERTY TESTS)
 if(WEBSHOT_ALL_TESTS)
   foreach(t ${WEBSHOT_ALL_TESTS})
-    set_property(
-      TEST ${t}
-      APPEND
-      PROPERTY ENVIRONMENT
-               "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/lsan.supp")
     if(WEBSHOT_ENABLE_LLVM_SYMBOLIZER AND WEBSHOT_LLVM_SYMBOLIZER_BIN)
       set_property(
         TEST ${t}

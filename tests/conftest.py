@@ -11,6 +11,11 @@ pytest_plugins = [
     "helpers.sql_loader",
 ]
 
+USERVER_CONFIG_HOOKS = [
+    "userver_pg_config",
+    "userver_config_s3",
+]
+
 psycopg2.extras.register_uuid()
 
 
@@ -38,3 +43,21 @@ def userver_pg_config(pgsql_local):
             deny_cfg["dbconnection"] = deny_uri
 
     return _patch
+
+
+@pytest.fixture(scope="session")
+def userver_config_s3():
+    def _patch(config_yaml, config_vars):
+        components = config_yaml["components_manager"]["components"]
+        crud_cfg = components.get("webshot-crud")
+        if crud_cfg is not None:
+            crud_cfg["s3-use-sts"] = False
+
+    return _patch
+
+
+@pytest.fixture(scope="session")
+def service_env(service_source_dir: pathlib.Path):
+    return {
+        "LSAN_OPTIONS": f"suppressions={service_source_dir}/lsan.supp",
+    }
