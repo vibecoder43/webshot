@@ -13,9 +13,9 @@ components_manager:
             fs-task-processor: fs-task-processor
         secdist:
         default-secdist-provider:
-            missing-ok: false
-            config: /home/noofva/work/webshot/secrets/secdist_yandex_s3.json
+            missing-ok: true
             format: json
+            environment-secrets-key: WEBSHOT_SECRETS_KEY
         dynamic-config:
             defaults:
                 USERVER_RPS_CCONTROL_ENABLED: true

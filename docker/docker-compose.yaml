@@ -24,6 +24,14 @@ services:
             - type: bind
               source: ../sql/schema/denylist_db_schema.sql
               target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
+    webshot-test-db:
+        image: postgres:15.10-bookworm
+        container_name: webshottestdb
+        dns: ["172.17.0.1"]
+        environment:
+            POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+            - 15434:5432
     scalar:
         image: scalarapi/api-reference:latest
         container_name: webshot_scalar
@@ -68,7 +76,10 @@ services:
             - NET_ADMIN
         network_mode: host
         volumes:
-            - ./docker_user_netpol.sh:/usr/local/bin/docker_user_netpol.sh:ro
+            - type: bind
+              source: ./docker_user_netpol.sh
+              target: /usr/local/bin/docker_user_netpol.sh
+              read_only: true
         entrypoint: ["/bin/sh", "-lc"]
         command:
             - "apk add --no-cache iptables bash jq >/dev/null 2>&1 || true; /usr/local/bin/docker_user_netpol.sh apply-cidr 172.31.0.0/16; tail -f /dev/null"
