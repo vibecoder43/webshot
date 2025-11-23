@@ -10,3 +10,4 @@ verify_netpol.sh
 plan.md
 security.md
 secrets/
+format.sh
