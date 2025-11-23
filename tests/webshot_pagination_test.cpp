@@ -1,6 +1,6 @@
 #include <string>
 
-#include <boost/uuid/random_generator.hpp>
+#include <userver/utils/boost_uuid4.hpp>
 
 #include <userver/utest/utest.hpp>
 
@@ -16,7 +16,7 @@ UTEST(WebshotPagination, CursorRoundTrip)
 {
     Cursor cursor{
         Clock::time_point(std::chrono::microseconds(987654321)),
-        boost::uuids::random_generator()(),
+        userver::utils::generators::GenerateBoostUuid(),
     };
 
     const auto token = encodeCursor(cursor);
