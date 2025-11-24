@@ -65,6 +65,7 @@
 #include <userver/utils/datetime.hpp>
 #include <userver/utils/datetime/from_string_saturating.hpp>
 #include <userver/utils/datetime/timepoint_tz.hpp>
+#include <userver/utils/periodic_task.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
 
@@ -134,10 +135,6 @@ properties:
         type: integer
         minimum: 1
         description: 'Overhead timeout added to crawler stage timeouts in seconds'
-    purge-job-timeout-sec:
-        type: integer
-        minimum: 1
-        description: 'Upper bound for a single purge job in seconds'
     crawler-lang:
         type: string
         description: 'Language hint passed to the crawler'
@@ -162,6 +159,14 @@ properties:
         type: integer
         minimum: 1
         description: 'Delay between failed S3 credential refresh attempts in seconds'
+    purge-job-timeout-sec:
+        type: integer
+        minimum: 1
+        description: 'Upper bound for a single purge job in seconds'
+    purge-delete-batch-size:
+        type: integer
+        minimum: 1
+        description: 'Number of objects to delete per purge batch'
 )");
 }
 
@@ -184,15 +189,14 @@ public:
     const int64_t webshotsPerLinkMax;
     const int64_t webshotsLinksPerPageMax;
     const std::string crawlerNetwork;
-    const std::string crawlerImage;
     const int64_t crawlerWorkers;
+    const std::string crawlerImage;
     const int64_t crawlerPageLoadTimeoutSec;
     const int64_t crawlerPostLoadDelaySec;
     const int64_t crawlerNetIdleWaitSec;
     const int64_t crawlerPageExtraDelaySec;
     const int64_t crawlerBehaviorTimeoutSec;
     const int64_t crawlerOverheadTimeoutSec;
-    const int64_t purgeJobTimeoutSec;
     const std::string crawlerLang;
     const std::string crawlerScopeType;
     const bool s3UseSts;
@@ -200,6 +204,8 @@ public:
     const int64_t s3CredentialsDurationSec;
     const int64_t s3CredentialsRefreshMarginSec;
     const int64_t s3CredentialsRefreshRetrySec;
+    const int64_t purgeJobTimeoutSec;
+    const int64_t purgeDeleteBatchSize;
     const WebshotConfig &svcCfg;
     pg::ClusterPtr cluster;
     us::clients::http::Client &httpClient;
@@ -213,9 +219,11 @@ public:
     s3v4::SecretAccessKey staticSecretAccessKey;
     WebshotDenylist &denylist;
     engine::CancellableSemaphore crawlSlots;
-    engine::TaskProcessor &crawlingTaskProcessor;
+    engine::TaskProcessor &purgeTaskProcessor;
+    engine::TaskProcessor &credsRefreshTaskProcessor;
     // must die first
-    concurrent::BackgroundTaskStorage backgroundTaskStorage;
+    us::utils::PeriodicTask s3RefreshTask;
+    concurrent::BackgroundTaskStorage purgeBackground;
 
     [[nodiscard]] dto::UuidWithTimeLink runCrawlJob(Link link, std::vector<std::string> pinnedIps);
     void runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
@@ -224,7 +232,7 @@ public:
     void purgeHost(const std::string &host);
     [[nodiscard]] S3ClientState fetchS3ClientStateFromSts() const;
     void startS3RefreshTask();
-    void runS3RefreshLoop();
+    void refreshS3CredentialsTask();
     explicit Impl(
         const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
@@ -232,30 +240,36 @@ public:
           webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>()),
           webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>()),
           crawlerNetwork(cfg["crawler-network"].As<std::string>()),
-          crawlerImage(cfg["crawler-image"].As<std::string>()),
           crawlerWorkers(cfg["crawler-workers"].As<int64_t>()),
+          crawlerImage(cfg["crawler-image"].As<std::string>()),
           crawlerPageLoadTimeoutSec(cfg["crawler-page-load-timeout-sec"].As<int64_t>()),
           crawlerPostLoadDelaySec(cfg["crawler-post-load-delay-sec"].As<int64_t>()),
           crawlerNetIdleWaitSec(cfg["crawler-net-idle-wait-sec"].As<int64_t>()),
           crawlerPageExtraDelaySec(cfg["crawler-page-extra-delay-sec"].As<int64_t>()),
           crawlerBehaviorTimeoutSec(cfg["crawler-behavior-timeout-sec"].As<int64_t>()),
           crawlerOverheadTimeoutSec(cfg["crawler-overhead-timeout-sec"].As<int64_t>()),
-          purgeJobTimeoutSec(cfg["purge-job-timeout-sec"].As<int64_t>()),
           crawlerLang(cfg["crawler-lang"].As<std::string>()),
           crawlerScopeType(cfg["crawler-scope-type"].As<std::string>()),
-          s3UseSts(cfg["s3-use-sts"].As<bool>(true)),
+          s3UseSts(cfg["s3-use-sts"].As<bool>()),
           s3CredentialsEndpoint(cfg["s3-credentials-endpoint"].As<std::string>()),
           s3CredentialsDurationSec(cfg["s3-credentials-duration-sec"].As<int64_t>()),
           s3CredentialsRefreshMarginSec(cfg["s3-credentials-refresh-margin-sec"].As<int64_t>()),
           s3CredentialsRefreshRetrySec(cfg["s3-credentials-refresh-retry-sec"].As<int64_t>()),
+          purgeJobTimeoutSec(cfg["purge-job-timeout-sec"].As<int64_t>()),
+          purgeDeleteBatchSize(cfg["purge-delete-batch-size"].As<int64_t>()),
           svcCfg(ctx.FindComponent<WebshotConfig>()),
           cluster(ctx.FindComponent<us::components::Postgres>("webshot-meta-db").GetCluster()),
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
           denylist(ctx.FindComponent<WebshotDenylist>()),
           crawlSlots(cfg["crawl-concurrency"].As<size_t>()),
-          crawlingTaskProcessor(ctx.GetTaskProcessor("crawling-task-processor")),
-          backgroundTaskStorage(crawlingTaskProcessor)
+          purgeTaskProcessor(ctx.GetTaskProcessor("purge-task-processor")),
+          credsRefreshTaskProcessor(ctx.GetTaskProcessor("creds-refresh-task-processor")),
+          s3RefreshTask(), purgeBackground(purgeTaskProcessor)
     {
+        UINVARIANT(
+            s3CredentialsDurationSec > s3CredentialsRefreshMarginSec,
+            "s3-credentials-duration-sec must be greater than s3-credentials-refresh-margin-sec"
+        );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
         UINVARIANT(
@@ -372,41 +386,49 @@ WebshotCrud::Impl::S3ClientState WebshotCrud::Impl::fetchS3ClientStateFromSts() 
 
 void WebshotCrud::Impl::startS3RefreshTask()
 {
-    backgroundTaskStorage.CriticalAsyncDetach("s3-credentials-refresh", [this]() {
+    auto snapshot = s3State.Read();
+    const auto now = us::utils::datetime::Now();
+    auto delay = s3refresh::computeRefreshDelay(
+        now, snapshot->expiresAt, s3CredentialsRefreshMarginSec
+    );
+
+    us::utils::PeriodicTask::Settings settings(
+        chrono::duration_cast<chrono::milliseconds>(delay), chrono::milliseconds(0)
+    );
+    settings.task_processor = &credsRefreshTaskProcessor;
+
+    s3RefreshTask.Start("s3-credentials-refresh", settings, [this]() {
         try {
-            runS3RefreshLoop();
+            refreshS3CredentialsTask();
         } catch (const std::exception &e) {
-            LOG_ERROR() << fmt::format("S3 credentials refresh loop terminated: {}", e.what());
+            LOG_ERROR() << fmt::format("S3 credentials refresh task terminated: {}", e.what());
         }
     });
 }
 
-void WebshotCrud::Impl::runS3RefreshLoop()
+void WebshotCrud::Impl::refreshS3CredentialsTask()
 {
-    while (!engine::current_task::ShouldCancel()) {
-        auto snapshot = s3State.Read();
-        const auto now = us::utils::datetime::Now();
-        const auto refreshDelay = s3refresh::computeRefreshDelay(
-            now, snapshot->expiresAt, s3CredentialsRefreshMarginSec
-        );
-
-        engine::SleepFor(refreshDelay);
+    for (;;) {
         if (engine::current_task::ShouldCancel())
             return;
+        try {
+            const auto newState = fetchS3ClientStateFromSts();
+            s3State.Assign(newState);
 
-        for (;;) {
-            if (engine::current_task::ShouldCancel())
-                return;
-            try {
-                const auto newState = fetchS3ClientStateFromSts();
-                s3State.Assign(newState);
-                break;
-            } catch (const std::exception &e) {
-                LOG_ERROR() << fmt::format(
-                    "Failed to refresh S3 credentials from STS: {}", e.what()
-                );
-                engine::SleepFor(chrono::seconds(s3CredentialsRefreshRetrySec));
-            }
+            const auto now = us::utils::datetime::Now();
+            auto nextDelay = s3refresh::computeRefreshDelay(
+                now, newState.expiresAt, s3CredentialsRefreshMarginSec
+            );
+
+            us::utils::PeriodicTask::Settings settings(
+                chrono::duration_cast<chrono::milliseconds>(nextDelay), chrono::milliseconds(0)
+            );
+            settings.task_processor = &credsRefreshTaskProcessor;
+            s3RefreshTask.SetSettings(settings);
+            break;
+        } catch (const std::exception &e) {
+            LOG_ERROR() << fmt::format("Failed to refresh S3 credentials from STS: {}", e.what());
+            engine::SleepFor(chrono::seconds(s3CredentialsRefreshRetrySec));
         }
     }
 }
@@ -568,10 +590,11 @@ WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
 void WebshotCrud::Impl::purgeHost(const std::string &host)
 {
     std::string hostRev(rbegin(host), rend(host));
-    const int64_t kBatch = 1000;
     while (true) {
         try {
-            auto res = readonly(sql::kSelectIdsByHostOrSubhostsPaged, hostRev, kBatch);
+            auto res = readonly(
+                sql::kSelectIdsByHostOrSubhostsPaged, hostRev, purgeDeleteBatchSize
+            );
             std::vector<Uuid> ids;
             ids.reserve(res.Size());
             for (auto row : res)
@@ -590,7 +613,7 @@ void WebshotCrud::Impl::purgeHost(const std::string &host)
             static_cast<void>(readwrite(sql::kDeleteWebshotsByIds, ids));
         } catch (const std::exception &e) {
             LOG_ERROR() << fmt::format("denylist purge failed for {}: {}", host, e.what());
-            break;
+            throw;
         }
     }
 }
@@ -599,7 +622,7 @@ dto::UuidWithTimeLink WebshotCrud::createWebshot(Link link, std::vector<std::str
 {
     auto *implPtr = impl.get();
     return us::utils::Async(
-               implPtr->crawlingTaskProcessor, "create-webshot",
+               "create-webshot",
                [implPtr, link = std::move(link), pinned = std::move(pinnedIps)]() {
                    return implPtr->runCrawlJob(link, pinned);
                }
@@ -765,15 +788,16 @@ void WebshotCrud::disallowAndPurgeHost(std::string host)
 
     LOG_INFO() << fmt::format("enqueued for host {}", host);
 
-    impl->backgroundTaskStorage.AsyncDetach("purge-host-lambda", [implPtr = impl.get(), host]() {
+    impl->purgeBackground.AsyncDetach("purge-host-lambda", [implPtr = impl.get(), host]() {
         try {
             engine::current_task::SetDeadline(
                 engine::Deadline::FromDuration(chrono::seconds(implPtr->purgeJobTimeoutSec))
             );
-            LOG_INFO() << fmt::format("Starting purge for denylisted host {}", host);
+            LOG_INFO() << fmt::format("Starting purge for denylisted host: {}", host);
             implPtr->purgeHost(host);
         } catch (const std::exception &e) {
-            LOG_ERROR() << fmt::format("Purge task failed for {}: {}", host, e.what());
+            LOG_CRITICAL() << fmt::format("Purge task failed for {}: {}", host, e.what());
+            us::utils::AbortWithStacktrace("Purge task failed");
         }
     });
 }
