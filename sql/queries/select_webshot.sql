@@ -1,2 +1,2 @@
-select location from webshot where id = $1
-
+select location from webshot
+where id = $1

@@ -7,7 +7,7 @@ create table webshot (
 );
 
 -- For prefix/paged scans by link
-create index if not exists webshot_link_idx on webshot(link, created_at desc, id);
+create index if not exists webshot_link_idx on webshot (link, created_at desc, id);
 
 -- For exact host match purges (via host_rev equality) and fast LIKE prefix on reversed host
 create index if not exists webshot_host_rev_like_idx on webshot (host_rev text_pattern_ops);

@@ -1,2 +1,2 @@
-delete from webshot where id = any($1::uuid[])
-
+delete from webshot
+where id = any($1::uuid [])
