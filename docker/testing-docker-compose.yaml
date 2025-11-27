@@ -10,8 +10,9 @@ services:
             - 5432:5432
         volumes:
             - type: bind
-              source: ../sql/schema/webshot_meta_db_schema.sql
-              target: /docker-entrypoint-initdb.d/webshot_meta_db_schema.sql
+              source: ../sql/schema/capture_meta_db_schema.sql
+              target: /docker-entrypoint-initdb.d/capture_meta_db_schema.sql
+              read_only: true
     shared-state-db:
         image: postgres:18.1-trixie
         container_name: sharedstatedb
@@ -22,8 +23,9 @@ services:
             - 5433:5432
         volumes:
             - type: bind
-              source: ../sql/schema/denylist_db_schema.sql
-              target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
+              source: ../sql/schema/shared_state_db_schema.sql
+              target: /docker-entrypoint-initdb.d/shared_state_db_schema.sql
+              read_only: true
     webshot-test-db:
         image: postgres:18.1-trixie
         container_name: webshottestdb

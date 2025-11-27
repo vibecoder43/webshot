@@ -8,7 +8,7 @@ async def test_list_webshots_orders_by_created_at(
 ):
     """Insert rows via pgsql and verify ordering for /v1/webshot."""
 
-    db = pgsql["webshot_meta_db_schema"]
+    db = pgsql["capture_meta_db_schema"]
     host = "example.com"
     host_rev = host[::-1]
 
@@ -46,7 +46,7 @@ async def test_list_webshots_prefix_sees_inserted_links(
 ):
     """Insert two links sharing a prefix and list by prefix."""
 
-    db = pgsql["webshot_meta_db_schema"]
+    db = pgsql["capture_meta_db_schema"]
     host = "example.com"
     host_rev = host[::-1]
 
@@ -91,7 +91,7 @@ async def test_list_webshots_paged_two_pages(
 ):
     """Verify /v1/webshot uses page_token to paginate link results."""
 
-    db = pgsql["webshot_meta_db_schema"]
+    db = pgsql["capture_meta_db_schema"]
     host = "example.com"
     host_rev = host[::-1]
 

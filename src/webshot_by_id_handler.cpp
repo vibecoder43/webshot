@@ -70,7 +70,7 @@ std::string WebshotById::HandleRequestThrow(
         const auto uuid = us::utils::BoostUuidFromString(uuidStr);
         auto webshot = crud.findWebshot(uuid);
         if (!webshot) {
-            LOG_INFO() << fmt::format("Webshot not found: {}", us::utils::ToString(uuid));
+            LOG_INFO() << fmt::format("webshot not found: {}", us::utils::ToString(uuid));
             return httpu::respondError(response, kNotFound, "webshot not found");
         }
         response.SetStatus(kFound);

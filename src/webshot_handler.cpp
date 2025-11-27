@@ -124,8 +124,7 @@ std::string WebshotHandler::HandleRequestThrow(
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondError(response, kBadRequest, "invalid page_token");
         }
-    } catch (const engine::WaitInterruptedException &e) {
-        // Propagate task cancellation (e.g. client aborted request) to userver
+    } catch (const engine::WaitInterruptedException &) {
         throw;
     } catch (const std::exception &e) {
         LOG_ERROR() << fmt::format("Unhandled error in webshot_handler: {}", e.what());

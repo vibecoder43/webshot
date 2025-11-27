@@ -112,6 +112,6 @@ components_manager:
             dbconnection: $pg_webshot_meta_dsn
             blocking_task_processor: fs-task-processor
         shared-state-db:
-            dbconnection: $pg_denylist_dsn
+            dbconnection: $pg_shared_state_dsn
             blocking_task_processor: fs-task-processor
         webshot-denylist:

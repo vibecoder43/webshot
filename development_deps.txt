@@ -1,5 +1,4 @@
-git cmake ninja-build clang-19 ccache \
-libfmt-dev libabsl-dev \
-docker.io docker-compose-plugin inotify-tools jq \
+git ninja-build clangd ccache \
+docker.io docker-compose-plugin watchexec uv \
 python3 pre-commit \
 clang-format
