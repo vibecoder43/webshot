@@ -1,7 +1,7 @@
 ---
 services:
     capture-meta-db:
-        image: postgres:15.10-bookworm
+        image: postgres:18.1-trixie
         container_name: capturemetadb
         dns: ["172.17.0.1"]
         environment:
@@ -13,7 +13,7 @@ services:
               source: ../sql/schema/webshot_meta_db_schema.sql
               target: /docker-entrypoint-initdb.d/webshot_meta_db_schema.sql
     shared-state-db:
-        image: postgres:15.10-bookworm
+        image: postgres:18.1-trixie
         container_name: sharedstatedb
         dns: ["172.17.0.1"]
         environment:
@@ -25,7 +25,7 @@ services:
               source: ../sql/schema/denylist_db_schema.sql
               target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
     webshot-test-db:
-        image: postgres:15.10-bookworm
+        image: postgres:18.1-trixie
         container_name: webshottestdb
         dns: ["172.17.0.1"]
         environment:
