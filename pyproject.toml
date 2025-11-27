@@ -9,6 +9,7 @@ dependencies = []
 dev = [
     "conan>=2.22.2",
     "ruff>=0.14.6",
+    "sqlfluff>=3.5.0",
 ]
 
 [tool.ruff]
@@ -29,3 +30,8 @@ select = [
     # isort
     "I",
 ]
+
+[tool.sqlfluff.core]
+dialect = "postgres"
+max_line_length = 100
+exclude_rules = ["RF04"]
