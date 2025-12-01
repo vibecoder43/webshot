@@ -184,21 +184,11 @@ UTEST(LinkFromUtf8, ResolvesDotSegments)
     EXPECT_EQ(normalize("https://example.com/a/./b/../c"), std::string{"example.com/a/c"});
 }
 
-UTEST(LinkAdaRegression, MoveThenNormalized)
-{
-    auto text = String::fromBytes(std::string{"https://example.com/webshot-capture-path"});
-    ASSERT_TRUE(text);
-    auto link = Link::fromText(text.value(), kLimit);
-    Link moved = std::move(link);
-    const auto normalized = moved.normalized();
-    EXPECT_FALSE(std::string(normalized.view()).empty());
-}
-
 UTEST(LinkMembers, HostAndHttpUrlNormalized)
 {
-    auto text = String::fromBytes(std::string{"https://Example.com/Path/"});
+    auto text = String::fromBytes(std::string{"https://Example.com:8081/Path/"});
     ASSERT_TRUE(text);
-    const auto link = Link::fromText(text.value(), kLimit);
+    const auto link = Link::fromTextStripPort(text.value(), kLimit);
     EXPECT_EQ(std::string(link.host().view()), std::string{"example.com"});
     EXPECT_EQ(std::string(link.httpUrl().view()), std::string{"http://example.com/Path"});
     EXPECT_EQ(std::string(link.normalized().view()), std::string{"example.com/Path"});

@@ -75,7 +75,7 @@ std::string_view serializeHref(const ada::url_aggregator &url)
 
 namespace v1 {
 
-Link Link::fromText(const String &text, size_t queryPartLengthMax)
+Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort)
 {
     std::string in(text.view());
     absl::StripAsciiWhitespace(&in);
@@ -109,6 +109,8 @@ Link Link::fromText(const String &text, size_t queryPartLengthMax)
     url->set_username("");
     url->set_password("");
     url->clear_hash();
+    if (stripPort)
+        url->clear_port();
 
     if (auto hostname = url->get_hostname(); !hostname.empty() && hostname.back() == '.')
         url->set_hostname(std::string(begin(hostname), end(hostname) - 1));
@@ -116,6 +118,16 @@ Link Link::fromText(const String &text, size_t queryPartLengthMax)
     Link out;
     out.url = std::move(*url);
     return out;
+}
+
+Link Link::fromTextStripPort(const String &text, size_t queryPartLengthMax)
+{
+    return fromTextImpl(text, queryPartLengthMax, true);
+}
+
+Link Link::fromText(const String &text, size_t queryPartLengthMax)
+{
+    return fromTextImpl(text, queryPartLengthMax, false);
 }
 
 String Link::host() const { return String::fromBytesThrow(url.get_hostname()); }

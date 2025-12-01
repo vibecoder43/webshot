@@ -81,7 +81,8 @@ std::string WebshotsByPrefixHandler::HandleRequestThrow(
             );
         String normalizedPrefix;
         try {
-            normalizedPrefix = Link::fromText(*prefix, cfg.queryPartLengthMax()).normalized();
+            normalizedPrefix =
+                Link::fromTextStripPort(*prefix, cfg.queryPartLengthMax()).normalized();
         } catch (const InvalidLinkException &e) {
             return httpu::respondError(response, kBadRequest, *String::fromBytes(e.what()));
         }

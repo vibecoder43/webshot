@@ -44,6 +44,7 @@ struct [[nodiscard]] Link {
      * @throws InvalidLinkException on parse/validation errors.
      */
     [[nodiscard]] static Link fromText(const String &text, size_t queryPartLengthMax);
+    [[nodiscard]] static Link fromTextStripPort(const String &text, size_t queryPartLengthMax);
 
     /** @return Normalized, lower‑cased host, punycode if applicable. */
     [[nodiscard]] String host() const;

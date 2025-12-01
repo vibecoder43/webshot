@@ -96,7 +96,7 @@ std::string WebshotHandler::HandleRequestThrow(
                 return httpu::respondError(response, kBadRequest, "invalid request body"_t);
             }
             try {
-                auto parsed = Link::fromText(
+                auto parsed = Link::fromTextStripPort(
                     String::fromBytesThrow(req.link), config.queryPartLengthMax()
                 );
                 auto host = parsed.host();
@@ -123,7 +123,7 @@ std::string WebshotHandler::HandleRequestThrow(
             return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
         Link link;
         try {
-            link = Link::fromText(*str, config.queryPartLengthMax());
+            link = Link::fromTextStripPort(*str, config.queryPartLengthMax());
         } catch (const InvalidLinkException &e) {
             return httpu::respondError(response, kBadRequest, *String::fromBytes(e.what()));
         }

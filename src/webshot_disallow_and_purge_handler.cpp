@@ -77,7 +77,7 @@ std::string WebshotDisallowAndPurgeHandler::HandleRequestThrow(
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     Link link;
     try {
-        link = Link::fromText(*host, config.queryPartLengthMax());
+        link = Link::fromTextStripPort(*host, config.queryPartLengthMax());
     } catch (const InvalidLinkException &e) {
         LOG_INFO() << fmt::format("invalid host: {}", e.what());
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
