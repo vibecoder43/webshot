@@ -13,6 +13,7 @@
 #include "webshot_config.hpp"
 #include "webshot_crud.hpp"
 #include "webshot_denylist.hpp"
+#include "webshot_prefix_utils.hpp"
 
 #include <chrono>
 #include <exception>
@@ -106,7 +107,8 @@ std::string WebshotHandler::HandleRequestThrow(
                 auto pubs = HostPolicy::resolvePublic(resolver, host, finalDeadline);
                 if (pubs.empty())
                     throw InvalidLinkException("forbidden host");
-                if (!denylist.isAllowedHost(host))
+                auto prefixKey = prefix::makePrefixKey(parsed);
+                if (!denylist.isAllowedPrefix(prefixKey))
                     return httpu::respondError(response, kForbidden, "host in denylist"_t);
                 auto job = crud.createWebshotJob(std::move(parsed), std::move(pubs));
                 return httpu::respondJson(response, kAccepted, job);

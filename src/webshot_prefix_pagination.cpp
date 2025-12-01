@@ -9,6 +9,8 @@
 #include "text.hpp"
 #include "utils.hpp"
 
+#include <userver/utils/assert.hpp>
+
 namespace v1::crud {
 
 [[nodiscard]] std::optional<PrefixCursor> decodePrefixCursor(const String &token)
@@ -44,19 +46,21 @@ namespace v1::crud {
     return encodeToken(cur);
 }
 
-[[nodiscard]] std::optional<std::string> upperExclusiveBound(String s)
+[[nodiscard]] std::string upperExclusiveBound(String s)
 {
-    std::string bytes(s.view());
+    UINVARIANT(!s.empty(), "cannot be empty");
+    auto view = s.view();
+    std::string bytes(view);
     for (int64_t i = v1::utils::ssize(bytes) - 1; i >= 0; i--) {
         size_t j = static_cast<size_t>(i);
         unsigned char c = static_cast<unsigned char>(bytes[j]);
         if (c < 0xFF) {
             bytes[j] = static_cast<char>(c + 1);
             bytes.resize(j + 1);
-            return bytes;
+            break;
         }
     }
-    return {};
+    return bytes;
 }
 
 } // namespace v1::crud

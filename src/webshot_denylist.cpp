@@ -6,6 +6,7 @@
 #include <webshot/sql_queries.hpp>
 
 #include "text_postgres_formatter.hpp"
+#include "webshot_prefix_utils.hpp"
 
 #include <string>
 #include <vector>
@@ -55,18 +56,13 @@ WebshotDenylist::WebshotDenylist(
 
 WebshotDenylist::~WebshotDenylist() = default;
 
-bool WebshotDenylist::isAllowedHost(const String &host) noexcept
+bool WebshotDenylist::isAllowedPrefix(const String &prefixKey) noexcept
 {
-    auto hostRev = std::string(host.reversed().view());
+    auto candidates = prefix::expandPrefixCandidates(prefixKey);
     std::vector<std::string> prefixes;
-    prefixes.push_back(hostRev);
-    auto pos = hostRev.rfind('.');
-    while (pos != std::string::npos) {
-        prefixes.push_back(hostRev.substr(0, pos));
-        if (pos == 0)
-            break;
-        pos = hostRev.rfind('.', pos - 1);
-    }
+    prefixes.reserve(candidates.size());
+    for (const auto &c : candidates)
+        prefixes.push_back(c);
     try {
         return impl->cluster
                    ->Execute(pg::ClusterHostType::kSlaveOrMaster, sql::kCheckDenylist, prefixes)
@@ -77,15 +73,14 @@ bool WebshotDenylist::isAllowedHost(const String &host) noexcept
     }
 }
 
-void WebshotDenylist::insertHost(const String &host, const String &reason)
+void WebshotDenylist::insertPrefix(const String &prefixKey, const String &reason)
 {
-    auto hostRev = host.reversed();
     try {
         static_cast<void>(impl->cluster->Execute(
-            pg::ClusterHostType::kMaster, sql::kInsertDenylistHost, host, hostRev, reason
+            pg::ClusterHostType::kMaster, sql::kInsertDenylistHost, prefixKey, reason
         ));
     } catch (const std::exception &e) {
-        LOG_CRITICAL() << fmt::format("denylist insert failed for {}: {}", host, e.what());
+        LOG_CRITICAL() << fmt::format("denylist insert failed for {}: {}", prefixKey, e.what());
         us::utils::AbortWithStacktrace("denylist insert failed");
     }
 }

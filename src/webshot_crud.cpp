@@ -21,6 +21,7 @@
 #include "webshot_denylist.hpp"
 #include "webshot_pagination.hpp"
 #include "webshot_prefix_pagination.hpp"
+#include "webshot_prefix_utils.hpp"
 
 #include <webshot/sql_queries.hpp>
 
@@ -257,7 +258,7 @@ public:
     void runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
     [[nodiscard]] std::optional<us::utils::datetime::TimePointTz>
     persistMetadataForContext(const CrawlContext &ctx);
-    void purgeHost(const String &host);
+    void purgePrefix(const String &prefixKey);
     [[nodiscard]] S3ClientState fetchS3ClientStateFromSts() const;
     void startS3RefreshTask();
     void refreshS3CredentialsTask();
@@ -710,10 +711,10 @@ void WebshotCrud::Impl::runCrawlerForContext(
 [[nodiscard]] std::optional<us::utils::datetime::TimePointTz>
 WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
 {
-    const auto &host = ctx.link.host();
-    const auto hostRev = host.reversed();
+    const auto prefixKey = prefix::makePrefixKey(ctx.link);
+    const auto host = ctx.link.host();
 
-    if (!denylist.isAllowedHost(host)) {
+    if (!denylist.isAllowedPrefix(prefixKey)) {
         try {
             auto snapshot = s3State.Read();
             snapshot->client->DeleteObject(ctx.s3Key.view());
@@ -730,7 +731,7 @@ WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
             pg::TimePointTz createdAt;
         };
         auto row = readwrite(
-                       sql::kInsertWebshot, ctx.id, ctx.link.normalized(), hostRev, ctx.location
+                       sql::kInsertWebshot, ctx.id, ctx.link.normalized(), prefixKey, ctx.location
         )
                        .AsSingleRow<Row>(pg::kRowTag);
         return us::utils::datetime::TimePointTz(
@@ -750,13 +751,13 @@ WebshotCrud::Impl::persistMetadataForContext(const CrawlContext &ctx)
     }
 }
 
-void WebshotCrud::Impl::purgeHost(const String &host)
+void WebshotCrud::Impl::purgePrefix(const String &prefixKey)
 {
-    const auto hostRev = host.reversed();
     while (true) {
         try {
             auto res = readonly(
-                sql::kSelectIdsByHostOrSubhostsPaged, hostRev, purgeDeleteBatchSize
+                sql::kSelectIdsByPrefixPaged, prefixKey, crud::upperExclusiveBound(prefixKey),
+                purgeDeleteBatchSize
             );
             std::vector<Uuid> ids;
             ids.reserve(res.Size());
@@ -775,7 +776,7 @@ void WebshotCrud::Impl::purgeHost(const String &host)
             }
             static_cast<void>(readwrite(sql::kDeleteWebshotsByIds, ids));
         } catch (const std::exception &e) {
-            LOG_ERROR() << fmt::format("denylist purge failed for {}: {}", host, e.what());
+            LOG_ERROR() << fmt::format("denylist purge failed for {}: {}", prefixKey, e.what());
             throw;
         }
     }
@@ -894,18 +895,18 @@ WebshotCrud::findWebshotsByPrefixPage(String normalizedPrefix, String pageToken)
         if (!cur || cur->prefix != normalizedPrefix)
             throw errors::InvalidPageTokenException("invalid page_token");
     }
-    const std::optional<std::string> upperOpt = crud::upperExclusiveBound(normalizedPrefix);
+    const std::string upper = crud::upperExclusiveBound(normalizedPrefix);
     const auto linksPerPage = impl->webshotsLinksPerPageMax;
 
     auto selectLinksFirst = [&](int64_t limit) {
         return impl
-            ->readonly(sql::kSelectDistinctLinksByPrefixFirst, normalizedPrefix, upperOpt, limit)
+            ->readonly(sql::kSelectDistinctLinksByPrefixFirst, normalizedPrefix, upper, limit)
             .AsContainer<std::vector<String>>();
     };
     auto selectLinksNext = [&](String fromLink, int64_t limit) {
         return impl
             ->readonly(
-                sql::kSelectDistinctLinksByPrefixNext, normalizedPrefix, upperOpt, fromLink, limit
+                sql::kSelectDistinctLinksByPrefixNext, normalizedPrefix, upper, fromLink, limit
             )
             .AsContainer<std::vector<String>>();
     };
@@ -987,21 +988,21 @@ WebshotCrud::findWebshotsByPrefixPage(String normalizedPrefix, String pageToken)
     return {items, next};
 }
 
-void WebshotCrud::disallowAndPurgeHost(String host)
+void WebshotCrud::disallowAndPurgePrefix(String prefixKey)
 {
-    impl->denylist.insertHost(host, "disallow-and-purge"_t);
+    impl->denylist.insertPrefix(prefixKey, "disallow-and-purge"_t);
 
-    LOG_INFO() << fmt::format("enqueued for host {}", host);
+    LOG_INFO() << fmt::format("enqueued for prefix {}", prefixKey);
 
-    impl->purgeBackground.AsyncDetach("purge-host-lambda", [implPtr = impl.get(), host]() {
+    impl->purgeBackground.AsyncDetach("purge-prefix-lambda", [implPtr = impl.get(), prefixKey]() {
         try {
             engine::current_task::SetDeadline(
                 engine::Deadline::FromDuration(chrono::seconds(implPtr->purgeJobTimeoutSec))
             );
-            LOG_INFO() << fmt::format("Starting purge for denylisted host: {}", host);
-            implPtr->purgeHost(host);
+            LOG_INFO() << fmt::format("Starting purge for denylisted prefix: {}", prefixKey);
+            implPtr->purgePrefix(prefixKey);
         } catch (const std::exception &e) {
-            LOG_CRITICAL() << fmt::format("Purge task failed for {}: {}", host, e.what());
+            LOG_CRITICAL() << fmt::format("Purge task failed for {}: {}", prefixKey, e.what());
             us::utils::AbortWithStacktrace("Purge task failed");
         }
     });

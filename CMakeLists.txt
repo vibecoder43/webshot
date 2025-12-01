@@ -84,6 +84,7 @@ set(${PROJECT_NAME}_headers
     include/webshot_cursor.hpp
     include/webshot_pagination.hpp
     include/webshot_prefix_pagination.hpp
+    include/webshot_prefix_utils.hpp
     include/text.hpp)
 add_library(
   ${PROJECT_NAME}_objs OBJECT
@@ -104,6 +105,7 @@ add_library(
   src/webshot_cursor.cpp
   src/webshot_pagination.cpp
   src/webshot_prefix_pagination.cpp
+  src/webshot_prefix_utils.cpp
   ${${PROJECT_NAME}_headers})
 
 function(apply_defaults target)

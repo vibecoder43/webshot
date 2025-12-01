@@ -65,8 +65,8 @@ public:
     /** @brief Paged list of captures grouped by normalized link prefix. */
     [[nodiscard]] dto::PagedFindWebshotByPrefixResponse
     findWebshotsByPrefixPage(String normalizedPrefix, String pageToken);
-    /** @brief Disallow a host and enqueue purge of its captures. */
-    void disallowAndPurgeHost(String host);
+    /** @brief Disallow a prefix and enqueue purge of its captures. */
+    void disallowAndPurgePrefix(String prefixKey);
     /** @brief Static config schema for this component. */
     [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 

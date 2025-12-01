@@ -75,7 +75,7 @@ std::string_view serializeHref(const ada::url_aggregator &url)
 
 namespace v1 {
 
-Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort)
+Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort, bool stripQuery)
 {
     std::string in(text.view());
     absl::StripAsciiWhitespace(&in);
@@ -111,6 +111,8 @@ Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort)
     url->clear_hash();
     if (stripPort)
         url->clear_port();
+    if (stripQuery)
+        url->set_search("");
 
     if (auto hostname = url->get_hostname(); !hostname.empty() && hostname.back() == '.')
         url->set_hostname(std::string(begin(hostname), end(hostname) - 1));
@@ -122,12 +124,17 @@ Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort)
 
 Link Link::fromTextStripPort(const String &text, size_t queryPartLengthMax)
 {
-    return fromTextImpl(text, queryPartLengthMax, true);
+    return fromTextImpl(text, queryPartLengthMax, true, false);
 }
 
 Link Link::fromText(const String &text, size_t queryPartLengthMax)
 {
-    return fromTextImpl(text, queryPartLengthMax, false);
+    return fromTextImpl(text, queryPartLengthMax, false, false);
+}
+
+Link Link::fromTextStripPortQuery(const String &text, size_t queryPartLengthMax)
+{
+    return fromTextImpl(text, queryPartLengthMax, true, true);
 }
 
 String Link::host() const { return String::fromBytesThrow(url.get_hostname()); }

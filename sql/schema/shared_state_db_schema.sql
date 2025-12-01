@@ -1,17 +1,14 @@
 create table host_denylist (
-    host text collate "C" not null
-    check (host = lower(host))
-    check (position('.' in host) > 0),
-    host_rev text collate "C" not null,
+    prefix_key text collate "C" not null,
     created_at timestamptz not null default now(),
     reason text not null,
-    constraint host_denylist_pk primary key (host)
+    constraint host_denylist_pk primary key (prefix_key)
 );
 
 create index if not exists host_denylist_created_at_idx
 on host_denylist (created_at desc);
-create index if not exists host_denylist_host_rev_idx
-on host_denylist (host_rev text_pattern_ops);
+create index if not exists host_denylist_prefix_key_like_idx
+on host_denylist (prefix_key text_pattern_ops);
 
 create table crawl_job (
     id uuid primary key,

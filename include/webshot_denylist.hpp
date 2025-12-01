@@ -25,10 +25,10 @@ public:
 
     ~WebshotDenylist();
 
-    /** @brief Returns true if the host is not deny‑listed. */
-    [[nodiscard]] bool isAllowedHost(const String &host) noexcept;
-    /** @brief Insert a host into the denylist (noop if already present). */
-    void insertHost(const String &host, const String &reason);
+    /** @brief Returns true if the normalized prefix key is not deny‑listed. */
+    [[nodiscard]] bool isAllowedPrefix(const String &prefixKey) noexcept;
+    /** @brief Insert a prefix key into the denylist (noop if already present). */
+    void insertPrefix(const String &prefixKey, const String &reason);
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:

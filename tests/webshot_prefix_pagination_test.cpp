@@ -21,8 +21,7 @@ UTEST(WebshotPrefixPagination, UpperExclusiveBoundNormal)
     const auto inputText = String::fromBytes(input);
     ASSERT_TRUE(inputText);
     const auto upper = upperExclusiveBound(*inputText);
-    ASSERT_TRUE(upper);
-    EXPECT_EQ(*upper, std::string{"abd"});
+    EXPECT_EQ(upper, std::string{"abd"});
 }
 
 UTEST(WebshotPrefixPagination, EncodeDecodeWithoutTimeOrId)

@@ -1,6 +1,6 @@
--- $1: text[] of host_rev prefixes (exact host_rev then parent prefixes)
+-- $1: text[] of prefix_key values to check
 select 1
 from host_denylist
-where host_rev = any($1)
-order by host_rev
+where prefix_key = any($1)
+order by prefix_key
 limit 1

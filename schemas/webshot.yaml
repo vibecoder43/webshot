@@ -234,16 +234,18 @@ paths:
 
   /v1/disallow-and-purge:
     post:
-      operationId: disallowAndPurgeHost
-      summary: Disallow a host and enqueue purge
+      operationId: disallowAndPurgePrefix
+      summary: Disallow a host prefix and enqueue purge
       description: |
-        Normalizes the provided host, inserts it into the denylist, and enqueues background
-        purge of all captures for that host and its subhosts.
+        Normalizes the provided host or URL, derives a host+path prefix, inserts it into the
+        denylist, and enqueues background purge of all captures matching that prefix.
       parameters:
         - in: query
           name: host
           required: true
-          description: Host to disallow. Accepts a full HTTP/HTTPS link or a bare hostname; only the normalized host is used for denylisting.
+          description: |
+            Host or URL prefix to disallow. Accepts a full HTTP/HTTPS link or a bare hostname;
+            the normalized host and path (without query) are used for denylisting.
           schema:
             type: string
           examples:
@@ -253,7 +255,7 @@ paths:
               value: bücher.de
       responses:
         '202':
-          description: Purge successfully enqueued for the normalized host.
+          description: Purge successfully enqueued for the normalized prefix.
         '400':
           description: Invalid or missing host parameter.
           content:

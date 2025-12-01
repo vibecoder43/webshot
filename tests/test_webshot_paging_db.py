@@ -1,6 +1,7 @@
 import pathlib
 import uuid
 
+from helpers.prefix import prefix_key_from_link
 from helpers.sql_loader import _adapt_positional_to_psycopg
 
 _SQL_QUERIES_DIR = pathlib.Path(__file__).resolve().parents[1] / "sql" / "queries"
@@ -16,8 +17,6 @@ async def test_list_webshots_orders_by_created_at(
     """Insert rows via pgsql and verify ordering for /v1/webshot."""
 
     db = pgsql["capture_meta_db_schema"]
-    host = "example.com"
-    host_rev = host[::-1]
 
     newer_id = uuid.uuid4()
     older_id = uuid.uuid4()
@@ -26,11 +25,21 @@ async def test_list_webshots_orders_by_created_at(
     try:
         cur.execute(
             INSERT_WEBSHOT_SQL,
-            (newer_id, "example.com/a", host_rev, f"http://example.com/{newer_id}"),
+            (
+                newer_id,
+                "example.com/a",
+                prefix_key_from_link("example.com/a"),
+                f"http://example.com/{newer_id}",
+            ),
         )
         cur.execute(
             INSERT_WEBSHOT_SQL,
-            (older_id, "example.com/a", host_rev, f"http://example.com/{older_id}"),
+            (
+                older_id,
+                "example.com/a",
+                prefix_key_from_link("example.com/a"),
+                f"http://example.com/{older_id}",
+            ),
         )
     finally:
         cur.close()
@@ -53,8 +62,6 @@ async def test_list_webshots_prefix_sees_inserted_links(
     """Insert two links sharing a prefix and list by prefix."""
 
     db = pgsql["capture_meta_db_schema"]
-    host = "example.com"
-    host_rev = host[::-1]
 
     cur = db.cursor()
     try:
@@ -63,7 +70,7 @@ async def test_list_webshots_prefix_sees_inserted_links(
             (
                 uuid.uuid4(),
                 "example.com/prefix/a",
-                host_rev,
+                prefix_key_from_link("example.com/prefix/a"),
                 "http://example.com/prefix/a",
             ),
         )
@@ -72,7 +79,7 @@ async def test_list_webshots_prefix_sees_inserted_links(
             (
                 uuid.uuid4(),
                 "example.com/prefix/b",
-                host_rev,
+                prefix_key_from_link("example.com/prefix/b"),
                 "http://example.com/prefix/b",
             ),
         )
@@ -97,8 +104,6 @@ async def test_list_webshots_paged_two_pages(
     """Verify /v1/webshot uses page_token to paginate link results."""
 
     db = pgsql["capture_meta_db_schema"]
-    host = "example.com"
-    host_rev = host[::-1]
 
     ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
 
@@ -111,7 +116,7 @@ async def test_list_webshots_paged_two_pages(
                 (
                     webshot_id,
                     "example.com/a",
-                    host_rev,
+                    prefix_key_from_link("example.com/a"),
                     f"http://example.com/{webshot_id}",
                 ),
             )

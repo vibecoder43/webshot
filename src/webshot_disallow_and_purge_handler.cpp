@@ -9,6 +9,7 @@
 #include "text.hpp"
 #include "webshot_config.hpp"
 #include "webshot_crud.hpp"
+#include "webshot_prefix_utils.hpp"
 
 #include <chrono>
 #include <string>
@@ -77,14 +78,15 @@ std::string WebshotDisallowAndPurgeHandler::HandleRequestThrow(
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     Link link;
     try {
-        link = Link::fromTextStripPort(*host, config.queryPartLengthMax());
+        link = Link::fromTextStripPortQuery(*host, config.queryPartLengthMax());
     } catch (const InvalidLinkException &e) {
         LOG_INFO() << fmt::format("invalid host: {}", e.what());
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     }
     LOG_INFO() << fmt::format("invoked for: {}", link.host());
     try {
-        crud.disallowAndPurgeHost(link.host());
+        auto prefixKey = prefix::makePrefixKey(link);
+        crud.disallowAndPurgePrefix(prefixKey);
         response.SetStatus(kAccepted);
         return {};
     } catch (const std::exception &e) {

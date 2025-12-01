@@ -57,6 +57,13 @@ public:
 
     [[nodiscard]] constexpr size_t sizeBytes() const noexcept { return data.size(); }
 
+    [[nodiscard]] constexpr bool startsWith(const String &prefix) const noexcept
+    {
+        if (prefix.data.size() > data.size())
+            return false;
+        return std::equal(std::begin(prefix.data), std::end(prefix.data), std::begin(data));
+    }
+
     constexpr String &operator+=(const String &rhs)
     {
         if (rhs.data.empty())

@@ -1,3 +1,3 @@
-insert into host_denylist (host, host_rev, reason)
-values ($1, $2, $3)
-on conflict (host) do nothing
+insert into host_denylist (prefix_key, reason)
+values ($1, $2)
+on conflict (prefix_key) do nothing
