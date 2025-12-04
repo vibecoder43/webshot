@@ -36,7 +36,7 @@ async def test_concurrent_different_links_create_jobs(service_client, pgsql):
         {original_link.replace("https://", "") for original_link in links}
     )
 
-    db = pgsql["shared_state_db_schema"]
+    db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
             "select link, count(*) from crawl_job where link = any(%s) group by link",
@@ -62,7 +62,7 @@ async def test_disallow_and_purge_blocks_concurrent_new_captures(service_client,
         body = r.json()
         assert body["error"]["message"] == "host in denylist"
 
-    db = pgsql["capture_meta_db_schema"]
+    db = pgsql["capture_meta_db"]
     deadline = asyncio.get_event_loop().time() + 30.0
     while True:
         with db.cursor() as cur:

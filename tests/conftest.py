@@ -137,8 +137,8 @@ def userver_pg_config(pgsql_local, pg_gate):
     def _patch(config_yaml, _config_vars):
         components = config_yaml["components_manager"]["components"]
         overrides = {
-            "capture-meta-db": "capture_meta_db_schema",
-            "shared-state-db": "shared_state_db_schema",
+            "capture-meta-db": "capture_meta_db",
+            "shared-state-db": "shared_state_db",
         }
         for component_name, dbname in overrides.items():
             conninfo = db_uri[dbname]

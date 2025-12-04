@@ -16,7 +16,7 @@ async def test_create_webshot_respects_link_cooldown(service_client, pgsql):
     assert job2["uuid"] == job1["uuid"]
 
     # Move the existing job far into the past so that cooldown no longer applies
-    db = pgsql["shared_state_db_schema"]
+    db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
             "update crawl_job set created_at = created_at - interval '1 day' where id = %s",

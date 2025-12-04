@@ -27,7 +27,7 @@ async def test_s3_outage_marks_job_failed(service_client, s3_gate, pgsql):
     assert job is not None
     assert job["status"] == "failed"
 
-    db = pgsql["capture_meta_db_schema"]
+    db = pgsql["capture_meta_db"]
     with db.cursor() as cur:
         cur.execute("select 1 from webshot where id = %s", (uuid.UUID(job_id),))
         assert cur.fetchone() is None

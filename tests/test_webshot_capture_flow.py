@@ -70,7 +70,7 @@ async def test_capture_and_query_example_com(service_client, pgsql):
     )
 
     # Verify DB row
-    db = pgsql["capture_meta_db_schema"]
+    db = pgsql["capture_meta_db"]
     with db.cursor() as cur:
         cur.execute(
             "select location, prefix_key from webshot where id = %s",
@@ -110,7 +110,7 @@ async def test_disallow_and_purge_blocks_new_captures(service_client, pgsql):
     assert resp.status == 202
 
     # Wait for purge to remove rows for this host
-    db = pgsql["capture_meta_db_schema"]
+    db = pgsql["capture_meta_db"]
     await _wait_for_purge(db, prefix_key)
 
     # Attempt new capture should be blocked by denylist

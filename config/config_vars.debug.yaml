@@ -3,8 +3,8 @@ s3_endpoint: "http://localhost:8333"
 s3_region: "us-east-1"
 public_base_url: "http://localhost:8333/webshot"
 s3_use_sts: false
-pg_webshot_meta_dsn: "postgresql://postgres@localhost:5432"
-pg_shared_state_dsn: "postgresql://postgres@localhost:5433"
+pg_webshot_meta_dsn: "postgresql://postgres@localhost:5432/capture_meta_db"
+pg_shared_state_dsn: "postgresql://postgres@localhost:5432/shared_state_db"
 crawler_size_limit_mib: 50
 crawler-page-load-timeout-sec: 10
 crawler-post-load-delay-sec: 1
