@@ -1,0 +1,12 @@
+{
+    "version": "0.5",
+    "requires": [
+        "uni-algo/0.0.0#6b0bf47cde53feb162413e9b84de083c%1764513270.0756035",
+        "ada/3.3.0#de62d8bde66897ca8d6647126c773369%1760604202.373"
+    ],
+    "build_requires": [
+        "cmake/3.31.10#313d16a1aa16bbdb2ca0792467214b76%1763665505.054"
+    ],
+    "python_requires": [],
+    "config_requires": []
+}

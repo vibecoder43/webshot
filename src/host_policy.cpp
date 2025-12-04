@@ -23,16 +23,12 @@ namespace v1::HostPolicy {
 
 bool isBareName(const String &host) { return host.view().find('.') == std::string_view::npos; }
 
-bool isDeniedHostname(const String &host)
-{
-    return host == "localhost"_t || host == "host.docker.internal"_t;
-}
+bool isDeniedHostname(const String &host) { return host == "localhost"_t; }
 
 bool hasSpecialTldSuffix(String host)
 {
-    static const std::array<String, 5> kTlds{
-        ".local"_t, ".home.arpa"_t, ".test"_t, ".invalid"_t, ".example"_t
-    };
+    static const std::array<String, 6> kTlds{".local"_t,   ".home.arpa"_t, ".test"_t,
+                                             ".invalid"_t, ".example"_t,   "internal"_t};
     const auto hv = host.view();
     for (const auto &tldWithDot : kTlds) {
         const auto tld = tldWithDot.view();

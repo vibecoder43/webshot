@@ -15,6 +15,7 @@
 #include <userver/clients/http/component.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
 #include <userver/congestion_control/component.hpp>
+#include <userver/server/handlers/server_monitor.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/storages/secdist/component.hpp>
 #include <userver/storages/secdist/provider_component.hpp>
@@ -40,6 +41,7 @@ int main(int argc, char *argv[])
                               .Append<v1::WebshotHandler>()
                               .Append<v1::WebshotJobHandler>()
                               .Append<v1::WebshotDisallowAndPurgeHandler>()
-                              .Append<v1::WebshotById>();
+                              .Append<v1::WebshotById>()
+                              .Append<us::server::handlers::ServerMonitor>();
     return us::utils::DaemonMain(argc, argv, component_list);
 }

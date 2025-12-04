@@ -110,14 +110,14 @@ properties:
         description: 'Max distinct links in a prefix page'
     crawler-network:
         type: string
-        description: 'Name of the Docker network to run crawlers on (scoped egress rules)'
+        description: 'Name of the network to run crawlers on (scoped egress rules)'
     crawl-concurrency:
         type: integer
         minimum: 1
         description: 'Max concurrent crawls; blocks above this'
     crawler-image:
         type: string
-        description: 'Docker image used for the crawl container'
+        description: 'image used for the crawl container'
     crawler-workers:
         type: integer
         minimum: 1
@@ -641,8 +641,13 @@ void WebshotCrud::Impl::runCrawlerForContext(
         "btcx-{}", us::utils::ToString(us::utils::generators::GenerateBoostUuid())
     );
     std::vector<String> createArgs = {
-        "create"_t,     "-e"_t, "CHROME_FLAGS=\"--dns-over-https-mode=off\""_t,
-        "--shm-size"_t, "1g"_t, "-v"_t
+        "--hooks-dir=./containers"_t,
+        "create"_t,
+        "-e"_t,
+        "CHROME_FLAGS=\"--dns-over-https-mode=off\""_t,
+        "--shm-size"_t,
+        "1g"_t,
+        "-v"_t
     };
     createArgs.push_back(text::format("{}:/crawls", ctx.archiveRoot.GetPath()));
     createArgs.push_back("--network"_t);
@@ -652,6 +657,9 @@ void WebshotCrud::Impl::runCrawlerForContext(
         createArgs.push_back(text::format("{}:{}", ctx.link.host(), ip));
     }
     const auto collection = "1"_t;
+    // Mark crawler containers for per-container firewalling via OCI hooks.
+    createArgs.push_back("--annotation"_t);
+    createArgs.push_back("webshot.crawler.netpol=true"_t);
     createArgs.push_back("--name"_t);
     createArgs.push_back(cname);
     createArgs.push_back(crawlerImage);
@@ -709,7 +717,7 @@ void WebshotCrud::Impl::runCrawlerForContext(
     ContainerGuard ctrGuard(starter, cname, createArgs);
 
     auto startProc = starter.Exec(
-        "docker", std::vector<std::string>{"start", "-a", std::string(cname.view())},
+        "podman", std::vector<std::string>{"start", "-a", std::string(cname.view())},
         engine::subprocess::ExecOptions{.use_path = true}
     );
     auto status = startProc.Get();

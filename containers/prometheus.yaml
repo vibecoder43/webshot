@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: userver-monitor
+    metrics_path: /service/monitor
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets:
+          - host.docker.internal:8081
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+

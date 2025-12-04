@@ -40,7 +40,7 @@
 - Prefer `std::begin`/`std::end` over calling `.begin()`/`.end()` on containers when passing iterators.
 - Postfix arithmetic (`++`, `--`) MUST be used by default.
 - Never set default values in code for component config options; require them in static config or config_vars.
-- Do not introduce identifiers, filenames, configuration keys, environment variables, database objects, Docker labels, or documentation terms containing the words "application", "app", or "system".
+- Do not introduce identifiers, filenames, configuration keys, environment variables, database objects, or documentation terms containing the words "application", "app", or "system".
 - Class members must not use a trailing underscore naming style; use regular lowerCamelCase for member variables.
 - Never call `std::chrono::system_clock::now()`; use `userver::utils::datetime::Now()` instead.
 - Mutable lambdas are forbidden; capture-by-mutable is not allowed in this codebase.

@@ -49,6 +49,10 @@ components_manager:
                     file_path: '@stderr'
                     level: debug
                     overflow_behavior: discard
+        handler-server-monitor:
+            path: /service/monitor
+            method: GET
+            task_processor: main-task-processor
         webshot-handler:
             path: /v1/webshot
             method: GET,POST

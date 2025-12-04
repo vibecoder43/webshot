@@ -10,18 +10,18 @@ namespace us = userver;
 namespace engine = us::engine;
 
 /**
- * @brief RAII guard for a Docker container created for a crawl.
+ * @brief RAII guard for a container created for a crawl.
  *
- * On construction it invokes `docker create` with the provided arguments. On
+ * On construction it invokes `create` with the provided arguments. On
  * destruction (or explicit `remove()`), it force removes the container.
  * Instances are movable but not copyable.
  */
 class [[nodiscard]] ContainerGuard {
 public:
     /**
-     * @param starter Process starter to execute Docker.
+     * @param starter Process starter to execute command.
      * @param name Container name to manage.
-     * @param createArgs Arguments passed to `docker create`.
+     * @param createArgs Arguments passed to `create`.
      * @throws std::runtime_error if creation fails.
      */
     ContainerGuard(

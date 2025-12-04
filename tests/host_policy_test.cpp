@@ -20,7 +20,6 @@ UTEST(HostPolicy, BareNameDetection)
 UTEST(HostPolicy, DeniedHostnames)
 {
     EXPECT_TRUE(isDeniedHostname("localhost"_t));
-    EXPECT_TRUE(isDeniedHostname("host.docker.internal"_t));
     EXPECT_FALSE(isDeniedHostname("example.com"_t));
 }
 
@@ -33,6 +32,7 @@ UTEST(HostPolicy, SpecialTldSuffixesAndPlainNames)
     EXPECT_TRUE(hasSpecialTldSuffix("test"_t));
     EXPECT_TRUE(hasSpecialTldSuffix("invalid"_t));
     EXPECT_TRUE(hasSpecialTldSuffix("example"_t));
+    EXPECT_TRUE(hasSpecialTldSuffix("host.docker.internal"_t));
 
     EXPECT_FALSE(hasSpecialTldSuffix("example.com"_t));
     EXPECT_FALSE(hasSpecialTldSuffix("notlocaldomain"_t));

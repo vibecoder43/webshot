@@ -1,7 +1,7 @@
 #include "container_guard.hpp"
 /**
  * @file
- * @brief RAII wrapper that creates and then removes a Docker container.
+ * @brief RAII wrapper that creates and then removes a container.
  */
 
 #include <exception>
@@ -31,11 +31,11 @@ ContainerGuard::ContainerGuard(
     std::vector<std::string> byteArgs;
     for (auto &&arg : createArgs)
         byteArgs.push_back(std::string(arg.view()));
-    auto proc = starter->Exec("docker", byteArgs, makeExecOpts());
+    auto proc = starter->Exec("podman", byteArgs, makeExecOpts());
     auto status = proc.Get();
     if (!status.IsExited() || status.GetExitCode() != 0) {
         removed = true;
-        throw std::runtime_error(fmt::format("docker create failed for {}", name));
+        throw std::runtime_error(fmt::format("podman create failed for {}", name));
     }
 }
 
@@ -47,18 +47,18 @@ void ContainerGuard::remove() noexcept
         return;
     try {
         auto proc = starter->Exec(
-            "docker", std::vector<std::string>{"rm", "-f", std::string(name.view())}, makeExecOpts()
+            "podman", std::vector<std::string>{"rm", "-f", std::string(name.view())}, makeExecOpts()
         );
         auto status = proc.Get();
         if (!status.IsExited()) {
-            LOG_ERROR() << fmt::format("docker rm for {} did not exit cleanly", name);
+            LOG_ERROR() << fmt::format("podman rm for {} did not exit cleanly", name);
         } else if (status.GetExitCode() != 0) {
             LOG_ERROR() << fmt::format(
-                "docker rm for {} exited with code {}", name, status.GetExitCode()
+                "podman rm for {} exited with code {}", name, status.GetExitCode()
             );
         }
     } catch (std::exception &) {
-        LOG_ERROR() << fmt::format("docker rm for {} failed:", name);
+        LOG_ERROR() << fmt::format("podman rm for {} failed:", name);
     }
     removed = true;
 }

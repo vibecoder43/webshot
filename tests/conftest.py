@@ -1,5 +1,8 @@
 import asyncio
+import json
+import os
 import pathlib
+import subprocess
 from urllib.parse import urlparse, urlunparse
 
 import psycopg2
@@ -79,10 +82,44 @@ async def pg_gate_ready(pg_gate):
 
 
 @pytest.fixture
-async def s3_gate_ready(s3_gate):
+async def s3_gate_ready(s3_gate, service_source_dir: pathlib.Path):
     await s3_gate.to_server_pass()
     await s3_gate.to_client_pass()
     s3_gate.start_accepting()
+    # Best-effort bucket bootstrap for tests.
+    try:
+        secrets_path = service_source_dir / "secrets" / "test_secdist.json"
+        with secrets_path.open() as f:
+            raw = json.load(f)
+        creds = raw.get("s3_credentials", {})
+        access_key = creds.get("access_key_id")
+        secret_key = creds.get("secret_access_key")
+        if access_key and secret_key:
+            env = os.environ.copy()
+            env["AWS_ACCESS_KEY_ID"] = access_key
+            env["AWS_SECRET_ACCESS_KEY"] = secret_key
+            if "AWS_DEFAULT_REGION" not in env:
+                env["AWS_DEFAULT_REGION"] = "us-east-1"
+            bucket = "webshot"
+            endpoint = "http://localhost:8333"
+            subprocess.run(
+                [
+                    "aws",
+                    "--endpoint-url",
+                    endpoint,
+                    "s3api",
+                    "create-bucket",
+                    "--bucket",
+                    bucket,
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+            )
+    except Exception:
+        # Tests may still fail if the bucket is missing; do not break fixture setup.
+        pass
     yield s3_gate
 
 

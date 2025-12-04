@@ -1,7 +1,6 @@
 #include <cstdlib>
 #include <string>
 
-#include <csignal>
 #include <limits.h>
 #include <unistd.h>
 

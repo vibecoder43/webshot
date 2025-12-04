@@ -147,6 +147,7 @@ endforeach()
 
 add_executable(docker ${CMAKE_CURRENT_SOURCE_DIR}/docker_stub_main.cpp)
 apply_defaults(docker)
+set_target_properties(docker PROPERTIES OUTPUT_NAME podman)
 
 if(USERVER_FEATURE_TESTSUITE)
   add_custom_target(webshot-testsuite)

@@ -3,35 +3,30 @@ services:
     capture-meta-db:
         image: postgres:18.1-trixie
         container_name: capturemetadb
-        dns: ["172.17.0.1"]
         environment:
             POSTGRES_HOST_AUTH_METHOD: trust
         ports:
             - 5432:5432
         volumes:
             - type: bind
-              source: ../sql/schema/webshot_meta_db_schema.sql
-              target: /docker-entrypoint-initdb.d/webshot_meta_db_schema.sql
-              bind:
-                create_host_path: false
+              source: ../sql/schema/capture_meta_db_schema.sql
+              target: /docker-entrypoint-initdb.d/capture_meta_db_schema.sql
+              read_only: true
     shared-state-db:
         image: postgres:18.1-trixie
         container_name: sharedstatedb
-        dns: ["172.17.0.1"]
         environment:
             POSTGRES_HOST_AUTH_METHOD: trust
         ports:
             - 5433:5432
         volumes:
             - type: bind
-              source: ../sql/schema/denylist_db_schema.sql
-              target: /docker-entrypoint-initdb.d/denylist_db_schema.sql
-              bind:
-                create_host_path: false
+              source: ../sql/schema/shared_state_db_schema.sql
+              target: /docker-entrypoint-initdb.d/shared_state_db_schema.sql
+              read_only: true
     webshot-test-db:
         image: postgres:18.1-trixie
         container_name: webshottestdb
-        dns: ["172.17.0.1"]
         environment:
             POSTGRES_HOST_AUTH_METHOD: trust
         ports:
@@ -39,7 +34,6 @@ services:
     scalar:
         image: scalarapi/api-reference:latest
         container_name: webshot_scalar
-        dns: ["172.17.0.1"]
         environment:
             API_REFERENCE_CONFIG: '{"sources":[{"url":"/openapi/webshot.yaml"}],"layout":{"hideDownloadButton":false}}'
         volumes:
@@ -47,12 +41,9 @@ services:
               source: ../schemas
               target: /openapi
               read_only: true
-              bind:
-                create_host_path: false
     reverse-proxy:
         image: nginx:alpine
         container_name: webshot_reverse_proxy
-        dns: ["172.17.0.1"]
         ports:
             - 8085:80
         volumes:
@@ -60,18 +51,12 @@ services:
               source: ./nginx.conf
               target: /etc/nginx/conf.d/default.conf
               read_only: true
-              bind:
-                create_host_path: false
             - type: bind
               source: ../schemas
               target: /data/openapi
               read_only: true
-              bind:
-                create_host_path: false
         depends_on:
             - scalar
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
     crawler-netkeeper:
         image: alpine:3.20
         container_name: crawler-netkeeper
@@ -79,23 +64,33 @@ services:
         restart: unless-stopped
         networks:
             - crawler_net
-    crawler-netpol:
-        container_name: crawler-netpol
-        image: alpine:3.20
-        cap_add:
-            - NET_ADMIN
-        network_mode: host
-        volumes:
-            - type: bind
-              source: ./docker_user_netpol.sh
-              target: /usr/local/bin/docker_user_netpol.sh
-              read_only: true
-              bind:
-                create_host_path: false
-        entrypoint: ["/bin/sh", "-lc"]
+    seaweedfs:
+        image: chrislusf/seaweedfs:latest
+        container_name: seaweedfs
         command:
-            - "apk add --no-cache iptables bash jq >/dev/null 2>&1 || true; /usr/local/bin/docker_user_netpol.sh apply-cidr 172.31.0.0/16; tail -f /dev/null"
+            - server
+            - -s3
+            - -filer
+            - -ip.bind=0.0.0.0
+            - -dir=/data
+            - -volume.max=8
+            - -master.volumeSizeLimitMB=32
+            - -metricsPort=9324
+            - -s3.config=/etc/seaweedfs/s3_config.json
+        ports:
+            - 8333:8333   # S3 gateway
+            - 9333:9333   # master UI/API
+            - 8888:8888   # filer UI/API
+            - 8082:8080   # volume HTTP (moved to avoid conflict with service on 8080)
+            - 9324:9324   # metrics (all-in-one)
+        volumes:
+            - seaweed_data:/data
+            - type: bind
+              source: seaweed/s3_config.json
+              target: /etc/seaweedfs/s3_config.json
+              read_only: true
         restart: unless-stopped
+
 networks:
     crawler_net:
         name: crawler_net
@@ -103,3 +98,5 @@ networks:
         ipam:
             config:
                 - subnet: 172.31.0.0/16
+volumes:
+    seaweed_data:

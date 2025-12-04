@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/bin/sh",
+    "args": [
+      "sh",
+      "-c",
+      "ns4=$(awk '/^nameserver[[:space:]]+[0-9.]+/ {print $2}' /etc/resolv.conf | tr '\\n' ' '); ns6=$(awk '/^nameserver[[:space:]]+[0-9A-Fa-f:]+/ {print $2}' /etc/resolv.conf | tr '\\n' ' '); iptables -I OUTPUT -p udp --dport 53 -j REJECT; iptables -I OUTPUT -p tcp --dport 53 -j REJECT; iptables -I OUTPUT -p tcp --dport 853 -j REJECT; for c in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do iptables -I OUTPUT -d \"$c\" -j REJECT; done; if command -v ip6tables >/dev/null 2>&1; then for c in ::/128 ::1/128 fc00::/7 fe80::/10 ::ffff:0:0/96 ff00::/8; do ip6tables -I OUTPUT -d \"$c\" -j REJECT || true; done; fi; for s in $ns4; do iptables -I OUTPUT -p udp --dport 53 -d \"$s\" -j ACCEPT; iptables -I OUTPUT -p tcp --dport 53 -d \"$s\" -j ACCEPT; done; if command -v ip6tables >/dev/null 2>&1; then for s in $ns6; do ip6tables -I OUTPUT -p udp --dport 53 -d \"$s\" -j ACCEPT || true; ip6tables -I OUTPUT -p tcp --dport 53 -d \"$s\" -j ACCEPT || true; done; fi"
+    ]
+  },
+  "when": {
+    "annotations": {
+      "^webshot.crawler.netpol$": ".+"
+    }
+  },
+  "stages": ["createContainer"]
+}
