@@ -46,27 +46,33 @@ bool hasSpecialTldSuffix(String host)
 std::vector<String>
 resolvePublic(us::clients::dns::Resolver &resolver, const String &host, engine::Deadline deadline)
 {
-    std::vector<String> v4;
+    std::vector<String> ips;
     try {
         auto addrs = resolver.Resolve(std::string(host.view()), deadline);
         for (const auto &sa : addrs) {
             switch (sa.Domain()) {
             case userver::engine::io::AddrDomain::kInet: {
                 const auto *sin = sa.As<struct sockaddr_in>();
-                if (v4.size() < 5 && IpUtils::isPublicIpv4(sin->sin_addr))
-                    v4.emplace_back(String::fromBytesThrow(sa.PrimaryAddressString()));
+                if (IpUtils::isPublicIpv4(sin->sin_addr))
+                    ips.emplace_back(String::fromBytesThrow(sa.PrimaryAddressString()));
+                break;
+            }
+            case userver::engine::io::AddrDomain::kInet6: {
+                const auto *sin = sa.As<struct sockaddr_in6>();
+                if (IpUtils::isPublicIpv6(sin->sin6_addr))
+                    ips.emplace_back(String::fromBytesThrow(sa.PrimaryAddressString()));
                 break;
             }
             default:
                 break;
             }
-            if (v4.size() >= 5)
+            if (ips.size() >= 32)
                 break;
         }
     } catch (std::exception &) {
         // return empty to signal failure
     }
-    return v4;
+    return ips;
 }
 
 } // namespace v1::HostPolicy
