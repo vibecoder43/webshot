@@ -4,7 +4,7 @@ After=webshot-crawler-network.service
 After=webshot-scalar.service
 Requires=webshot-crawler-network.service
 Requires=webshot-scalar.service
-PartOf=webshot-stack.target
+PartOf=webshot-debug-stack.target
 
 [Service]
 Restart=on-failure
@@ -14,5 +14,6 @@ ContainerName=webshot_reverse_proxy
 Image=docker.io/nginx:alpine
 PublishPort=8085:80
 Network=crawler_net
+AddHost=host.containers.internal:host-gateway
 Volume=${WEBSHOT_ROOT}/containers/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 Volume=${WEBSHOT_ROOT}/schemas:/data/openapi:ro

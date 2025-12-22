@@ -121,7 +121,7 @@ in {
     ]
     ++ userverDeps
     ++ [webshotTestSan]
-    ++ (with pkgs; [lldb]);
+    ++ (with pkgs; [git gdb]);
 
   treefmt = {
     enable = true;
@@ -143,6 +143,7 @@ in {
       ];
     };
   };
+  difftastic.enable = true;
 
   git-hooks.hooks = {
     treefmt = {
@@ -183,6 +184,7 @@ in {
   ];
 
   env.WEBSHOT_LLVM_SYMBOLIZER_BIN = "${llvm21.llvm}/bin/llvm-symbolizer";
+  env.WEBSHOT_RUNTIME_LD_LIBRARY_PATH = lib.makeLibraryPath testLibs;
 
   tasks."webshot:infraUp" = {
     exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-stack.target";
@@ -191,6 +193,16 @@ in {
 
   tasks."webshot:infraDown" = {
     exec = "systemctl --user stop webshot-stack.target";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:debugUp" = {
+    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-debug-stack.target";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:debugDown" = {
+    exec = "systemctl --user stop webshot-debug-stack.target";
     cwd = config.git.root;
   };
 

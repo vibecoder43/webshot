@@ -1,0 +1,7 @@
+[Unit]
+Description=Webshot debug stack (Quadlet + host service)
+Requires=webshot-stack.target
+Requires=webshot.service
+Requires=webshot-scalar.service
+Requires=webshot-reverse-proxy.service
+After=webshot-stack.target

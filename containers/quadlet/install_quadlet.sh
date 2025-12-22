@@ -16,8 +16,21 @@ fi
 root="${PWD}"
 echo "Installing Webshot Quadlet units (symlinks) into: ${containers_dest}"
 
+systemctl --user import-environment PATH
+
 echo "Setting user systemd environment: WEBSHOT_ROOT=${root}"
-systemctl --user set-environment "WEBSHOT_ROOT=${root}"
+if [[ -n "${WEBSHOT_RUNTIME_LD_LIBRARY_PATH:-}" ]]; then
+  systemctl --user set-environment \
+    "WEBSHOT_ROOT=${root}" \
+    "WEBSHOT_BUILD_DIR=/tmp/build-webshot-san" \
+    "WEBSHOT_RUNTIME_LD_LIBRARY_PATH=${WEBSHOT_RUNTIME_LD_LIBRARY_PATH}"
+else
+  systemctl --user set-environment \
+    "WEBSHOT_ROOT=${root}" \
+    "WEBSHOT_BUILD_DIR=/tmp/build-webshot-san"
+  echo "Note: WEBSHOT_RUNTIME_LD_LIBRARY_PATH is not set; host webshot.service may fail to start." >&2
+  echo "Tip: run this script under devenv shell/direnv so it can export the runtime library path." >&2
+fi
 
 for unit in containers/quadlet/webshot-crawler.network \
             containers/quadlet/webshot-postgres.container \
@@ -47,6 +60,20 @@ if [[ -f "${stack_unit_src}" ]]; then
   stack_target="${user_units_dest}/webshot-stack.target"
   ln -sf "${root}/${stack_unit_src}" "${stack_target}"
   echo "Linked ${stack_unit_src} -> ${stack_target}"
+fi
+
+debug_stack_src="containers/quadlet/webshot-debug-stack.target"
+if [[ -f "${debug_stack_src}" ]]; then
+  debug_stack_target="${user_units_dest}/webshot-debug-stack.target"
+  ln -sf "${root}/${debug_stack_src}" "${debug_stack_target}"
+  echo "Linked ${debug_stack_src} -> ${debug_stack_target}"
+fi
+
+host_service_src="containers/quadlet/webshot.service"
+if [[ -f "${host_service_src}" ]]; then
+  host_service_target="${user_units_dest}/webshot.service"
+  ln -sf "${root}/${host_service_src}" "${host_service_target}"
+  echo "Linked ${host_service_src} -> ${host_service_target}"
 fi
 
 echo "Reloading user systemd units"

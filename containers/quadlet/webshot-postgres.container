@@ -13,5 +13,10 @@ Image=docker.io/postgres:18.1-trixie
 PublishPort=5432:5432
 Environment=POSTGRES_HOST_AUTH_METHOD=trust
 Network=crawler_net
+HealthCmd=/usr/bin/pg_isready -h 127.0.0.1 -p 5432 -U postgres
+HealthInterval=1s
+HealthTimeout=2s
+HealthRetries=60
+Notify=healthy
 Volume=${WEBSHOT_ROOT}/sql/schema:/docker-entrypoint-initdb.d/schema:ro
 Volume=${WEBSHOT_ROOT}/containers/service-db-init-multi-db.sh:/docker-entrypoint-initdb.d/10-service-db-init-multi-db.sh:ro

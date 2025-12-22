@@ -16,6 +16,7 @@ components_manager:
             fs-task-processor: fs-task-processor
         secdist:
         default-secdist-provider:
+            config: $secdist-path
             missing-ok: true
             format: json
             environment-secrets-key: WEBSHOT_SECRETS_KEY

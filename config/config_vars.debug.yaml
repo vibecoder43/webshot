@@ -14,3 +14,4 @@ crawler-behavior-timeout-sec: 1
 crawler-container-timeout-sec: 15
 crawler-overhead-timeout-sec: 45
 link-cooldown-sec: 0
+secdist-path: secrets/test_secdist.json
