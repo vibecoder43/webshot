@@ -240,7 +240,7 @@ if(WEBSHOT_ALL_TESTS)
         APPEND
         PROPERTY
           ENVIRONMENT
-          "ASAN_OPTIONS=symbolize=1:external_symbolizer_path=${WEBSHOT_LLVM_SYMBOLIZER_BIN}:detect_stack_use_after_return=0"
+		  "ASAN_OPTIONS=symbolize=1:external_symbolizer_path=${WEBSHOT_LLVM_SYMBOLIZER_BIN}"
       )
     endif()
   endforeach()
