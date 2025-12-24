@@ -161,7 +161,7 @@ if(USERVER_FEATURE_TESTSUITE)
     WORKING_DIRECTORY
     ${CMAKE_CURRENT_SOURCE_DIR}
     PYTEST_ARGS
-    --service-config=${CMAKE_SOURCE_DIR}/config/userver_config.yaml
+    --service-config=${CMAKE_SOURCE_DIR}/config/static_config.yaml
     --service-config-vars=${CMAKE_SOURCE_DIR}/config/config_vars.testsuite.yaml
     --service-binary=$<TARGET_FILE:${PROJECT_NAME}>
     --service-secdist=${CMAKE_SOURCE_DIR}/secrets/test_secdist.json
