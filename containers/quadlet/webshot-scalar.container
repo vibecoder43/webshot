@@ -3,6 +3,7 @@ Description=Webshot Scalar API reference viewer
 After=webshot-crawler-network.service
 Requires=webshot-crawler-network.service
 PartOf=webshot-debug-stack.target
+PartOf=webshot-prod-debug-stack.target
 
 [Service]
 Restart=on-failure

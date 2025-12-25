@@ -209,6 +209,26 @@ in {
     cwd = config.git.root;
   };
 
+  tasks."webshot:prodInfraUp" = {
+    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-prod-stack.target";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:prodInfraDown" = {
+    exec = "systemctl --user stop webshot-prod-stack.target";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:prodDebugUp" = {
+    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-prod-debug-stack.target";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:prodDebugDown" = {
+    exec = "systemctl --user stop webshot-prod-debug-stack.target";
+    cwd = config.git.root;
+  };
+
   tasks."webshot:configureSan" =
     mkConfigureTask buildDirs.san sanFlags;
 

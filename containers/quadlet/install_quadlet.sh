@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd -- "${script_dir}/../.." && pwd)"
+
 containers_dest="${XDG_CONFIG_HOME:-"${HOME}/.config"}/containers/systemd"
 user_units_dest="${XDG_CONFIG_HOME:-"${HOME}/.config"}/systemd/user"
 runtime_dest=""
@@ -13,7 +16,6 @@ if [[ -n "${runtime_dest}" ]]; then
   mkdir -p "${runtime_dest}"
 fi
 
-root="${PWD}"
 echo "Installing Webshot Quadlet units (symlinks) into: ${containers_dest}"
 
 systemctl --user import-environment PATH
@@ -32,49 +34,59 @@ else
   echo "Tip: run this script under devenv shell/direnv so it can export the runtime library path." >&2
 fi
 
-for unit in containers/quadlet/webshot-crawler.network \
-            containers/quadlet/webshot-postgres.container \
-            containers/quadlet/webshot-seaweed.container \
-            containers/quadlet/webshot-scalar.container \
-            containers/quadlet/webshot-test-target.container \
-            containers/quadlet/webshot-reverse-proxy.container; do
-  if [[ ! -f "${unit}" ]]; then
-    echo "Skipping missing unit template: ${unit}" >&2
-    continue
+link_unit() {
+  local src_rel="$1"
+  local dst="$2"
+  if [[ ! -f "${root}/${src_rel}" ]]; then
+    echo "Skipping missing unit template: ${src_rel}" >&2
+    return 0
   fi
-  name="$(basename "${unit}")"
-  # Symlink from Quadlet search paths back into the repo.
-  target="${containers_dest}/${name}"
-  ln -sf "${root}/${unit}" "${target}"
-  echo "Linked ${unit} -> ${target}"
+  ln -sf "${root}/${src_rel}" "${dst}"
+  echo "Linked ${src_rel} -> ${dst}"
+}
 
+link_quadlet_unit() {
+  local src_rel="$1"
+  local name
+  name="$(basename "${src_rel}")"
+  link_unit "${src_rel}" "${containers_dest}/${name}"
   if [[ -n "${runtime_dest}" ]]; then
-    rt_target="${runtime_dest}/${name}"
-    ln -sf "${root}/${unit}" "${rt_target}"
-    echo "Linked ${unit} -> ${rt_target}"
+    link_unit "${src_rel}" "${runtime_dest}/${name}"
   fi
+}
+
+link_user_unit() {
+  local src_rel="$1"
+  local name
+  name="$(basename "${src_rel}")"
+  link_unit "${src_rel}" "${user_units_dest}/${name}"
+}
+
+quadlet_units=(
+  containers/quadlet/webshot-crawler.network
+  containers/quadlet/webshot-postgres.container
+  containers/quadlet/webshot-seaweed.container
+  containers/quadlet/webshot-scalar.container
+  containers/quadlet/webshot-test-target.container
+  containers/quadlet/webshot-reverse-proxy.container
+)
+
+for unit in "${quadlet_units[@]}"; do
+  link_quadlet_unit "${unit}"
 done
 
-stack_unit_src="containers/quadlet/webshot-stack.target"
-if [[ -f "${stack_unit_src}" ]]; then
-  stack_target="${user_units_dest}/webshot-stack.target"
-  ln -sf "${root}/${stack_unit_src}" "${stack_target}"
-  echo "Linked ${stack_unit_src} -> ${stack_target}"
-fi
+user_units=(
+  containers/quadlet/webshot-stack.target
+  containers/quadlet/webshot-prod-stack.target
+  containers/quadlet/webshot-debug-stack.target
+  containers/quadlet/webshot-prod-debug-stack.target
+  containers/quadlet/webshot.service
+  containers/quadlet/webshot-prod.service
+)
 
-debug_stack_src="containers/quadlet/webshot-debug-stack.target"
-if [[ -f "${debug_stack_src}" ]]; then
-  debug_stack_target="${user_units_dest}/webshot-debug-stack.target"
-  ln -sf "${root}/${debug_stack_src}" "${debug_stack_target}"
-  echo "Linked ${debug_stack_src} -> ${debug_stack_target}"
-fi
-
-host_service_src="containers/quadlet/webshot.service"
-if [[ -f "${host_service_src}" ]]; then
-  host_service_target="${user_units_dest}/webshot.service"
-  ln -sf "${root}/${host_service_src}" "${host_service_target}"
-  echo "Linked ${host_service_src} -> ${host_service_target}"
-fi
+for unit in "${user_units[@]}"; do
+  link_user_unit "${unit}"
+done
 
 echo "Reloading user systemd units"
 systemctl --user daemon-reload

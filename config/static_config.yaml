@@ -19,7 +19,6 @@ components_manager:
             config: $secdist-path
             missing-ok: true
             format: json
-            environment-secrets-key: WEBSHOT_SECRETS_KEY
         dynamic-config:
             defaults:
                 USERVER_RPS_CCONTROL_ENABLED: true

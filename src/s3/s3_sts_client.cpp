@@ -136,6 +136,20 @@ StsCredentials fetchStsCredentials(
                         .headers(headers)
                         .timeout(timeoutMs)
                         .perform();
+        const auto status = static_cast<int>(resp->status_code());
+        if (status >= 300) {
+            const auto bodyOut = resp->body();
+            if (const auto bodyUtf8 = String::fromBytes(bodyOut)) {
+                LOG_ERROR() << fmt::format(
+                    "STS request failed: url={}, status={}, body={}", urlBytes, status, *bodyUtf8
+                );
+            } else {
+                LOG_ERROR() << fmt::format(
+                    "STS request failed: url={}, status={}, body is not valid UTF-8 ({} bytes)",
+                    urlBytes, status, bodyOut.size()
+                );
+            }
+        }
         resp->raise_for_status();
         return resp->body();
     };

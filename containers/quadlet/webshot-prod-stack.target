@@ -1,0 +1,8 @@
+[Unit]
+Description=Webshot prod-like infra (Quadlet)
+Requires=webshot-crawler-network.service
+Requires=webshot-postgres.service
+Requires=webshot-test-target.service
+After=webshot-crawler-network.service
+PartOf=webshot-prod-debug-stack.target
+

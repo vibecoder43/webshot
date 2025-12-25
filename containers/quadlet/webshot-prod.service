@@ -1,0 +1,12 @@
+[Unit]
+Description=Webshot service (host, prod-like)
+Requires=webshot-postgres.service
+After=webshot-postgres.service
+PartOf=webshot-prod-debug-stack.target
+
+[Service]
+Type=simple
+Environment=CPU_LIMIT=4c
+WorkingDirectory=%h
+ExecStart=/bin/sh -c 'set -eu; export LD_LIBRARY_PATH="${WEBSHOT_RUNTIME_LD_LIBRARY_PATH}"; exec "${WEBSHOT_BUILD_DIR}/webshot" --config "${WEBSHOT_ROOT}/config/static_config.yaml" --config_vars "${WEBSHOT_ROOT}/config/config_vars.prod.yaml" --config_vars_override "${WEBSHOT_ROOT}/config/config_vars.prod.debug.yaml"'
+Restart=on-failure

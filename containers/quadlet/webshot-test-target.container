@@ -3,6 +3,7 @@ Description=Webshot nginx test target on TEST-NET-1
 After=webshot-crawler-network.service
 Requires=webshot-crawler-network.service
 PartOf=webshot-stack.target
+PartOf=webshot-prod-stack.target
 
 [Service]
 Restart=on-failure
