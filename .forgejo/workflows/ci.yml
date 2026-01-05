@@ -1,0 +1,90 @@
+name: ci
+on:
+  push:
+  pull_request:
+env:
+  NIX_CONFIG: |
+    experimental-features = nix-command flakes
+    extra-substituters = http://192.168.1.158:5000 https://devenv.cachix.org
+    extra-trusted-public-keys = ${{ secrets.HARMONIA_PUBLIC_KEY }} devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+  FORGEJO_HTTP_BASE: http://host.containers.internal:3001
+jobs:
+  nixtest:
+    name: nixtest
+    runs-on: nixos-nix
+    steps:
+      - &checkout_step
+        name: Checkout
+        run: |
+          set -euo pipefail
+          rm -rf repo
+
+          url="${FORGEJO_HTTP_BASE%/}/${GITHUB_REPOSITORY}.git"
+          token="${GITHUB_TOKEN:?missing GITHUB_TOKEN}"
+          actor="${GITHUB_ACTOR:-uzr}"
+          basic="$(printf "%s:%s" "${actor}" "${token}" | base64 -w0)"
+          git -c "http.extraHeader=Authorization: Basic ${basic}" clone --depth 1 "${url}" repo
+
+          NIXPKGS_REV="$(nix --extra-experimental-features nix-command eval --raw --impure --expr \
+            'let lock = builtins.fromJSON (builtins.readFile ./repo/devenv.lock); in lock.nodes.nixpkgs.locked.rev')"
+          echo "Pinned nixpkgs rev: ${NIXPKGS_REV}"
+          echo "${NIXPKGS_REV}" > .nixpkgs_rev
+          if [ -n "${GITHUB_ENV:-}" ]; then
+            echo "NIXPKGS_REV=${NIXPKGS_REV}" >> "${GITHUB_ENV}"
+          fi
+      - name: tests
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          bash nix-ci-diagnostics.sh
+  build-ci-image:
+    name: build ci image
+    runs-on: nixos-nix
+    needs: nixtest
+    steps:
+      - *checkout_step
+      - name: Prefetch skopeo
+        run: |
+          set -euo pipefail
+          NIXPKGS_REV="${NIXPKGS_REV:-$(cat .nixpkgs_rev)}"
+          nix --extra-experimental-features 'nix-command flakes' \
+            build -L --no-link --show-trace \
+            --option builders "" \
+            "github:NixOS/nixpkgs/${NIXPKGS_REV}#skopeo"
+      - name: Prefetch copyScript
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          nix --extra-experimental-features 'nix-command flakes' \
+            build -L --no-link --show-trace -vv \
+            --option builders "" \
+            .#devenv.config.containers.ci.copyScript
+      - name: Build and push image
+        working-directory: repo
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PASS: ${{ secrets.REGISTRY_PASS }}
+        run: |
+          set -euo pipefail
+          NIXPKGS_REV="${NIXPKGS_REV:-$(cat ../.nixpkgs_rev)}"
+          nix shell "github:NixOS/nixpkgs/${NIXPKGS_REV}#devenv" --command devenv container build ci
+          nix shell "github:NixOS/nixpkgs/${NIXPKGS_REV}#devenv" --command devenv container --copy-args="--dest-tls-verify=false --dest-creds=${REGISTRY_USER}:${REGISTRY_PASS}" copy ci
+
+  test-san:
+    name: build, test
+    runs-on: nixos-nix
+    needs: build-ci-image
+    container:
+      image: 192.168.1.135:3001/uzr/webshot-ci:nix-2.32.5
+      credentials:
+        username: ${{ secrets.REGISTRY_USER }}
+        password: ${{ secrets.REGISTRY_PASS }}
+    steps:
+      - *checkout_step
+      - name: Configure, build, test
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          devenv tasks run webshot:configureSan
+          devenv tasks run webshot:buildSan
+          devenv tasks run webshot:testSan

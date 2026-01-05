@@ -13,6 +13,7 @@
 
   runtime = with pkgs; [
     podman
+    podman-compose
     postgresql_18
   ];
 }

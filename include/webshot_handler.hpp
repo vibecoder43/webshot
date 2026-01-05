@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string_view>
 
-#include <userver/clients/dns/resolver.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
@@ -40,7 +39,6 @@ public:
 private:
     WebshotCrud &crud;
     const WebshotConfig &config;
-    userver::clients::dns::Resolver &resolver;
     WebshotDenylist &denylist;
     const int64_t requestTimeoutMs;
 };

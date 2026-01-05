@@ -90,8 +90,6 @@ set(${PROJECT_NAME}_headers
     include/http_utils.hpp
     include/webshot_denylist.hpp
     include/link.hpp
-    include/host_policy.hpp
-    include/ip_utils.hpp
     include/webshot_cursor.hpp
     include/webshot_pagination.hpp
     include/webshot_prefix_pagination.hpp
@@ -111,8 +109,6 @@ add_library(
   src/link.cpp
   src/container_guard.cpp
   src/webshot_config.cpp
-  src/host_policy.cpp
-  src/ip_utils.cpp
   src/webshot_cursor.cpp
   src/webshot_pagination.cpp
   src/webshot_prefix_pagination.cpp

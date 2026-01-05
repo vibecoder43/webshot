@@ -139,7 +139,22 @@ in {
     ]
     ++ userverDeps
     ++ [webshotTestSan]
-    ++ (with pkgsWithOverlay; [git gdb]);
+    ++ (with pkgsWithOverlay; [git gdb])
+    ++ lib.optionals config.container.isBuilding (with pkgsWithOverlay; [
+      bash
+      coreutils
+      devenv
+      git
+      nodejs_24
+    ]);
+
+  containers.ci = {
+    name = "webshot-ci";
+    version = "nix-2.32.5";
+    registry = "docker://192.168.1.135:3001/uzr/";
+    defaultCopyArgs = ["--dest-tls-verify=false"];
+    startupCommand = "bash";
+  };
 
   treefmt = {
     enable = true;
@@ -203,44 +218,66 @@ in {
 
   env.WEBSHOT_LLVM_SYMBOLIZER_BIN = "${llvm21.llvm}/bin/llvm-symbolizer";
   env.WEBSHOT_RUNTIME_LD_LIBRARY_PATH = lib.makeLibraryPath testLibs;
+  env.WEBSHOT_BUILD_DIR = buildDirs.san;
+  env.WEBSHOT_STATE_DIR = "${config.git.root}/.cache/webshot";
 
   tasks."webshot:infraDevUp" = {
-    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-infra-dev.target";
+    exec = "bash containers/compose/infra_dev_up.sh";
     cwd = config.git.root;
   };
 
   tasks."webshot:infraDevDown" = {
-    exec = "systemctl --user stop webshot-infra-dev.target";
+    exec = "bash containers/compose/infra_dev_down.sh";
     cwd = config.git.root;
   };
 
   tasks."webshot:devUp" = {
-    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-dev.target";
+    exec = "bash containers/compose/webshot_ctl.sh dev up";
     cwd = config.git.root;
   };
 
   tasks."webshot:devDown" = {
-    exec = "systemctl --user stop webshot-dev.target";
+    exec = "bash containers/compose/webshot_ctl.sh dev down";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:devStatus" = {
+    exec = "bash containers/compose/webshot_ctl.sh dev status";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:devLogs" = {
+    exec = "bash containers/compose/webshot_ctl.sh dev logs";
     cwd = config.git.root;
   };
 
   tasks."webshot:infraProdlikeUp" = {
-    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-infra-prodlike.target";
+    exec = "bash containers/compose/infra_prodlike_up.sh";
     cwd = config.git.root;
   };
 
   tasks."webshot:infraProdlikeDown" = {
-    exec = "systemctl --user stop webshot-infra-prodlike.target";
+    exec = "bash containers/compose/infra_prodlike_down.sh";
     cwd = config.git.root;
   };
 
   tasks."webshot:prodlikeUp" = {
-    exec = "bash containers/quadlet/install_quadlet.sh && systemctl --user start webshot-prodlike.target";
+    exec = "bash containers/compose/webshot_ctl.sh prodlike up";
     cwd = config.git.root;
   };
 
   tasks."webshot:prodlikeDown" = {
-    exec = "systemctl --user stop webshot-prodlike.target";
+    exec = "bash containers/compose/webshot_ctl.sh prodlike down";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:prodlikeStatus" = {
+    exec = "bash containers/compose/webshot_ctl.sh prodlike status";
+    cwd = config.git.root;
+  };
+
+  tasks."webshot:prodlikeLogs" = {
+    exec = "bash containers/compose/webshot_ctl.sh prodlike logs";
     cwd = config.git.root;
   };
 

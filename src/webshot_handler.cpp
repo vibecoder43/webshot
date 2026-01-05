@@ -4,7 +4,6 @@
  * @brief Handler that creates captures and lists them by exact link.
  */
 #include "deadline_utils.hpp"
-#include "host_policy.hpp"
 #include "http_utils.hpp"
 #include "link.hpp"
 #include "schemas/webshot.hpp"
@@ -21,7 +20,6 @@
 
 #include <fmt/format.h>
 
-#include <userver/clients/dns/component.hpp>
 #include <userver/components/component.hpp>
 #include <userver/engine/exception.hpp>
 #include <userver/engine/task/current_task.hpp>
@@ -49,7 +47,6 @@ WebshotHandler::WebshotHandler(
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<WebshotCrud>()),
       config(context.FindComponent<WebshotConfig>()),
-      resolver(context.FindComponent<userver::clients::dns::Component>().GetResolver()),
       denylist(context.FindComponent<WebshotDenylist>()),
       requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
 {
@@ -100,17 +97,10 @@ std::string WebshotHandler::HandleRequestThrow(
                 auto parsed = Link::fromTextStripPort(
                     String::fromBytesThrow(req.link), config.queryPartLengthMax()
                 );
-                auto host = parsed.host();
-                if (HostPolicy::isBareName(host) || HostPolicy::isDeniedHostname(host) ||
-                    HostPolicy::hasSpecialTldSuffix(host))
-                    throw InvalidLinkException("forbidden host");
-                auto pubs = HostPolicy::resolvePublic(resolver, host, finalDeadline);
-                if (pubs.empty())
-                    throw InvalidLinkException("forbidden host");
                 auto prefixKey = prefix::makePrefixKey(parsed);
                 if (!denylist.isAllowedPrefix(prefixKey))
                     return httpu::respondError(response, kForbidden, "host in denylist"_t);
-                auto job = crud.createWebshotJob(std::move(parsed), std::move(pubs));
+                auto job = crud.createWebshotJob(std::move(parsed));
                 return httpu::respondJson(response, kAccepted, job);
             } catch (const InvalidLinkException &e) {
                 return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));

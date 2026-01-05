@@ -88,6 +88,7 @@ components_manager:
             webshots-per-link-max: 2
             webshots-links-per-page-max: 10
             crawler-network: 'crawler_net'
+            crawler-proxy-server: $crawler_proxy_server
             link-cooldown-sec: $link-cooldown-sec
             crawl-job-retention-sec: 604800
             crawl-job-cleanup-interval-sec: 3600

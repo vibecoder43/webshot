@@ -39,7 +39,7 @@ endfunction()
 
 webshot_add_cpp_test(
   link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link_test.cpp
-  ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp)
+  ${CMAKE_SOURCE_DIR}/src/link.cpp)
 
 webshot_add_cpp_test(
   s3_v4_client_test
@@ -48,7 +48,6 @@ webshot_add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/s3_v4_client.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
-  ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp
   LIBS
   userver::core
   INCLUDE_DIRS
@@ -66,7 +65,6 @@ webshot_add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/s3_url_utils.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
-  ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp
   LIBS
   userver::core
   INCLUDE_DIRS
@@ -94,21 +92,6 @@ webshot_add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/webshot_prefix_pagination.cpp
   LIBS
   ${PROJECT_NAME}-chgen)
-
-webshot_add_cpp_test(
-  ip_utils_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/ip_utils_test.cpp
-  ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp)
-
-webshot_add_cpp_test(
-  host_policy_test
-  SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/host_policy_test.cpp
-  ${CMAKE_SOURCE_DIR}/src/host_policy.cpp
-  ${CMAKE_SOURCE_DIR}/src/ip_utils.cpp
-  LIBS
-  userver::core
-  INCLUDE_DIRS
-  ${CMAKE_SOURCE_DIR}/src)
 
 webshot_add_cpp_test(
   container_guard_test SOURCES

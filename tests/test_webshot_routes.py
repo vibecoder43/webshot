@@ -94,17 +94,6 @@ async def test_create_webshot_missing_body(service_client):
     assert body["error"]["message"] == "invalid request body"
 
 
-async def test_create_webshot_forbidden_special_tld(service_client):
-    response = await service_client.post(
-        "/v1/webshot",
-        json={"link": "http://example.test/a"},
-    )
-
-    assert response.status == 400
-    body = response.json()
-    assert body["error"]["message"] == "forbidden host"
-
-
 async def test_create_webshot_denylisted_host(service_client):
     # Insert host into denylist via dedicated endpoint.
     deny_resp = await service_client.post(

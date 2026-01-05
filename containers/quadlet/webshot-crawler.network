@@ -1,9 +1,0 @@
-[Unit]
-Description=Webshot crawler bridge network
-PartOf=webshot-infra-dev.target
-PartOf=webshot-infra-prodlike.target
-
-[Network]
-NetworkName=crawler_net
-Subnet=192.0.2.0/24
-NetworkDeleteOnStop=true

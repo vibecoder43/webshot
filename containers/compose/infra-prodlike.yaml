@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  egress-proxy:
+    container_name: egress-proxy
+    image: docker.io/ubuntu/squid:6.6-24.04_beta
+    restart: on-failure
+    networks:
+      - egress_net
+      - crawler_net
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_squid.sh"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+
+  servicedb:
+    container_name: servicedb
+    image: docker.io/postgres:18.1-trixie
+    restart: on-failure
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ../../sql/schema:/docker-entrypoint-initdb.d/schema:ro
+      - ../../containers/service-db-init-multi-db.sh:/docker-entrypoint-initdb.d/10-service-db-init-multi-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+
+  webshot-test-target:
+    container_name: webshot-test-target
+    image: docker.io/nginx:alpine
+    restart: on-failure
+    networks:
+      crawler_net:
+        aliases:
+          - test-target
+    volumes:
+      - ../../containers/nginx-test.conf:/etc/nginx/conf.d/default.conf:ro
+
+networks:
+  crawler_net:
+    name: crawler_net
+    external: true
+  egress_net:
+    name: egress_net
+    external: true

@@ -1,1 +1,2 @@
 secdist-path: secdist.json
+crawler_proxy_server: "http://egress-proxy:3128"

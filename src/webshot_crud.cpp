@@ -111,6 +111,9 @@ properties:
     crawler-network:
         type: string
         description: 'Name of the network to run crawlers on (scoped egress rules)'
+    crawler-proxy-server:
+        type: string
+        description: 'HTTP proxy URL for Chrome inside the crawler container (mandatory)'
     crawl-concurrency:
         type: integer
         minimum: 1
@@ -220,6 +223,7 @@ public:
     const int64_t webshotsPerLinkMax;
     const int64_t webshotsLinksPerPageMax;
     const String crawlerNetwork;
+    const String crawlerProxyServer;
     const int64_t crawlerWorkers;
     const String crawlerImage;
     const int64_t crawlerPageLoadTimeoutSec;
@@ -264,8 +268,7 @@ public:
     concurrent::BackgroundTaskStorage purgeBackground;
     concurrent::BackgroundTaskStorage crawlBackground;
 
-    [[nodiscard]] dto::UuidWithTimeLink
-    runCrawlJob(Uuid id, Link link, std::vector<String> pinnedIps);
+    [[nodiscard]] dto::UuidWithTimeLink runCrawlJob(Uuid id, Link link);
     [[nodiscard]] us::utils::datetime::TimePointTz insertJob(Uuid id, String link);
     [[nodiscard]] std::optional<dto::WebshotJob> findLatestJobForLink(const String &link);
     void markJobRunning(Uuid id);
@@ -288,6 +291,7 @@ public:
           webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>()),
           webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>()),
           crawlerNetwork(String::fromBytesThrow(cfg["crawler-network"].As<std::string>())),
+          crawlerProxyServer(String::fromBytesThrow(cfg["crawler-proxy-server"].As<std::string>())),
           crawlerWorkers(cfg["crawler-workers"].As<int64_t>()),
           crawlerImage(String::fromBytesThrow(cfg["crawler-image"].As<std::string>())),
           crawlerPageLoadTimeoutSec(cfg["crawler-page-load-timeout-sec"].As<int64_t>()),
@@ -325,6 +329,8 @@ public:
           s3RefreshTask(), crawlJobCleanupTask(), purgeBackground(purgeTaskProcessor),
           crawlBackground(ctx.GetTaskProcessor("main-task-processor"))
     {
+        UINVARIANT(!crawlerProxyServer.empty(), "crawler-proxy-server must not be empty");
+
         const auto crawlerStageTotalTimeoutSec = crawlerPageLoadTimeoutSec +
                                                  crawlerPostLoadDelaySec + crawlerNetIdleWaitSec +
                                                  crawlerPageExtraDelaySec +
@@ -394,16 +400,14 @@ public:
 /** Lightweight context shared across steps of a single crawl job. */
 struct [[nodiscard]] CrawlContext {
     Link link;
-    std::vector<String> pinnedIps;
     us::fs::blocking::TempDirectory archiveRoot;
     Uuid id;
     String keyOnly;
     String s3Key;
     String location;
 
-    CrawlContext(Uuid idIn, Link linkIn, std::vector<String> pinnedIpsIn, const WebshotConfig &cfg)
-        : link(std::move(linkIn)), pinnedIps(std::move(pinnedIpsIn)),
-          archiveRoot(us::fs::blocking::TempDirectory::Create()), id(idIn),
+    CrawlContext(Uuid idIn, Link linkIn, const WebshotConfig &cfg)
+        : link(std::move(linkIn)), archiveRoot(us::fs::blocking::TempDirectory::Create()), id(idIn),
           keyOnly(String::fromBytesThrow(us::utils::ToString(id))),
           s3Key(String::fromBytesThrow(fmt::format("{}/{}", cfg.s3Bucket(), keyOnly))),
           location(String::fromBytesThrow(fmt::format("{}/{}", cfg.publicBaseUrl(), keyOnly)))
@@ -411,11 +415,8 @@ struct [[nodiscard]] CrawlContext {
     }
 };
 
-[[nodiscard]] dto::UuidWithTimeLink
-WebshotCrud::Impl::runCrawlJob(Uuid id, Link link, std::vector<String> pinnedIps)
+[[nodiscard]] dto::UuidWithTimeLink WebshotCrud::Impl::runCrawlJob(Uuid id, Link link)
 {
-    UINVARIANT(!pinnedIps.empty(), "can't crawl with no IPs");
-
     const auto totalCrawlTimeLimitSec = crawlerOverheadTimeoutSec + crawlerContainerTimeoutSec;
     engine::current_task::SetDeadline(
         engine::Deadline::FromDuration(chrono::seconds(totalCrawlTimeLimitSec))
@@ -425,7 +426,7 @@ WebshotCrud::Impl::runCrawlJob(Uuid id, Link link, std::vector<String> pinnedIps
 
     engine::subprocess::ProcessStarter starter(engine::current_task::GetBlockingTaskProcessor());
 
-    CrawlContext ctx(id, std::move(link), std::move(pinnedIps), svcCfg);
+    CrawlContext ctx(id, std::move(link), svcCfg);
 
     runCrawlerForContext(ctx, starter);
 
@@ -640,26 +641,21 @@ void WebshotCrud::Impl::runCrawlerForContext(
     const auto cname = text::format(
         "btcx-{}", us::utils::ToString(us::utils::generators::GenerateBoostUuid())
     );
+
+    const auto chromeFlags = text::format(
+        "--dns-over-https-mode=off --disable-quic --proxy-server={} "
+        "--proxy-bypass-list=<-loopback>",
+        crawlerProxyServer
+    );
+
     std::vector<String> createArgs = {
-        "--hooks-dir=./containers"_t,
-        "create"_t,
-        "-e"_t,
-        "CHROME_FLAGS=\"--dns-over-https-mode=off\""_t,
-        "--shm-size"_t,
-        "1g"_t,
-        "-v"_t
+        "create"_t,     "-e"_t, text::format("CHROME_FLAGS={}", chromeFlags),
+        "--shm-size"_t, "1g"_t, "-v"_t
     };
     createArgs.push_back(text::format("{}:/crawls", ctx.archiveRoot.GetPath()));
     createArgs.push_back("--network"_t);
     createArgs.push_back(crawlerNetwork);
-    for (auto &&ip : ctx.pinnedIps) {
-        createArgs.push_back("--add-host"_t);
-        createArgs.push_back(text::format("{}:{}", ctx.link.host(), ip));
-    }
     const auto collection = "1"_t;
-    // Mark crawler containers for per-container firewalling via OCI hooks.
-    createArgs.push_back("--annotation"_t);
-    createArgs.push_back("webshot.crawler.netpol=true"_t);
     createArgs.push_back("--name"_t);
     createArgs.push_back(cname);
     createArgs.push_back(crawlerImage);
@@ -693,6 +689,8 @@ void WebshotCrud::Impl::runCrawlerForContext(
          "--blockAds"_t,
          "--behaviors"_t,
          "siteSpecific"_t,
+         "--failOnFailedSeed"_t,
+         "--failOnInvalidStatus"_t,
          "--lang"_t,
          crawlerLang,
          "--context"_t,
@@ -854,19 +852,17 @@ void WebshotCrud::Impl::purgePrefix(const String &prefixKey)
     }
 }
 
-dto::UuidWithTimeLink WebshotCrud::createWebshot(Link link, std::vector<String> pinnedIps)
+dto::UuidWithTimeLink WebshotCrud::createWebshot(Link link)
 {
     auto *implPtr = impl.get();
     auto id = us::utils::generators::GenerateBoostUuid();
     return us::utils::Async(
                "create-webshot",
-               [implPtr, id, link = std::move(link), pinned = std::move(pinnedIps)]() {
-                   return implPtr->runCrawlJob(id, link, pinned);
-               }
+               [implPtr, id, link = std::move(link)]() { return implPtr->runCrawlJob(id, link); }
     ).Get();
 }
 
-dto::WebshotJob WebshotCrud::createWebshotJob(Link link, std::vector<String> pinnedIps)
+dto::WebshotJob WebshotCrud::createWebshotJob(Link link)
 {
     auto *implPtr = impl.get();
     const auto normalizedLink = link.normalized();
@@ -884,21 +880,19 @@ dto::WebshotJob WebshotCrud::createWebshotJob(Link link, std::vector<String> pin
 
     auto id = us::utils::generators::GenerateBoostUuid();
     auto createdAt = implPtr->insertJob(id, normalizedLink);
-    implPtr->crawlBackground.AsyncDetach(
-        "crawl-job", [implPtr, id, link = std::move(link), pinned = std::move(pinnedIps)]() {
-            try {
-                implPtr->markJobRunning(id);
-                auto result = implPtr->runCrawlJob(id, link, pinned);
-                implPtr->markJobSucceeded(id, result.created_at);
-            } catch (const errors::CrawlerSizeLimitException &e) {
-                implPtr->markJobFailed(id, "size_limit"_t, "capture exceeded archive size limit"_t);
-            } catch (const errors::CrawlerFailedException &e) {
-                implPtr->markJobFailed(id, "crawler_failed"_t, "internal crawler error"_t);
-            } catch (const std::exception &e) {
-                implPtr->markJobFailed(id, "internal_server_error"_t, "internal server error"_t);
-            }
+    implPtr->crawlBackground.AsyncDetach("crawl-job", [implPtr, id, link = std::move(link)]() {
+        try {
+            implPtr->markJobRunning(id);
+            auto result = implPtr->runCrawlJob(id, link);
+            implPtr->markJobSucceeded(id, result.created_at);
+        } catch (const errors::CrawlerSizeLimitException &e) {
+            implPtr->markJobFailed(id, "size_limit"_t, "capture exceeded archive size limit"_t);
+        } catch (const errors::CrawlerFailedException &e) {
+            implPtr->markJobFailed(id, "crawler_failed"_t, "internal crawler error"_t);
+        } catch (const std::exception &e) {
+            implPtr->markJobFailed(id, "internal_server_error"_t, "internal server error"_t);
         }
-    );
+    });
 
     dto::WebshotJob job;
     job.uuid = id;

@@ -1,8 +1,0 @@
-[Unit]
-Description=Webshot dev infra (Quadlet)
-Requires=webshot-crawler-network.service
-Requires=webshot-postgres.service
-Requires=webshot-seaweed.service
-Requires=webshot-test-target.service
-After=webshot-crawler-network.service
-PartOf=webshot-dev.target

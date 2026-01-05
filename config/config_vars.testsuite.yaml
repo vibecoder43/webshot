@@ -13,4 +13,5 @@ crawler-page-extra-delay-sec: 0
 crawler-behavior-timeout-sec: 1
 crawler-container-timeout-sec: 15
 crawler-overhead-timeout-sec: 45
+crawler_proxy_server: "http://egress-proxy:3128"
 link-cooldown-sec: 60

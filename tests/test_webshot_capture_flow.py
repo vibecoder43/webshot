@@ -119,3 +119,27 @@ async def test_disallow_and_purge_blocks_new_captures(service_client, pgsql):
     assert resp.status == 403
     err = resp.json()["error"]["message"]
     assert err == "host in denylist"
+
+
+@pytest.mark.asyncio
+async def test_capture_fails_on_proxy_denied_seed(service_client, pgsql):
+    resp = await service_client.post("/v1/webshot", json={"link": "http://localhost/"})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    for _ in range(60):
+        status_resp = await service_client.get(f"/v1/webshot/jobs/{job_id}")
+        assert status_resp.status == 200
+        job = status_resp.json()
+        if job["status"] == "failed":
+            break
+        if job["status"] == "succeeded":
+            pytest.fail(f"job succeeded unexpectedly: {job}")
+        await asyncio.sleep(0.5)
+    else:
+        pytest.fail("job did not fail in time")
+
+    db = pgsql["capture_meta_db"]
+    with db.cursor() as cur:
+        cur.execute("select 1 from webshot where id = %s", (uuid.UUID(job_id),))
+        assert cur.fetchone() is None

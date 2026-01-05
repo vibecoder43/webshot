@@ -148,12 +148,4 @@ def patch_s3_config(config_yaml, _config_vars):
     webshot_cfg["s3-endpoint"] = "http://localhost:8334"
 
 
-def patch_dns_client_config(config_yaml, _config_vars):
-    components = config_yaml["components_manager"]["components"]
-    dns_cfg = components.get("dns-client")
-    if dns_cfg is not None:
-        dns_hosts = pathlib.Path(__file__).resolve().parents[1] / "config" / "dns_hosts_test"
-        dns_cfg["hosts-file-path"] = str(dns_hosts)
-
-
-USERVER_CONFIG_HOOKS = [patch_s3_config, patch_dns_client_config]
+USERVER_CONFIG_HOOKS = [patch_s3_config]

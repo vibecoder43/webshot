@@ -1,0 +1,112 @@
+version: "3.9"
+
+services:
+  egress-proxy:
+    container_name: egress-proxy
+    image: docker.io/ubuntu/squid:6.6-24.04_beta
+    restart: on-failure
+    networks:
+      - egress_net
+      - crawler_net
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_squid.sh"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+
+  servicedb:
+    container_name: servicedb
+    image: docker.io/postgres:18.1-trixie
+    restart: on-failure
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ../../sql/schema:/docker-entrypoint-initdb.d/schema:ro
+      - ../../containers/service-db-init-multi-db.sh:/docker-entrypoint-initdb.d/10-service-db-init-multi-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+
+  seaweedfs:
+    container_name: seaweedfs
+    image: docker.io/chrislusf/seaweedfs:latest
+    restart: on-failure
+    command:
+      - server
+      - -s3
+      - -filer
+      - -ip.bind=0.0.0.0
+      - -dir=/data
+      - -master.volumeSizeLimitMB=32
+      - -metricsPort=9324
+      - -s3.config=/etc/seaweedfs/s3_config.json
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:9333:9333"
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8082:8080"
+      - "127.0.0.1:9324:9324"
+    volumes:
+      - ../../containers/seaweed/s3_config.json:/etc/seaweedfs/s3_config.json:ro
+      - ./healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_seaweedfs.sh"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+    stop_grace_period: 60s
+
+  webshot_scalar:
+    container_name: webshot_scalar
+    image: docker.io/scalarapi/api-reference:latest
+    restart: on-failure
+    networks:
+      - crawler_net
+    environment:
+      API_REFERENCE_CONFIG: '{"sources":[{"url":"/openapi/webshot.yaml"}],"layout":{"hideDownloadButton":false}}'
+    volumes:
+      - ../../schemas:/docs:ro
+      - ../../containers/scalar/Caddyfile:/etc/caddy/Caddyfile:ro
+
+  webshot_reverse_proxy:
+    container_name: webshot_reverse_proxy
+    image: docker.io/nginx:alpine
+    restart: on-failure
+    networks:
+      - egress_net
+      - crawler_net
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8085:8085"
+    volumes:
+      - ../../containers/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../schemas:/data/openapi:ro
+    depends_on:
+      - webshot_scalar
+  webshot-test-target:
+    container_name: webshot-test-target
+    image: docker.io/nginx:alpine
+    restart: on-failure
+    networks:
+      crawler_net:
+        aliases:
+          - test-target
+    volumes:
+      - ../../containers/nginx-test.conf:/etc/nginx/conf.d/default.conf:ro
+
+networks:
+  crawler_net:
+    name: crawler_net
+    external: true
+  egress_net:
+    name: egress_net
+    external: true

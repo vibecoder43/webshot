@@ -1,11 +1,35 @@
 inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/c97c47f2bac4fa59e2cbdeba289686ae615f8ed4
+  mk-shell-bin:
+    url: github:rrbutani/nix-mk-shell-bin
+  nix2container:
+    url: github:nlewo/nix2container
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   pgmigrate:
     url: path:nix/pgmigrate
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   treefmt-nix:
     url: github:numtide/treefmt-nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   uni-algo:
     url: path:nix/uni-algo
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   userver:
     url: path:nix/userver
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   yandex-taxi-testsuite:
     url: path:nix/yandex-taxi-testsuite
+    inputs:
+      nixpkgs:
+        follows: nixpkgs

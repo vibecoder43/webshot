@@ -35,13 +35,10 @@ public:
     /**
      * @brief Run a crawl for the given link and persist metadata.
      *
-     * Expects a normalized Link and a non-empty list of prevalidated public IP
-     * addresses for its host (SSR F checks are done at handler level).
-     *
      * On success returns a single capture descriptor including UUID, creation
      * time and normalized link.
      */
-    [[nodiscard]] dto::UuidWithTimeLink createWebshot(Link link, std::vector<String> pinnedIps);
+    [[nodiscard]] dto::UuidWithTimeLink createWebshot(Link link);
 
     /**
      * @brief Enqueue a crawl job for the given link and return its job descriptor.
@@ -50,7 +47,7 @@ public:
      * succeeds. Job execution is scheduled asynchronously; callers should poll
      * job status via getCrawlJob().
      */
-    [[nodiscard]] dto::WebshotJob createWebshotJob(Link link, std::vector<String> pinnedIps);
+    [[nodiscard]] dto::WebshotJob createWebshotJob(Link link);
     /** @brief Look up a capture by id. */
     [[nodiscard]] std::optional<Link> findWebshot(Uuid uuid);
 

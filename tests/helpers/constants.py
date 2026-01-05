@@ -1,1 +1,1 @@
-TEST_HOST = "test.example.com"
+TEST_HOST = "test-target"
