@@ -10,6 +10,7 @@ services:
       - crawler_net
     volumes:
       - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./squid.mode.prodlike.conf:/etc/squid/squid.mode.conf:ro
       - ./healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_squid.sh"]
