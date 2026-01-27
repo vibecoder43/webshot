@@ -4,7 +4,6 @@ info:
   version: 0.1.0
 servers:
   - url: /
-
 paths:
   /v1/webshot:
     get:
@@ -62,7 +61,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
     post:
       operationId: createWebshot
       summary: Enqueue a capture job and return its status
@@ -125,7 +123,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
   /v1/webshot/prefix:
     get:
       operationId: listWebshotsByPrefix
@@ -183,7 +180,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
   /v1/webshot/jobs/{uuid}:
     get:
       operationId: getWebshotJob
@@ -231,7 +227,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
   /v1/disallow-and-purge:
     post:
       operationId: disallowAndPurgePrefix
@@ -277,7 +272,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
   /v1/webshot/{uuid}:
     get:
       operationId: getWebshotByUuid
@@ -328,7 +322,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-
 components:
   schemas:
     PaginationCursor:
@@ -361,7 +354,6 @@ components:
       example:
         error:
           message: internal server error
-    
     CreateWebshotRequest:
       type: object
       additionalProperties: false
@@ -403,7 +395,6 @@ components:
           - uuid: 123e4567-e89b-12d3-a456-426614174000
             created_at: 2025-11-11T12:34:56+00:00
         next_page_token: eyJ0IjoxNjk5ODMyMDAwMDAwLCJpIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIn0
-
     UuidWithTimeLink:
       type: object
       additionalProperties: false
@@ -421,7 +412,6 @@ components:
         uuid: 123e4567-e89b-12d3-a456-426614174000
         created_at: 2025-11-11T12:34:56+00:00
         link: example.com/a
-
     WebshotJob:
       type: object
       additionalProperties: false
@@ -462,7 +452,6 @@ components:
         link: example.com/a
         status: pending
         created_at: 2025-11-11T12:34:56+00:00
-
     PagedFindWebshotByPrefixResponse:
       type: object
       additionalProperties: false

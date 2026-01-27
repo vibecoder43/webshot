@@ -5,14 +5,14 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 . "${script_dir}/podman_compose_helpers.sh"
 
 need podman
-need podman-compose
+need_compose
 need timeout
 
 cd -- "${script_dir}"
 compose_file="infra-dev.yaml"
 
 timeout_sec="${WEBSHOT_INFRA_DOWN_TIMEOUT_SEC:-90}"
-if timeout "${timeout_sec}" podman-compose --in-pod true -f "${compose_file}" down; then
+if timeout "${timeout_sec}" compose --in-pod true -f "${compose_file}" down; then
   exit 0
 fi
 

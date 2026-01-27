@@ -9,3 +9,4 @@ design.md
 .cache
 .pre-commit-config.yaml
 notes.md
+build/

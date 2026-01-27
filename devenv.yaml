@@ -1,6 +1,6 @@
 inputs:
   nixpkgs:
-    url: github:NixOS/nixpkgs/c97c47f2bac4fa59e2cbdeba289686ae615f8ed4
+    url: github:NixOS/nixpkgs/1cd347bf3355fce6c64ab37d3967b4a2cb4b878c
   mk-shell-bin:
     url: github:rrbutani/nix-mk-shell-bin
   nix2container:

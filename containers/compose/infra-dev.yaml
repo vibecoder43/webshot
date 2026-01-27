@@ -1,9 +1,8 @@
 version: "3.9"
-
 services:
   egress-proxy:
     container_name: egress-proxy
-    image: docker.io/ubuntu/squid:6.6-24.04_beta
+    image: docker.io/ubuntu/squid:6.6-24.04_beta@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
     restart: on-failure
     networks:
       - egress_net
@@ -14,13 +13,12 @@ services:
       - ./healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_squid.sh"]
-      interval: 1s
+      interval: disable
       timeout: 2s
       retries: 60
-
   servicedb:
     container_name: servicedb
-    image: docker.io/postgres:18.1-trixie
+    image: docker.io/postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
     restart: on-failure
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust
@@ -31,13 +29,12 @@ services:
       - ../../containers/service-db-init-multi-db.sh:/docker-entrypoint-initdb.d/10-service-db-init-multi-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
-      interval: 1s
+      interval: disable
       timeout: 2s
       retries: 60
-
   seaweedfs:
     container_name: seaweedfs
-    image: docker.io/chrislusf/seaweedfs:latest
+    image: docker.io/chrislusf/seaweedfs:latest@sha256:fef02554ebd5093d2f99699c44b846fb316b95be5ea8bd82677c2737ad516631
     restart: on-failure
     command:
       - server
@@ -59,14 +56,13 @@ services:
       - ./healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_seaweedfs.sh"]
-      interval: 1s
+      interval: disable
       timeout: 5s
       retries: 60
     stop_grace_period: 60s
-
   webshot_scalar:
     container_name: webshot_scalar
-    image: docker.io/scalarapi/api-reference:latest
+    image: docker.io/scalarapi/api-reference:latest@sha256:9ae2aa3829488d273de33ebd21a4446a4b0fd19107b355689dca43abfb846ec8
     restart: on-failure
     networks:
       - crawler_net
@@ -75,17 +71,15 @@ services:
     volumes:
       - ../../schemas:/docs:ro
       - ../../containers/scalar/Caddyfile:/etc/caddy/Caddyfile:ro
-
   webshot_reverse_proxy:
     container_name: webshot_reverse_proxy
-    image: docker.io/nginx:alpine
+    image: docker.io/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
     restart: on-failure
     networks:
       - egress_net
       - crawler_net
     extra_hosts:
       - "host.containers.internal:host-gateway"
-      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8085:8085"
     volumes:
@@ -95,7 +89,7 @@ services:
       - webshot_scalar
   webshot-test-target:
     container_name: webshot-test-target
-    image: docker.io/nginx:alpine
+    image: docker.io/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
     restart: on-failure
     networks:
       crawler_net:
@@ -103,7 +97,6 @@ services:
           - test-target
     volumes:
       - ../../containers/nginx-test.conf:/etc/nginx/conf.d/default.conf:ro
-
 networks:
   crawler_net:
     name: crawler_net

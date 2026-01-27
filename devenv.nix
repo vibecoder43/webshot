@@ -34,7 +34,7 @@
   webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot-test-san" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
-    cd /tmp/build-webshot-san
+    cd ${buildDirs.san}
     ctest --output-on-failure
   '';
 
@@ -42,10 +42,10 @@
   uniAlgoPkgs = inputs."uni-algo".packages.${system};
   yttsPkgs = inputs."yandex-taxi-testsuite".packages.${system};
   buildDirs = {
-    san = "/tmp/build-webshot-san";
-    tidy = "/tmp/build-webshot-tidy";
-    cov = "/tmp/build-webshot-cov";
-    release = "/tmp/build-webshot-release";
+    san = "${config.devenv.root}/build/san";
+    tidy = "${config.devenv.root}/build/tidy";
+    cov = "${config.devenv.root}/build/cov";
+    release = "${config.devenv.root}/build/release";
   };
 
   cmakeBaseFlags = [
@@ -113,7 +113,7 @@
   };
 
   mkConfigureTask = buildDir: clangdConfig: extraFlags: {
-    cwd = config.git.root;
+    cwd = config.devenv.root;
     exec =
       lib.concatStringsSep " " (
         ["cmake" "-B" buildDir] ++ cmakeBaseFlags ++ extraFlags
@@ -122,7 +122,7 @@
   };
 
   mkBuildTask = buildDir: {
-    cwd = config.git.root;
+    cwd = config.devenv.root;
     exec = "cmake --build ${buildDir}";
   };
 in {
@@ -139,23 +139,7 @@ in {
     ]
     ++ userverDeps
     ++ [webshotTestSan]
-    ++ (with pkgsWithOverlay; [git gdb])
-    ++ lib.optionals config.container.isBuilding (with pkgsWithOverlay; [
-      bash
-      coreutils
-      devenv
-      git
-      nodejs_24
-    ]);
-
-  containers.ci = {
-    name = "webshot-ci";
-    version = "nix-2.32.5";
-    registry = "docker://192.168.1.135:3001/uzr/";
-    defaultCopyArgs = ["--dest-tls-verify=false"];
-    startupCommand = "bash";
-  };
-
+    ++ (with pkgsWithOverlay; [git gdb]);
   treefmt = {
     enable = true;
     config = {
@@ -165,6 +149,7 @@ in {
         cmake-format.enable = true;
         ruff-format.enable = true;
         sqlfluff.enable = true;
+        yamlfmt.enable = true;
       };
       settings.global.excludes = [
         ".git/**"
@@ -184,6 +169,14 @@ in {
       settings.formatters = builtins.attrValues config.treefmt.config.build.programs;
     };
     ruff.enable = true;
+    yamllint = {
+      enable = true;
+      settings.configuration = ''
+        extends: relaxed
+        rules:
+          line-length: disable
+      '';
+    };
     sqlfluff-lint = {
       enable = true;
       entry = "sqlfluff lint";
@@ -219,66 +212,66 @@ in {
   env.WEBSHOT_LLVM_SYMBOLIZER_BIN = "${llvm21.llvm}/bin/llvm-symbolizer";
   env.WEBSHOT_RUNTIME_LD_LIBRARY_PATH = lib.makeLibraryPath testLibs;
   env.WEBSHOT_BUILD_DIR = buildDirs.san;
-  env.WEBSHOT_STATE_DIR = "${config.git.root}/.cache/webshot";
+  env.WEBSHOT_STATE_DIR = "${config.devenv.root}/.cache/webshot";
 
   tasks."webshot:infraDevUp" = {
     exec = "bash containers/compose/infra_dev_up.sh";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:infraDevDown" = {
     exec = "bash containers/compose/infra_dev_down.sh";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:devUp" = {
     exec = "bash containers/compose/webshot_ctl.sh dev up";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:devDown" = {
     exec = "bash containers/compose/webshot_ctl.sh dev down";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:devStatus" = {
     exec = "bash containers/compose/webshot_ctl.sh dev status";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:devLogs" = {
     exec = "bash containers/compose/webshot_ctl.sh dev logs";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeUp" = {
     exec = "bash containers/compose/infra_prodlike_up.sh";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeDown" = {
     exec = "bash containers/compose/infra_prodlike_down.sh";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeUp" = {
     exec = "bash containers/compose/webshot_ctl.sh prodlike up";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeDown" = {
     exec = "bash containers/compose/webshot_ctl.sh prodlike down";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeStatus" = {
     exec = "bash containers/compose/webshot_ctl.sh prodlike status";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeLogs" = {
     exec = "bash containers/compose/webshot_ctl.sh prodlike logs";
-    cwd = config.git.root;
+    cwd = config.devenv.root;
   };
 
   tasks."webshot:configureSan" =

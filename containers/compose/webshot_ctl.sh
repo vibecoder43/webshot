@@ -42,7 +42,6 @@ esac
 
 need bash
 need podman
-need podman-compose
 need timeout
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,125 +1,125 @@
 components_manager:
-    task_processors:
-        main-task-processor:
-            worker_threads: 4
-        purge-task-processor:
-            worker_threads: 1
-            thread_name: purge-task-processor-worker
-        fs-task-processor:
-            worker_threads: &blocking_num_workers 4
-        creds-refresh-task-processor:
-            worker_threads: 1
-            thread_name: creds-refresh-task-processor-worker
-    default_task_processor: main-task-processor
-    components:
-        http-client:
-            fs-task-processor: fs-task-processor
-        secdist:
-        default-secdist-provider:
-            config: $secdist-path
-            missing-ok: true
-            format: json
-        dynamic-config:
-            defaults:
-                USERVER_RPS_CCONTROL_ENABLED: true
-        webshot-config:
-            query-part-length-max: 32768
-            s3-bucket: $s3_bucket
-            s3-endpoint: $s3_endpoint
-            s3-region: $s3_region
-            public-base-url: $public_base_url
-            s3-timeout-ms: 30000
-        dns-client:
-            fs-task-processor: fs-task-processor
-        testsuite-support:
-        server:
-            listener:
-                port: 8080
-                task_processor: main-task-processor
-            listener-monitor:
-                port: 8081
-                task_processor: main-task-processor
-        congestion-control:
-            fake-mode: false
-            load-enabled: true
-        logging:
-            fs-task-processor: fs-task-processor
-            loggers:
-                default:
-                    file_path: '@stderr'
-                    level: debug
-                    overflow_behavior: discard
-        handler-server-monitor:
-            path: /service/monitor
-            method: GET
-            task_processor: main-task-processor
-        webshot-handler:
-            path: /v1/webshot
-            method: GET,POST
-            task_processor: main-task-processor
-            request-timeout-ms: 60000
-            max_request_size: &max-data-per-request 65536
-        webshots-by-prefix:
-            path: /v1/webshot/prefix
-            method: GET
-            task_processor: main-task-processor
-            request-timeout-ms: 10000
-            max_request_size: *max-data-per-request
-        webshot-job-handler:
-            path: /v1/webshot/jobs/{uuid}
-            method: GET
-            task_processor: main-task-processor
-            request-timeout-ms: 5000
-            max_request_size: *max-data-per-request
-        webshot-disallow-and-purge:
-            path: /v1/disallow-and-purge
-            method: POST
-            task_processor: main-task-processor
-            request-timeout-ms: 10000
-            max_request_size: *max-data-per-request
-        webshot-by-id:
-            path: /v1/webshot/{uuid}
-            method: GET
-            task_processor: main-task-processor
-            request-timeout-ms: 10000
-            max_request_size: *max-data-per-request
-        webshot-crud:
-            webshots-page-max: 2
-            webshots-per-link-max: 2
-            webshots-links-per-page-max: 10
-            crawler-network: 'crawler_net'
-            crawler-proxy-server: $crawler_proxy_server
-            link-cooldown-sec: $link-cooldown-sec
-            crawl-job-retention-sec: 604800
-            crawl-job-cleanup-interval-sec: 3600
-            crawl-concurrency: *blocking_num_workers
-            crawler-image: 'webrecorder/browsertrix-crawler'
-            crawler-workers: 1
-            crawler-page-load-timeout-sec: $crawler-page-load-timeout-sec
-            crawler-post-load-delay-sec: $crawler-post-load-delay-sec
-            crawler-net-idle-wait-sec: $crawler-net-idle-wait-sec
-            crawler-page-extra-delay-sec: $crawler-page-extra-delay-sec
-            crawler-behavior-timeout-sec: $crawler-behavior-timeout-sec
-            crawler-container-timeout-sec: $crawler-container-timeout-sec
-            crawler-overhead-timeout-sec: $crawler-overhead-timeout-sec
-            crawler-lang: 'en'
-            crawler-scope-type: 'page-spa'
-            crawler-size-limit-mib: $crawler_size_limit_mib
-            s3-credentials-endpoint: $s3-credentials-endpoint
-            s3-credentials-endpoint#fallback: 'https://sts.example.com/'
-            s3-use-sts: $s3_use_sts
-            s3-credentials-duration-sec: $s3-credentials-duration-sec
-            s3-credentials-duration-sec#fallback: 3600
-            s3-credentials-refresh-margin-sec: $s3-credentials-refresh-margin-sec
-            s3-credentials-refresh-margin-sec#fallback: 300
-            s3-credentials-refresh-retry-sec: $s3-credentials-refresh-retry-sec
-            s3-credentials-refresh-retry-sec#fallback: 60
-            purge-job-timeout-sec: 300
-            purge-delete-batch-size: 1000
-        capture-meta-db:
-            dbconnection: $pg_webshot_meta_dsn
-            blocking_task_processor: fs-task-processor
-        shared-state-db:
-            dbconnection: $pg_shared_state_dsn
-            blocking_task_processor: fs-task-processor
-        webshot-denylist:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+    purge-task-processor:
+      worker_threads: 1
+      thread_name: purge-task-processor-worker
+    fs-task-processor:
+      worker_threads: &blocking_num_workers 4
+    creds-refresh-task-processor:
+      worker_threads: 1
+      thread_name: creds-refresh-task-processor-worker
+  default_task_processor: main-task-processor
+  components:
+    http-client:
+      fs-task-processor: fs-task-processor
+    secdist:
+    default-secdist-provider:
+      config: $secdist-path
+      missing-ok: true
+      format: json
+    dynamic-config:
+      defaults:
+        USERVER_RPS_CCONTROL_ENABLED: true
+    webshot-config:
+      query-part-length-max: 32768
+      s3-bucket: $s3_bucket
+      s3-endpoint: $s3_endpoint
+      s3-region: $s3_region
+      public-base-url: $public_base_url
+      s3-timeout-ms: 30000
+    dns-client:
+      fs-task-processor: fs-task-processor
+    testsuite-support:
+    server:
+      listener:
+        port: 8080
+        task_processor: main-task-processor
+      listener-monitor:
+        port: 8081
+        task_processor: main-task-processor
+    congestion-control:
+      fake-mode: false
+      load-enabled: true
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stderr'
+          level: debug
+          overflow_behavior: discard
+    handler-server-monitor:
+      path: /service/monitor
+      method: GET
+      task_processor: main-task-processor
+    webshot-handler:
+      path: /v1/webshot
+      method: GET,POST
+      task_processor: main-task-processor
+      request-timeout-ms: 60000
+      max_request_size: &max-data-per-request 65536
+    webshots-by-prefix:
+      path: /v1/webshot/prefix
+      method: GET
+      task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
+    webshot-job-handler:
+      path: /v1/webshot/jobs/{uuid}
+      method: GET
+      task_processor: main-task-processor
+      request-timeout-ms: 5000
+      max_request_size: *max-data-per-request
+    webshot-disallow-and-purge:
+      path: /v1/disallow-and-purge
+      method: POST
+      task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
+    webshot-by-id:
+      path: /v1/webshot/{uuid}
+      method: GET
+      task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
+    webshot-crud:
+      webshots-page-max: 2
+      webshots-per-link-max: 2
+      webshots-links-per-page-max: 10
+      crawler-network: 'crawler_net'
+      crawler-proxy-server: $crawler_proxy_server
+      link-cooldown-sec: $link-cooldown-sec
+      crawl-job-retention-sec: 604800
+      crawl-job-cleanup-interval-sec: 3600
+      crawl-concurrency: *blocking_num_workers
+      crawler-image: 'docker.io/webrecorder/browsertrix-crawler:latest@sha256:35f863bdd26154fbcb6c79badc2d2ca7a1385e45df55523ed240b728acbf7582'
+      crawler-workers: 1
+      crawler-page-load-timeout-sec: $crawler-page-load-timeout-sec
+      crawler-post-load-delay-sec: $crawler-post-load-delay-sec
+      crawler-net-idle-wait-sec: $crawler-net-idle-wait-sec
+      crawler-page-extra-delay-sec: $crawler-page-extra-delay-sec
+      crawler-behavior-timeout-sec: $crawler-behavior-timeout-sec
+      crawler-container-timeout-sec: $crawler-container-timeout-sec
+      crawler-overhead-timeout-sec: $crawler-overhead-timeout-sec
+      crawler-lang: 'en'
+      crawler-scope-type: 'page-spa'
+      crawler-size-limit-mib: $crawler_size_limit_mib
+      s3-credentials-endpoint: $s3-credentials-endpoint
+      s3-credentials-endpoint#fallback: 'https://sts.example.com/'
+      s3-use-sts: $s3_use_sts
+      s3-credentials-duration-sec: $s3-credentials-duration-sec
+      s3-credentials-duration-sec#fallback: 3600
+      s3-credentials-refresh-margin-sec: $s3-credentials-refresh-margin-sec
+      s3-credentials-refresh-margin-sec#fallback: 300
+      s3-credentials-refresh-retry-sec: $s3-credentials-refresh-retry-sec
+      s3-credentials-refresh-retry-sec#fallback: 60
+      purge-job-timeout-sec: 300
+      purge-delete-batch-size: 1000
+    capture-meta-db:
+      dbconnection: $pg_webshot_meta_dsn
+      blocking_task_processor: fs-task-processor
+    shared-state-db:
+      dbconnection: $pg_shared_state_dsn
+      blocking_task_processor: fs-task-processor
+    webshot-denylist:
