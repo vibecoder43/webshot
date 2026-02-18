@@ -61,7 +61,7 @@ struct [[nodiscard]] PrefixCursor {
  * @brief Compute the smallest string strictly greater than any with the same prefix.
  *
  * Treats the input as a byte sequence and increments the last byte that is not
- * 0xFF, truncating the remainder. Requires a non‑empty input string.
+ * 0xFF, truncating the remainder. Requires a non-empty input string.
  */
 [[nodiscard]] std::string upperExclusiveBound(String s);
 

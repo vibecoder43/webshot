@@ -17,7 +17,7 @@ using Uuid = boost::uuids::uuid;
 
 namespace v1 {
 /**
- * @brief Persistence and background‑crawl facade.
+ * @brief Persistence and background-crawl facade.
  *
  * Coordinates crawl scheduling, stores metadata, and exposes query methods
  * used by HTTP handlers.

@@ -238,7 +238,7 @@ UTEST(TextString, RejectsVariousInvalidUtf8)
 
 UTEST(TextString, HandlesNonBmpCharacters)
 {
-    std::string emoji("\xF0\x9F\x98\x80\xF0\x9F\x92\xA9", 8); // 😀💩
+    std::string emoji("\xF0\x9F\x98\x80\xF0\x9F\x92\xA9", 8); // U+1F600 U+1F4A9
 
     auto value = String::fromBytes(emoji);
     ASSERT_TRUE(value);

@@ -23,7 +23,7 @@ namespace http = userver::server::http;
  * @tparam T Type supported by userver JSON serialization.
  * @param resp Response to write headers into.
  * @param status HTTP status to set.
- * @param body JSON‑serializable value.
+ * @param body JSON-serializable value.
  * @return Response body as a JSON string.
  */
 template <typename T>
@@ -47,7 +47,7 @@ respondJson(http::HttpResponse &resp, http::HttpStatus status, json::Value body)
 }
 
 /**
- * @brief Write a JSON error envelope with a human‑readable message.
+ * @brief Write a JSON error envelope with a human-readable message.
  */
 [[nodiscard]] inline std::string
 respondError(http::HttpResponse &resp, http::HttpStatus status, String message)

@@ -9,7 +9,7 @@
 
 namespace v1 {
 /**
- * @brief Thrown when a user‑supplied URL cannot be normalized or is disallowed.
+ * @brief Thrown when a user-supplied URL cannot be normalized or is disallowed.
  */
 struct InvalidLinkException : public std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -47,12 +47,12 @@ struct [[nodiscard]] Link {
     [[nodiscard]] static Link fromTextStripPortQuery(const String &text, size_t queryPartLengthMax);
     [[nodiscard]] static Link fromTextStripPort(const String &text, size_t queryPartLengthMax);
 
-    /** @return Normalized, lower‑cased host, punycode if applicable. */
+    /** @return Normalized, lower-cased host, punycode if applicable. */
     [[nodiscard]] String host() const;
     /** @return Full URL using the http scheme. */
     [[nodiscard]] String httpUrl() const;
     [[nodiscard]] String httpsUrl() const;
-    /** @return Scheme‑less normalized representation used for lookups. */
+    /** @return Scheme-less normalized representation used for lookups. */
     [[nodiscard]] String normalized() const;
 };
 

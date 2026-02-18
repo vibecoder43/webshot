@@ -1,7 +1,7 @@
 #include "webshot_config.hpp"
 /**
  * @file
- * @brief Component that provides typed read‑only configuration.
+ * @brief Component that provides typed read-only configuration.
  */
 
 #include <chrono>

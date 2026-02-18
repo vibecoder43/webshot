@@ -13,7 +13,7 @@ namespace us = userver;
 
 namespace v1 {
 /**
- * @brief Read‑only configuration facade for the service.
+ * @brief Read-only configuration facade for the service.
  *
  * Exposes knobs used across handlers and the crawler pipeline.
  */

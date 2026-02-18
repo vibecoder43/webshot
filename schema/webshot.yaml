@@ -247,7 +247,7 @@ paths:
             simple:
               value: example.com
             idn:
-              value: bücher.de
+              value: "bücher.de"
       responses:
         '202':
           description: Purge successfully enqueued for the normalized prefix.

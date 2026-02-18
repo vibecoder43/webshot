@@ -126,13 +126,13 @@ foreach(tgt IN LISTS WEBSHOT_COVERAGE_TARGETS)
   list(APPEND WEBSHOT_COVERAGE_TARGET_FILES $<TARGET_FILE:${tgt}>)
 endforeach()
 
-add_executable(docker ${CMAKE_CURRENT_SOURCE_DIR}/docker_stub_main.cpp)
-apply_defaults(docker)
-set_target_properties(docker PROPERTIES OUTPUT_NAME podman)
+add_executable(podman_stub ${CMAKE_CURRENT_SOURCE_DIR}/podman_stub_main.cpp)
+apply_defaults(podman_stub)
+set_target_properties(podman_stub PROPERTIES OUTPUT_NAME podman)
 
 if(USERVER_FEATURE_TESTSUITE)
   add_custom_target(webshot-testsuite)
-  add_dependencies(webshot-testsuite ${PROJECT_NAME} docker)
+  add_dependencies(webshot-testsuite ${PROJECT_NAME} podman_stub)
 
   userver_testsuite_add(
     SERVICE_TARGET
@@ -200,7 +200,7 @@ if(USERVER_FEATURE_TESTSUITE)
     DEPENDS webshot-coverage
     USES_TERMINAL VERBATIM)
 
-  add_dependencies(webshot-coverage ${PROJECT_NAME} docker ${WEBSHOT_CPP_TESTS})
+  add_dependencies(webshot-coverage ${PROJECT_NAME} podman_stub ${WEBSHOT_CPP_TESTS})
 endif()
 
 get_property(

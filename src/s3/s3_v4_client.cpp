@@ -156,7 +156,7 @@ S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &reques
     return out;
 }
 
-// Unused by this service — provide stubs that throw to make it explicit
+// Unused by this service; provide stubs that throw to make it explicit
 std::optional<std::string> S3V4Client::GetObject(
     std::string_view, std::optional<std::string>, HeadersDataResponse *, const HeaderDataRequest &
 ) const

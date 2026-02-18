@@ -152,7 +152,7 @@ UTEST(LinkFromUtf8, KeepsEscapedSlashInPath)
 
 UTEST(LinkFromUtf8, DoesNotMisreadUtf8AsAsciiDelimiters)
 {
-    // '€' encodes to E2 82 AC in UTF-8 and must not be treated as '/' or '.'
+    // U+20AC encodes to E2 82 AC in UTF-8 and must not be treated as '/' or '.'
     EXPECT_EQ(normalize("https://example.com/\xE2\x82\xAC"), std::string{"example.com/%E2%82%AC"});
 }
 
@@ -170,8 +170,8 @@ UTEST(LinkFromUtf8, DoesNotTrimFullwidthSlash)
 
 UTEST(LinkFromUtf8, AcceptsIDNHostname)
 {
-    // "bücher.de" should be converted to its punycode form
-    EXPECT_EQ(normalize("https://bücher.de/"), std::string{"xn--bcher-kva.de"});
+    // "b\303\274cher.de" should be converted to its punycode form
+    EXPECT_EQ(normalize("https://b\303\274cher.de/"), std::string{"xn--bcher-kva.de"});
 }
 
 UTEST(LinkFromUtf8, TrimsSurroundingWhitespace)

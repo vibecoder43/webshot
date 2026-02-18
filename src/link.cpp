@@ -4,7 +4,7 @@
  * @brief URL normalization and validation using ada.
  *
  * Contains helpers to sanitize user input, enforce scheme/host rules, and
- * produce a stable scheme‑less key for storage and lookups.
+ * produce a stable scheme-less key for storage and lookups.
  */
 #include "text.hpp"
 

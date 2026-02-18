@@ -24,7 +24,7 @@ async def _wait_for_purge(db, prefix_key: str, timeout: float = 30.0, delay: flo
 
 
 @pytest.mark.asyncio
-async def test_capture_and_query_example_com(service_client, pgsql):
+async def test_capture_and_query_roundtrip(service_client, pgsql):
     link = f"https://{TEST_HOST}/webshot-capture-path"
 
     # Create capture

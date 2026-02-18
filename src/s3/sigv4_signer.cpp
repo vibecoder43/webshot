@@ -20,7 +20,7 @@ namespace v1::s3v4 {
 
 namespace {
 
-/** Characters that do not require percent‑encoding. */
+/** Characters that do not require percent-encoding. */
 inline bool IsUnreserved(char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||

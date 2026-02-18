@@ -54,7 +54,7 @@ computeSignature(const SigV4Params &params, std::string_view string_to_sign);
 /** @return SHA-256 digest in hex of the input. */
 [[nodiscard]] String sha256Hex(std::string_view data);
 
-/** RFC3986 percent‑encoding for AWS canonicalization. */
+/** RFC3986 percent-encoding for AWS canonicalization. */
 [[nodiscard]] String percentEncode(const String &s, bool encodeSlash);
 
 /** Encode, sort, and join query parameters per SigV4 canonical rules. */

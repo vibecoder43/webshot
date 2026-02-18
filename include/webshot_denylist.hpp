@@ -25,7 +25,7 @@ public:
 
     ~WebshotDenylist();
 
-    /** @brief Returns true if the normalized prefix key is not deny‑listed. */
+    /** @brief Returns true if the normalized prefix key is not deny-listed. */
     [[nodiscard]] bool isAllowedPrefix(const String &prefixKey) noexcept;
     /** @brief Insert a prefix key into the denylist (noop if already present). */
     void insertPrefix(const String &prefixKey, const String &reason);

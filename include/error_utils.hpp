@@ -14,7 +14,7 @@ namespace v1::errors {
 userver::formats::json::Value makeError(String message);
 
 /**
- * @brief Convenience for parameter‑specific errors.
+ * @brief Convenience for parameter-specific errors.
  *
  * @param fieldName Name of the offending parameter.
  * @param message Additional context to append to the message.
