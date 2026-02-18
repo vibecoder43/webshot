@@ -16,7 +16,7 @@ Use these rules whenever making code changes in this repository.
 - `src/` is the only allowed location for service `.cpp` sources; `src/main.cpp` wires core components.
 - Shared handlers/components MUST live in `include/` (for example, `webshot_handler.hpp`, `webshot_crud.hpp`), and all such headers MUST use `#pragma once`.
 - C++ unit tests MUST live under `tests/` and use `userver::utest` (`<userver/utest/utest.hpp>`).
-- Python functional tests and testsuite helpers also live under `tests/` and are driven by `pytest`, `pytest_userver`, and `testsuite` (from yandex-taxi-testsuite).
+- Functional tests and testsuite helpers also live under `tests/` and are driven by `pytest`, `pytest_userver`, and `testsuite` (from yandex-taxi-testsuite).  All tests MUST live under `tests/` and MUST NOT be placed elsewhere.
 
 ## Style and naming
 - Classes MUST use PascalCase (for example, `WebshotCrud`).
@@ -44,15 +44,3 @@ Use these rules whenever making code changes in this repository.
 - Do not annotate destructors, move operations, or obvious mutators.
 - Favor annotating; compilers will surface accidental value drops.
 - The `[[nodiscard]]` rules in this section are mandatory and MUST be followed strictly.
-
-## Sanitizers and testing
-- All tests MUST live under `tests/` and MUST NOT be placed elsewhere.
-- `userver::utest` (`<userver/utest/utest.hpp>`) is the only allowed framework for C++ unit tests so they run in coroutines with framework timeouts, logging, and sanitizers.
-- In local tests, ASan may be configured with `detect_stack_use_after_return=0` to work around false positives.
-- userver’s own testsuite helpers are configured to avoid creating Python virtualenvs inside the build tree (`USERVER_TESTSUITE_USE_VENV=OFF`, `USERVER_SQL_USE_VENV=OFF`, `USERVER_CHAOTIC_USE_VENV=OFF`). Keep that behavior and rely on Nix-provided Python packages instead.
-
-## Response discipline
-- Do not respond with large blocks of code; show only short, focused snippets when necessary, or omit code entirely and describe changes instead.
-- Verify, don’t recall: reread active code/logs; test exact endpoints/UI calls.
-- Prefer authoritative data: no guessing or fallback to stale/synthetic for critical logic.
-- Always say what the contents of replies are based on (memory, repo code, docs, tool output).
