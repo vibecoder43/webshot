@@ -40,7 +40,7 @@ properties:
     description: Target bucket name
   s3-endpoint:
     type: string
-    description: S3 HTTP endpoint (e.g., http://127.0.0.1:8333)
+    description: S3 HTTP endpoint (e.g., http://localhost:8333)
   s3-region:
     type: string
     description: Optional region label

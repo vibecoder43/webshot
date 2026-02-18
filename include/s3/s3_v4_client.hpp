@@ -40,7 +40,7 @@ struct BuiltUrl {
  * @brief Connection parameters for a minimal SigV4 S3 client.
  */
 struct [[nodiscard]] S3V4Config {
-    String endpoint; // e.g. http://127.0.0.1:8333 or s3.amazonaws.com
+    String endpoint; // e.g. http://localhost:8333 or s3.amazonaws.com
     String region;   // e.g. us-east-1, local, etc.
     std::chrono::milliseconds timeout;
     bool virtualHosted = false; // not used in v1; path-style addressing by default

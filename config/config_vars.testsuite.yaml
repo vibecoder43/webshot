@@ -1,7 +1,7 @@
 s3_bucket: webshot
-s3_endpoint: "http://127.0.0.1:8333"
+s3_endpoint: "http://localhost:8333"
 s3_region: "us-east-1"
-public_base_url: "http://127.0.0.1:8333/webshot"
+public_base_url: "http://localhost:8333/webshot"
 s3_use_sts: false
 pg_webshot_meta_dsn:
 pg_shared_state_dsn:

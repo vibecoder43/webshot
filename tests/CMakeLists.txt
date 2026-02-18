@@ -149,7 +149,7 @@ if(USERVER_FEATURE_TESTSUITE)
     --service-binary=$<TARGET_FILE:${PROJECT_NAME}>
     --service-secdist=${CMAKE_SOURCE_DIR}/secret/test_secdist.json
     --service-source-dir=${CMAKE_SOURCE_DIR}
-    --postgresql=postgresql://postgres@127.0.0.1:5432/postgres)
+    --postgresql=postgresql://postgres@localhost:5432/postgres)
 
   # Ensure the testsuite runner is generated as part of the default build
   # whenever tests (and testsuite support) are enabled, so ctest can run

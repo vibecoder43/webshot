@@ -35,9 +35,7 @@ async def pg_gate(pgsql_local):
     any_conn = next(iter(pgsql_local.values()))
     uri = any_conn.get_uri()
     parsed = urlparse(uri)
-    host = parsed.hostname or "127.0.0.1"
-    if host == "localhost":
-        host = "127.0.0.1"
+    host = parsed.hostname or "localhost"
     port = parsed.port or 5432
 
     route = chaos.GateRoute(
@@ -59,9 +57,9 @@ async def s3_gate():
     # Proxy between service and local S3 (SeaweedFS): service -> gate :8334 -> S3 :8333.
     route = chaos.GateRoute(
         name="s3",
-        host_to_server="127.0.0.1",
+        host_to_server="localhost",
         port_to_server=8333,
-        host_for_client="127.0.0.1",
+        host_for_client="localhost",
         port_for_client=8334,
     )
     loop = asyncio.get_event_loop()
@@ -87,7 +85,7 @@ async def s3_gate_ready(s3_gate, service_source_dir: pathlib.Path):
     await s3_gate.to_client_pass()
     s3_gate.start_accepting()
     secrets_path = service_source_dir / "secret" / "test_secdist.json"
-    ensure_s3_bucket_exists(secrets_path=secrets_path, endpoint="127.0.0.1:8333", bucket="webshot")
+    ensure_s3_bucket_exists(secrets_path=secrets_path, endpoint="localhost:8333", bucket="webshot")
     yield s3_gate
 
 
@@ -141,13 +139,13 @@ def service_env(service_source_dir: pathlib.Path):
 @pytest.fixture(scope="session")
 def allowed_url_prefixes_extra():
     # Permit S3 uploads to the chaos gate in front of the local SeaweedFS endpoint.
-    return ["http://127.0.0.1:8334/"]
+    return ["http://localhost:8334/"]
 
 
 def patch_s3_config(config_yaml, _config_vars):
     components = config_yaml["components_manager"]["components"]
     webshot_cfg = components["webshot-config"]
-    webshot_cfg["s3-endpoint"] = "http://127.0.0.1:8334"
+    webshot_cfg["s3-endpoint"] = "http://localhost:8334"
 
 
 USERVER_CONFIG_HOOKS = [patch_s3_config]
