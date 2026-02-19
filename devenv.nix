@@ -168,6 +168,13 @@ in {
       settings.formatters = builtins.attrValues config.treefmt.config.build.programs;
     };
     ruff.enable = true;
+    unicode-hygiene = {
+      enable = true;
+      entry = "python3 check_unicode_hygiene.py";
+      package = python;
+      language = "system";
+      files = "";
+    };
     yamllint = {
       enable = true;
       settings.configuration = ''

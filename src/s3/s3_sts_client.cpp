@@ -115,7 +115,7 @@ StsCredentials detail::fetchStsWithExecutor(
     headers[userver::http::headers::kContentType] = std::string(kUrlEncoded.view());
     for (const auto &kv : signedHeaders)
         headers[kv.first] = kv.second;
-    return StsCredentials(String::fromBytesThrow(exec(stsLink.httpsUrl(), body, headers, timeout)));
+    return StsCredentials{String::fromBytesThrow(exec(stsLink.httpsUrl(), body, headers, timeout))};
 }
 
 StsCredentials fetchStsCredentials(

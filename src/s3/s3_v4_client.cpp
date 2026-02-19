@@ -320,10 +320,14 @@ std::chrono::seconds S3V4Client::computePresignTtl(
 
 SigV4Params S3V4Client::makeSigV4Params(const std::chrono::system_clock::time_point &now) const
 {
-    return SigV4Params(
-        std::string(config.region.view()), "s3", creds.accessKeyId, creds.secretAccessKey,
-        creds.sessionToken, now
-    );
+    return {
+        std::string(config.region.view()),
+        "s3",
+        creds.accessKeyId,
+        creds.secretAccessKey,
+        creds.sessionToken,
+        now
+    };
 }
 
 void S3V4Client::signRequest(
