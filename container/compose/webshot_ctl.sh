@@ -123,7 +123,7 @@ webshot_wait_ready() {
         continue
       fi
       if command -v python3 >/dev/null 2>&1; then
-        python3 - <<PY >/dev/null 2>&1
+        if python3 - <<PY >/dev/null 2>&1
 import urllib.request
 import urllib.error
 import sys
@@ -137,7 +137,7 @@ except urllib.error.HTTPError as e:
 except Exception:
   sys.exit(1)
 PY
-        if [[ "$?" -eq 0 ]]; then
+        then
           return 0
         fi
         continue

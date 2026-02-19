@@ -168,6 +168,10 @@ in {
       settings.formatters = builtins.attrValues config.treefmt.config.build.programs;
     };
     ruff.enable = true;
+    shellcheck = {
+      enable = true;
+      args = ["-x"];
+    };
     unicode-hygiene = {
       enable = true;
       entry = "python3 check_unicode_hygiene.py";

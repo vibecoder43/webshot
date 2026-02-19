@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=container/compose/podman_compose_helpers.sh
 . "${script_dir}/podman_compose_helpers.sh"
 
 need podman
