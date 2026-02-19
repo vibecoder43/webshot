@@ -18,6 +18,8 @@ wait_healthy egress_proxy 120
 wait_healthy servicedb 120
 wait_healthy seaweedfs 120
 
+bash "${script_dir}/ensure_s3_bucket_dev.sh"
+
 wait_running webshot_scalar 120
 wait_running webshot_reverse_proxy 120
 wait_running webshot_test_target 120
