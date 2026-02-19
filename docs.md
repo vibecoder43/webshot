@@ -1,5 +1,4 @@
 Requirements
-* C++20 to build source. This is forced by ada and userver
 * Database timezone is UTC
 
 Fixing build
