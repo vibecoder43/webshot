@@ -137,7 +137,7 @@ async def test_list_webshots_paged_two_pages(
     finally:
         cur.close()
 
-    # First page: 2 items (webshots-page-max), next_page_token present.
+    # First page: 2 items (webshots_page_max), next_page_token present.
     resp1 = await service_client.get(
         "/v1/webshot",
         params={"link": f"{TEST_HOST}/a"},

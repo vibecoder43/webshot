@@ -19,7 +19,7 @@ class WebshotConfig;
  */
 class [[nodiscard]] WebshotsByPrefixHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshots-by-prefix";
+    static constexpr std::string_view kName = "webshots_by_prefix";
     explicit WebshotsByPrefixHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

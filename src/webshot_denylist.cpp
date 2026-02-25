@@ -39,7 +39,7 @@ struct WebshotDenylist::Impl {
     explicit Impl(
         const us::components::ComponentConfig &, const us::components::ComponentContext &context
     )
-        : cluster(context.FindComponent<us::components::Postgres>("shared-state-db").GetCluster())
+        : cluster(context.FindComponent<us::components::Postgres>("shared_state_db").GetCluster())
     {
     }
     pg::ClusterPtr cluster;

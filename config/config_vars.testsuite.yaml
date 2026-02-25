@@ -6,12 +6,12 @@ s3_use_sts: false
 pg_webshot_meta_dsn:
 pg_shared_state_dsn:
 crawler_size_limit_mib: 50
-crawler-page-load-timeout-sec: 10
-crawler-post-load-delay-sec: 1
-crawler-net-idle-wait-sec: 0
-crawler-page-extra-delay-sec: 0
-crawler-behavior-timeout-sec: 1
-crawler-container-timeout-sec: 15
-crawler-overhead-timeout-sec: 45
+crawler_page_load_timeout_sec: 10
+crawler_post_load_delay_sec: 1
+crawler_net_idle_wait_sec: 0
+crawler_page_extra_delay_sec: 0
+crawler_behavior_timeout_sec: 1
+crawler_container_timeout_sec: 15
+crawler_overhead_timeout_sec: 45
 crawler_proxy_server: "http://egress_proxy:3128"
-link-cooldown-sec: 60
+link_cooldown_sec: 60

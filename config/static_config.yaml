@@ -2,33 +2,33 @@ components_manager:
   task_processors:
     main-task-processor:
       worker_threads: 4
-    purge-task-processor:
+    purge_task_processor:
       worker_threads: 1
-      thread_name: purge-task-processor-worker
+      thread_name: purge_task_processor_worker
     fs-task-processor:
       worker_threads: &blocking_num_workers 4
-    creds-refresh-task-processor:
+    creds_refresh_task_processor:
       worker_threads: 1
-      thread_name: creds-refresh-task-processor-worker
+      thread_name: creds_refresh_task_processor_worker
   default_task_processor: main-task-processor
   components:
     http-client:
       fs-task-processor: fs-task-processor
     secdist:
     default-secdist-provider:
-      config: $secdist-path
+      config: $secdist_path
       missing-ok: true
       format: json
     dynamic-config:
       defaults:
         USERVER_RPS_CCONTROL_ENABLED: true
-    webshot-config:
-      query-part-length-max: 32768
-      s3-bucket: $s3_bucket
-      s3-endpoint: $s3_endpoint
-      s3-region: $s3_region
-      public-base-url: $public_base_url
-      s3-timeout-ms: 30000
+    webshot_config:
+      query_part_length_max: 32768
+      s3_bucket: $s3_bucket
+      s3_endpoint: $s3_endpoint
+      s3_region: $s3_region
+      public_base_url: $public_base_url
+      s3_timeout_ms: 30000
     dns-client:
       fs-task-processor: fs-task-processor
     testsuite-support:
@@ -53,79 +53,79 @@ components_manager:
       path: /service/monitor
       method: GET
       task_processor: main-task-processor
-    webshot-denylist-check:
+    webshot_denylist_check:
       path: /v1/denylist/check
       method: POST
       task_processor: main-task-processor
       request-timeout-ms: 2000
       max_request_size: &max-data-per-request 65536
-    webshot-handler:
+    webshot_handler:
       path: /v1/webshot
       method: GET,POST
       task_processor: main-task-processor
       request-timeout-ms: 60000
       max_request_size: *max-data-per-request
-    webshots-by-prefix:
+    webshots_by_prefix:
       path: /v1/webshot/prefix
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
-    webshot-job-handler:
+    webshot_job_handler:
       path: /v1/webshot/jobs/{uuid}
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 5000
       max_request_size: *max-data-per-request
-    webshot-disallow-and-purge:
-      path: /v1/disallow-and-purge
+    webshot_disallow_and_purge:
+      path: /v1/disallow_and_purge
       method: POST
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
-    webshot-by-id:
+    webshot_by_id:
       path: /v1/webshot/{uuid}
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
-    webshot-crud:
-      webshots-page-max: 2
-      webshots-per-link-max: 2
-      webshots-links-per-page-max: 10
-      crawler-network: 'crawler_net'
-      crawler-proxy-server: $crawler_proxy_server
-      link-cooldown-sec: $link-cooldown-sec
-      crawl-job-retention-sec: 604800
-      crawl-job-cleanup-interval-sec: 3600
-      crawl-concurrency: *blocking_num_workers
-      crawler-image: 'docker.io/webrecorder/browsertrix-crawler:latest@sha256:35f863bdd26154fbcb6c79badc2d2ca7a1385e45df55523ed240b728acbf7582'
-      crawler-workers: 1
-      crawler-page-load-timeout-sec: $crawler-page-load-timeout-sec
-      crawler-post-load-delay-sec: $crawler-post-load-delay-sec
-      crawler-net-idle-wait-sec: $crawler-net-idle-wait-sec
-      crawler-page-extra-delay-sec: $crawler-page-extra-delay-sec
-      crawler-behavior-timeout-sec: $crawler-behavior-timeout-sec
-      crawler-container-timeout-sec: $crawler-container-timeout-sec
-      crawler-overhead-timeout-sec: $crawler-overhead-timeout-sec
-      crawler-lang: 'en'
-      crawler-scope-type: 'page-spa'
-      crawler-size-limit-mib: $crawler_size_limit_mib
-      s3-credentials-endpoint: $s3-credentials-endpoint
-      s3-credentials-endpoint#fallback: 'https://sts.example.com/'
-      s3-use-sts: $s3_use_sts
-      s3-credentials-duration-sec: $s3-credentials-duration-sec
-      s3-credentials-duration-sec#fallback: 3600
-      s3-credentials-refresh-margin-sec: $s3-credentials-refresh-margin-sec
-      s3-credentials-refresh-margin-sec#fallback: 300
-      s3-credentials-refresh-retry-sec: $s3-credentials-refresh-retry-sec
-      s3-credentials-refresh-retry-sec#fallback: 60
-      purge-job-timeout-sec: 300
-      purge-delete-batch-size: 1000
-    capture-meta-db:
+    webshot_crud:
+      webshots_page_max: 2
+      webshots_per_link_max: 2
+      webshots_links_per_page_max: 10
+      crawler_network: 'crawler_net'
+      crawler_proxy_server: $crawler_proxy_server
+      link_cooldown_sec: $link_cooldown_sec
+      crawl_job_retention_sec: 604800
+      crawl_job_cleanup_interval_sec: 3600
+      crawl_concurrency: *blocking_num_workers
+      crawler_image: 'docker.io/webrecorder/browsertrix-crawler:latest@sha256:35f863bdd26154fbcb6c79badc2d2ca7a1385e45df55523ed240b728acbf7582'
+      crawler_workers: 1
+      crawler_page_load_timeout_sec: $crawler_page_load_timeout_sec
+      crawler_post_load_delay_sec: $crawler_post_load_delay_sec
+      crawler_net_idle_wait_sec: $crawler_net_idle_wait_sec
+      crawler_page_extra_delay_sec: $crawler_page_extra_delay_sec
+      crawler_behavior_timeout_sec: $crawler_behavior_timeout_sec
+      crawler_container_timeout_sec: $crawler_container_timeout_sec
+      crawler_overhead_timeout_sec: $crawler_overhead_timeout_sec
+      crawler_lang: 'en'
+      crawler_scope_type: 'page-spa'
+      crawler_size_limit_mib: $crawler_size_limit_mib
+      s3_credentials_endpoint: $s3_credentials_endpoint
+      s3_credentials_endpoint#fallback: 'https://sts.example.com/'
+      s3_use_sts: $s3_use_sts
+      s3_credentials_duration_sec: $s3_credentials_duration_sec
+      s3_credentials_duration_sec#fallback: 3600
+      s3_credentials_refresh_margin_sec: $s3_credentials_refresh_margin_sec
+      s3_credentials_refresh_margin_sec#fallback: 300
+      s3_credentials_refresh_retry_sec: $s3_credentials_refresh_retry_sec
+      s3_credentials_refresh_retry_sec#fallback: 60
+      purge_job_timeout_sec: 300
+      purge_delete_batch_size: 1000
+    capture_meta_db:
       dbconnection: $pg_webshot_meta_dsn
       blocking_task_processor: fs-task-processor
-    shared-state-db:
+    shared_state_db:
       dbconnection: $pg_shared_state_dsn
       blocking_task_processor: fs-task-processor
-    webshot-denylist:
+    webshot_denylist:

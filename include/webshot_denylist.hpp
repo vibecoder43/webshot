@@ -16,7 +16,7 @@ namespace v1 {
  */
 class [[nodiscard]] WebshotDenylist : public userver::components::ComponentBase {
 public:
-    static constexpr std::string_view kName = "webshot-denylist";
+    static constexpr std::string_view kName = "webshot_denylist";
 
     explicit WebshotDenylist(
         const userver::components::ComponentConfig &config,

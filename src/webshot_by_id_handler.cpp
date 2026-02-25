@@ -42,7 +42,7 @@ us::yaml_config::Schema WebshotById::GetStaticConfigSchema()
 {
     return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
 type: object
-description: Webshot-by-id handler static config
+description: Webshot_by_id handler static config
 additionalProperties: false
 properties:
   request-timeout-ms:

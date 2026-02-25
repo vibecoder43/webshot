@@ -24,7 +24,7 @@ namespace v1 {
  */
 class [[nodiscard]] WebshotCrud : public us::components::ComponentBase {
 public:
-    static constexpr std::string_view kName = "webshot-crud";
+    static constexpr std::string_view kName = "webshot_crud";
     explicit WebshotCrud(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

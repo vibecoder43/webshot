@@ -112,12 +112,8 @@ def userver_pg_config(pgsql_local, pg_gate):
 
     def _patch(config_yaml, _config_vars):
         components = config_yaml["components_manager"]["components"]
-        overrides = {
-            "capture-meta-db": "capture_meta_db",
-            "shared-state-db": "shared_state_db",
-        }
-        for component_name, dbname in overrides.items():
-            conninfo = db_uri[dbname]
+        for component_name in ("capture_meta_db", "shared_state_db"):
+            conninfo = db_uri[component_name]
             parsed = urlparse(conninfo)
             netloc = parsed.netloc
             if "@" in netloc:
@@ -153,8 +149,8 @@ def allowed_url_prefixes_extra():
 
 def patch_s3_config(config_yaml, _config_vars):
     components = config_yaml["components_manager"]["components"]
-    webshot_cfg = components["webshot-config"]
-    webshot_cfg["s3-endpoint"] = "http://localhost:8334"
+    webshot_cfg = components["webshot_config"]
+    webshot_cfg["s3_endpoint"] = "http://localhost:8334"
 
 
 USERVER_CONFIG_HOOKS = [patch_s3_config]

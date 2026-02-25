@@ -44,7 +44,7 @@ us::yaml_config::Schema WebshotsByPrefixHandler::GetStaticConfigSchema()
 {
     return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
 type: object
-description: Webshots-by-prefix handler static config
+description: Webshots_by_prefix handler static config
 additionalProperties: false
 properties:
   request-timeout-ms:

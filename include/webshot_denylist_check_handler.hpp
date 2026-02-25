@@ -16,7 +16,7 @@ class WebshotDenylist;
 
 class [[nodiscard]] WebshotDenylistCheckHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-denylist-check";
+    static constexpr std::string_view kName = "webshot_denylist_check";
 
     explicit WebshotDenylistCheckHandler(
         const us::components::ComponentConfig &config,

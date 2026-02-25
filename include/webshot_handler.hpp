@@ -23,7 +23,7 @@ class WebshotCrud;
  */
 class [[nodiscard]] WebshotHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-handler";
+    static constexpr std::string_view kName = "webshot_handler";
     explicit WebshotHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

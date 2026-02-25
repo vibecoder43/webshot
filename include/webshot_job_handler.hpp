@@ -17,7 +17,7 @@ class WebshotCrud;
  */
 class [[nodiscard]] WebshotJobHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-job-handler";
+    static constexpr std::string_view kName = "webshot_job_handler";
     explicit WebshotJobHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

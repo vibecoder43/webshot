@@ -100,108 +100,108 @@ type: object
 description: '.'
 additionalProperties: false
 properties:
-    webshots-page-max:
+    webshots_page_max:
         type: integer
         minimum: 1
         description: '.'
-    webshots-per-link-max:
+    webshots_per_link_max:
         type: integer
         minimum: 1
         description: 'Max captures per link in a prefix page'
-    webshots-links-per-page-max:
+    webshots_links_per_page_max:
         type: integer
         minimum: 1
         description: 'Max distinct links in a prefix page'
-    crawler-network:
+    crawler_network:
         type: string
         description: 'Name of the network to run crawlers on (scoped egress rules)'
-    crawler-proxy-server:
+    crawler_proxy_server:
         type: string
         description: 'HTTP proxy URL for Chrome inside the crawler container (mandatory)'
-    crawl-concurrency:
+    crawl_concurrency:
         type: integer
         minimum: 1
         description: 'Max concurrent crawls; blocks above this'
-    crawler-image:
+    crawler_image:
         type: string
         description: 'image used for the crawl container'
-    crawler-workers:
+    crawler_workers:
         type: integer
         minimum: 1
         description: 'Number of crawler workers per job'
-    crawler-page-load-timeout-sec:
+    crawler_page_load_timeout_sec:
         type: integer
         minimum: 1
         description: 'Page load timeout in seconds'
-    crawler-post-load-delay-sec:
+    crawler_post_load_delay_sec:
         type: integer
         minimum: 0
         description: 'Post-load delay in seconds'
-    crawler-net-idle-wait-sec:
+    crawler_net_idle_wait_sec:
         type: integer
         minimum: 0
         description: 'Extra wait for network idleness in seconds'
-    crawler-page-extra-delay-sec:
+    crawler_page_extra_delay_sec:
         type: integer
         minimum: 0
         description: 'Extra delay before snapshot in seconds'
-    crawler-behavior-timeout-sec:
+    crawler_behavior_timeout_sec:
         type: integer
         minimum: 1
         description: 'Behavior script timeout in seconds'
-    crawler-container-timeout-sec:
+    crawler_container_timeout_sec:
         type: integer
         minimum: 1
         description: 'Max lifetime of the crawler container (passed as Browsertrix --timeLimit) in seconds'
-    crawler-overhead-timeout-sec:
+    crawler_overhead_timeout_sec:
         type: integer
         minimum: 1
         description: 'Overhead timeout added to crawler stage timeouts in seconds'
-    crawler-lang:
+    crawler_lang:
         type: string
         description: 'Language hint passed to the crawler'
-    crawler-scope-type:
+    crawler_scope_type:
         type: string
         description: 'Scope type passed to the crawler (e.g. page-spa)'
-    s3-credentials-endpoint:
+    s3_credentials_endpoint:
         type: string
-        description: 'STS endpoint used to obtain temporary S3 credentials; S3 data endpoint s3-endpoint (in webshot_config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
-    s3-use-sts:
+        description: 'STS endpoint used to obtain temporary S3 credentials; S3 data endpoint s3_endpoint (in webshot_config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
+    s3_use_sts:
         type: boolean
         description: 'Whether to fetch temporary S3 credentials from STS (true) or use static credentials from secdist (false)'
-    s3-credentials-duration-sec:
+    s3_credentials_duration_sec:
         type: integer
         minimum: 1
         description: 'Requested lifetime of temporary S3 credentials in seconds'
-    s3-credentials-refresh-margin-sec:
+    s3_credentials_refresh_margin_sec:
         type: integer
         minimum: 1
         description: 'How many seconds before expiration to refresh S3 credentials'
-    s3-credentials-refresh-retry-sec:
+    s3_credentials_refresh_retry_sec:
         type: integer
         minimum: 1
         description: 'Delay between failed S3 credential refresh attempts in seconds'
-    link-cooldown-sec:
+    link_cooldown_sec:
         type: integer
         minimum: 0
         description: 'Per-link minimum interval between capture jobs in seconds; 0 disables cooldown'
-    crawl-job-retention-sec:
+    crawl_job_retention_sec:
         type: integer
         minimum: 1
         description: 'Retention window for crawl_job rows in seconds'
-    crawl-job-cleanup-interval-sec:
+    crawl_job_cleanup_interval_sec:
         type: integer
         minimum: 1
         description: 'Interval between crawl_job cleanup passes in seconds'
-    purge-job-timeout-sec:
+    purge_job_timeout_sec:
         type: integer
         minimum: 1
         description: 'Upper bound for a single purge job in seconds'
-    purge-delete-batch-size:
+    purge_delete_batch_size:
         type: integer
         minimum: 1
         description: 'Number of objects to delete per purge batch'
-    crawler-size-limit-mib:
+    crawler_size_limit_mib:
         type: integer
         minimum: 0
         description: 'Per-capture WARC size limit in MiB; 0 disables size limiting'
@@ -291,49 +291,49 @@ public:
     explicit Impl(
         const us::components::ComponentConfig &cfg, const us::components::ComponentContext &ctx
     )
-        : webshotsPageMax(cfg["webshots-page-max"].As<int64_t>()),
-          webshotsPerLinkMax(cfg["webshots-per-link-max"].As<int64_t>()),
-          webshotsLinksPerPageMax(cfg["webshots-links-per-page-max"].As<int64_t>()),
-          crawlerNetwork(String::fromBytesThrow(cfg["crawler-network"].As<std::string>())),
-          crawlerProxyServer(String::fromBytesThrow(cfg["crawler-proxy-server"].As<std::string>())),
-          crawlerWorkers(cfg["crawler-workers"].As<int64_t>()),
-          crawlerImage(String::fromBytesThrow(cfg["crawler-image"].As<std::string>())),
-          crawlerPageLoadTimeoutSec(cfg["crawler-page-load-timeout-sec"].As<int64_t>()),
-          crawlerPostLoadDelaySec(cfg["crawler-post-load-delay-sec"].As<int64_t>()),
-          crawlerNetIdleWaitSec(cfg["crawler-net-idle-wait-sec"].As<int64_t>()),
-          crawlerPageExtraDelaySec(cfg["crawler-page-extra-delay-sec"].As<int64_t>()),
-          crawlerBehaviorTimeoutSec(cfg["crawler-behavior-timeout-sec"].As<int64_t>()),
-          crawlerContainerTimeoutSec(cfg["crawler-container-timeout-sec"].As<int64_t>()),
-          crawlerOverheadTimeoutSec(cfg["crawler-overhead-timeout-sec"].As<int64_t>()),
-          crawlerLang(String::fromBytesThrow(cfg["crawler-lang"].As<std::string>())),
-          crawlerScopeType(String::fromBytesThrow(cfg["crawler-scope-type"].As<std::string>())),
-          crawlerSizeLimitMiB(cfg["crawler-size-limit-mib"].As<int64_t>()),
-          linkCooldownSec(cfg["link-cooldown-sec"].As<int64_t>()),
-          crawlJobRetentionSec(cfg["crawl-job-retention-sec"].As<int64_t>()),
-          crawlJobCleanupIntervalSec(cfg["crawl-job-cleanup-interval-sec"].As<int64_t>()),
-          s3UseSts(cfg["s3-use-sts"].As<bool>()),
+        : webshotsPageMax(cfg["webshots_page_max"].As<int64_t>()),
+          webshotsPerLinkMax(cfg["webshots_per_link_max"].As<int64_t>()),
+          webshotsLinksPerPageMax(cfg["webshots_links_per_page_max"].As<int64_t>()),
+          crawlerNetwork(String::fromBytesThrow(cfg["crawler_network"].As<std::string>())),
+          crawlerProxyServer(String::fromBytesThrow(cfg["crawler_proxy_server"].As<std::string>())),
+          crawlerWorkers(cfg["crawler_workers"].As<int64_t>()),
+          crawlerImage(String::fromBytesThrow(cfg["crawler_image"].As<std::string>())),
+          crawlerPageLoadTimeoutSec(cfg["crawler_page_load_timeout_sec"].As<int64_t>()),
+          crawlerPostLoadDelaySec(cfg["crawler_post_load_delay_sec"].As<int64_t>()),
+          crawlerNetIdleWaitSec(cfg["crawler_net_idle_wait_sec"].As<int64_t>()),
+          crawlerPageExtraDelaySec(cfg["crawler_page_extra_delay_sec"].As<int64_t>()),
+          crawlerBehaviorTimeoutSec(cfg["crawler_behavior_timeout_sec"].As<int64_t>()),
+          crawlerContainerTimeoutSec(cfg["crawler_container_timeout_sec"].As<int64_t>()),
+          crawlerOverheadTimeoutSec(cfg["crawler_overhead_timeout_sec"].As<int64_t>()),
+          crawlerLang(String::fromBytesThrow(cfg["crawler_lang"].As<std::string>())),
+          crawlerScopeType(String::fromBytesThrow(cfg["crawler_scope_type"].As<std::string>())),
+          crawlerSizeLimitMiB(cfg["crawler_size_limit_mib"].As<int64_t>()),
+          linkCooldownSec(cfg["link_cooldown_sec"].As<int64_t>()),
+          crawlJobRetentionSec(cfg["crawl_job_retention_sec"].As<int64_t>()),
+          crawlJobCleanupIntervalSec(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>()),
+          s3UseSts(cfg["s3_use_sts"].As<bool>()),
           s3CredentialsEndpoint(
-              String::fromBytesThrow(cfg["s3-credentials-endpoint"].As<std::string>())
+              String::fromBytesThrow(cfg["s3_credentials_endpoint"].As<std::string>())
           ),
-          s3CredentialsDurationSec(cfg["s3-credentials-duration-sec"].As<int64_t>()),
-          s3CredentialsRefreshMarginSec(cfg["s3-credentials-refresh-margin-sec"].As<int64_t>()),
-          s3CredentialsRefreshRetrySec(cfg["s3-credentials-refresh-retry-sec"].As<int64_t>()),
-          purgeJobTimeoutSec(cfg["purge-job-timeout-sec"].As<int64_t>()),
-          purgeDeleteBatchSize(cfg["purge-delete-batch-size"].As<int64_t>()),
+          s3CredentialsDurationSec(cfg["s3_credentials_duration_sec"].As<int64_t>()),
+          s3CredentialsRefreshMarginSec(cfg["s3_credentials_refresh_margin_sec"].As<int64_t>()),
+          s3CredentialsRefreshRetrySec(cfg["s3_credentials_refresh_retry_sec"].As<int64_t>()),
+          purgeJobTimeoutSec(cfg["purge_job_timeout_sec"].As<int64_t>()),
+          purgeDeleteBatchSize(cfg["purge_delete_batch_size"].As<int64_t>()),
           svcCfg(ctx.FindComponent<WebshotConfig>()),
-          cluster(ctx.FindComponent<us::components::Postgres>("capture-meta-db").GetCluster()),
+          cluster(ctx.FindComponent<us::components::Postgres>("capture_meta_db").GetCluster()),
           sharedCluster(
-              ctx.FindComponent<us::components::Postgres>("shared-state-db").GetCluster()
+              ctx.FindComponent<us::components::Postgres>("shared_state_db").GetCluster()
           ),
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
           denylist(ctx.FindComponent<WebshotDenylist>()),
-          crawlSlots(cfg["crawl-concurrency"].As<size_t>()),
-          purgeTaskProcessor(ctx.GetTaskProcessor("purge-task-processor")),
-          credsRefreshTaskProcessor(ctx.GetTaskProcessor("creds-refresh-task-processor")),
+          crawlSlots(cfg["crawl_concurrency"].As<size_t>()),
+          purgeTaskProcessor(ctx.GetTaskProcessor("purge_task_processor")),
+          credsRefreshTaskProcessor(ctx.GetTaskProcessor("creds_refresh_task_processor")),
           s3RefreshTask(), crawlJobCleanupTask(), purgeBackground(purgeTaskProcessor),
           crawlBackground(ctx.GetTaskProcessor("main-task-processor"))
     {
-        UINVARIANT(!crawlerProxyServer.empty(), "crawler-proxy-server must not be empty");
+        UINVARIANT(!crawlerProxyServer.empty(), "crawler_proxy_server must not be empty");
         UINVARIANT(
             us::fs::FileExists(
                 engine::current_task::GetBlockingTaskProcessor(),
@@ -348,15 +348,15 @@ public:
                                                  crawlerBehaviorTimeoutSec;
         UINVARIANT(
             crawlerStageTotalTimeoutSec <= crawlerContainerTimeoutSec,
-            "crawler-container-timeout-sec must be >= sum of crawler stage timeouts"
+            "crawler_container_timeout_sec must be >= sum of crawler stage timeouts"
         );
         UINVARIANT(
             s3CredentialsDurationSec > s3CredentialsRefreshMarginSec,
-            "s3-credentials-duration-sec must be greater than s3-credentials-refresh-margin-sec"
+            "s3_credentials_duration_sec must be greater than s3_credentials_refresh_margin_sec"
         );
-        UINVARIANT(crawlJobRetentionSec > 0, "crawl-job-retention-sec must be positive");
+        UINVARIANT(crawlJobRetentionSec > 0, "crawl_job_retention_sec must be positive");
         UINVARIANT(
-            crawlJobCleanupIntervalSec > 0, "crawl-job-cleanup-interval-sec must be positive"
+            crawlJobCleanupIntervalSec > 0, "crawl_job_cleanup_interval_sec must be positive"
         );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
@@ -533,10 +533,10 @@ WebshotCrud::Impl::S3ClientState WebshotCrud::Impl::fetchS3ClientStateFromSts() 
         us::utils::ToString(us::utils::generators::GenerateBoostUuid())
     );
     const auto sessionName = text::format("webshot-{}", sessionUuid);
-    const auto kRoleArnDescription = "webshot-ephemeral-s3-credentials"_t;
+    const auto kRoleArnDescription = "webshot_ephemeral_s3_credentials"_t;
 
     const auto policyJson = text::format(
-        "{{\"Version\":\"2012-10-17\",\"Statement\":{{\"Sid\":\"webshot-access\",\"Effect\":"
+        "{{\"Version\":\"2012-10-17\",\"Statement\":{{\"Sid\":\"webshot_access\",\"Effect\":"
         "\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:PutObject\",\"s3:DeleteObject\","
         "\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::{}/*\"}}}}",
         svcCfg.s3Bucket()
@@ -580,7 +580,7 @@ void WebshotCrud::Impl::startS3RefreshTask()
     );
     settings.task_processor = &credsRefreshTaskProcessor;
 
-    s3RefreshTask.Start("s3-credentials-refresh", settings, [this]() {
+    s3RefreshTask.Start("s3_credentials_refresh", settings, [this]() {
         try {
             refreshS3CredentialsTask();
         } catch (const std::exception &e) {
@@ -624,7 +624,7 @@ void WebshotCrud::Impl::startCrawlJobCleanupTask()
     us::utils::PeriodicTask::Settings settings(interval, chrono::milliseconds(0));
     settings.task_processor = &purgeTaskProcessor;
 
-    crawlJobCleanupTask.Start("crawl-job-cleanup", settings, [this]() {
+    crawlJobCleanupTask.Start("crawl_job_cleanup", settings, [this]() {
         try {
             cleanupOldJobs();
         } catch (const std::exception &e) {
@@ -881,7 +881,7 @@ dto::UuidWithTimeLink WebshotCrud::createWebshot(Link link)
     auto *implPtr = impl.get();
     auto id = us::utils::generators::GenerateBoostUuid();
     return us::utils::Async(
-               "create-webshot",
+               "create_webshot",
                [implPtr, id, link = std::move(link)]() { return implPtr->runCrawlJob(id, link); }
     ).Get();
 }
@@ -904,7 +904,7 @@ dto::WebshotJob WebshotCrud::createWebshotJob(Link link)
 
     auto id = us::utils::generators::GenerateBoostUuid();
     auto createdAt = implPtr->insertJob(id, normalizedLink);
-    implPtr->crawlBackground.AsyncDetach("crawl-job", [implPtr, id, link = std::move(link)]() {
+    implPtr->crawlBackground.AsyncDetach("crawl_job", [implPtr, id, link = std::move(link)]() {
         try {
             implPtr->markJobRunning(id);
             auto result = implPtr->runCrawlJob(id, link);
@@ -1092,11 +1092,11 @@ WebshotCrud::findWebshotsByPrefixPage(String normalizedPrefix, String pageToken)
 
 void WebshotCrud::disallowAndPurgePrefix(String prefixKey)
 {
-    impl->denylist.insertPrefix(prefixKey, "disallow-and-purge"_t);
+    impl->denylist.insertPrefix(prefixKey, "disallow_and_purge"_t);
 
     LOG_INFO() << fmt::format("enqueued for prefix {}", prefixKey);
 
-    impl->purgeBackground.AsyncDetach("purge-prefix-lambda", [implPtr = impl.get(), prefixKey]() {
+    impl->purgeBackground.AsyncDetach("purge_prefix_lambda", [implPtr = impl.get(), prefixKey]() {
         try {
             engine::current_task::SetDeadline(
                 engine::Deadline::FromDuration(chrono::seconds(implPtr->purgeJobTimeoutSec))

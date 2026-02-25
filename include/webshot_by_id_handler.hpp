@@ -16,7 +16,7 @@ class WebshotCrud;
  */
 class [[nodiscard]] WebshotById : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-by-id";
+    static constexpr std::string_view kName = "webshot_by_id";
     explicit WebshotById(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

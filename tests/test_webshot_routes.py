@@ -67,7 +67,7 @@ async def test_list_webshots_prefix_empty_result(service_client):
 
 
 async def test_disallow_and_purge_missing_host(service_client):
-    response = await service_client.post("/v1/disallow-and-purge")
+    response = await service_client.post("/v1/disallow_and_purge")
 
     assert response.status == 400
     body = response.json()
@@ -77,7 +77,7 @@ async def test_disallow_and_purge_missing_host(service_client):
 async def test_disallow_and_purge_invalid_host(service_client):
     # IP literals are rejected
     response = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": "127.0.0.1"},
     )
 
@@ -97,7 +97,7 @@ async def test_create_webshot_missing_body(service_client):
 async def test_create_webshot_denylisted_host(service_client):
     # Insert host into denylist via dedicated endpoint.
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/"},
     )
     assert deny_resp.status == 202
@@ -114,7 +114,7 @@ async def test_create_webshot_denylisted_host(service_client):
 
 async def test_create_webshot_denylisted_path_blocks_subpaths(service_client):
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/a"},
     )
     assert deny_resp.status == 202
@@ -131,7 +131,7 @@ async def test_create_webshot_denylisted_path_blocks_subpaths(service_client):
 
 async def test_create_webshot_denylisted_path_does_not_block_sibling_path(service_client):
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/a"},
     )
     assert deny_resp.status == 202

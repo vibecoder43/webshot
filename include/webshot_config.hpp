@@ -19,7 +19,7 @@ namespace v1 {
  */
 class [[nodiscard]] WebshotConfig final : public us::components::ComponentBase {
 public:
-    static constexpr std::string_view kName = "webshot-config";
+    static constexpr std::string_view kName = "webshot_config";
 
     WebshotConfig(
         const us::components::ComponentConfig &config,

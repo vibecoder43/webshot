@@ -32,7 +32,7 @@ async def test_denylist_check_allowed(service_client):
 @pytest.mark.asyncio
 async def test_denylist_check_denied_after_disallow_and_purge(service_client):
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"http://{TEST_ASSET_HOST}/"},
     )
     assert deny_resp.status == 202

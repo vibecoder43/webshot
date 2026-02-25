@@ -1,2 +1,2 @@
-secdist-path: secdist.json
+secdist_path: secdist.json
 crawler_proxy_server: "http://egress_proxy:3128"

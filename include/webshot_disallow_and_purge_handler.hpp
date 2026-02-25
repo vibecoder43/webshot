@@ -21,7 +21,7 @@ class WebshotConfig;
  */
 class [[nodiscard]] WebshotDisallowAndPurgeHandler : public server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "webshot-disallow-and-purge";
+    static constexpr std::string_view kName = "webshot_disallow_and_purge";
     explicit WebshotDisallowAndPurgeHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context

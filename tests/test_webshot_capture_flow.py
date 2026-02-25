@@ -158,7 +158,7 @@ async def test_disallow_and_purge_blocks_new_captures(service_client, pgsql):
         pytest.fail("initial job did not complete")
 
     # Disallow and purge
-    resp = await service_client.post("/v1/disallow-and-purge", params={"host": link})
+    resp = await service_client.post("/v1/disallow_and_purge", params={"host": link})
     assert resp.status == 202
 
     # Wait for purge to remove rows for this host
@@ -230,7 +230,7 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 @pytest.mark.asyncio
 async def test_denylist_blocks_subresource_fetch(service_client, service_secdist_path):
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"http://{TEST_HOST}/denylist/style.css"},
     )
     assert deny_resp.status == 202
@@ -303,7 +303,7 @@ async def test_capture_fetches_https_subresource_assets(service_client, service_
 @pytest.mark.asyncio
 async def test_denylist_blocks_https_subresource_fetch(service_client, service_secdist_path):
     deny_resp = await service_client.post(
-        "/v1/disallow-and-purge",
+        "/v1/disallow_and_purge",
         params={"host": f"https://{TEST_ASSET_HOST}/denylist/asset.css"},
     )
     assert deny_resp.status == 202

@@ -53,7 +53,7 @@ async def test_disallow_and_purge_blocks_concurrent_new_captures(service_client,
     link = f"https://{host}/concurrent-purge"
     prefix_key = prefix_key_from_link(link)
 
-    resp = await service_client.post("/v1/disallow-and-purge", params={"host": link})
+    resp = await service_client.post("/v1/disallow_and_purge", params={"host": link})
     assert resp.status == 202
 
     tasks = [service_client.post("/v1/webshot", json={"link": link}) for _ in range(16)]

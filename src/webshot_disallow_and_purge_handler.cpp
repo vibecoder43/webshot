@@ -42,13 +42,13 @@ us::yaml_config::Schema WebshotDisallowAndPurgeHandler::GetStaticConfigSchema()
 {
     return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
 type: object
-description: Webshot disallow-and-purge handler static config
+description: Webshot disallow_and_purge handler static config
 additionalProperties: false
 properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/disallow-and-purge handler in milliseconds
+    description: Upper bound for /v1/disallow_and_purge handler in milliseconds
 )");
 }
 
