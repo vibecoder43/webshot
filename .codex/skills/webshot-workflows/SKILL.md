@@ -14,6 +14,7 @@ Use this when the task involves building, running, or testing.
 
 ## Agent sandbox limits
 - `devenv` can be run by the agent, but it will likely need write escalation in sandboxed environments.
+- If a command fails due to permissions, try running devenv shell -- command
 
 ## Build, run, test
 - Configure sanitizer build (Debug + ASan/UBSan) via `devenv tasks run webshot:configureSan` (binary dir `build/san`).
