@@ -178,7 +178,7 @@ async def test_capture_fails_on_proxy_denied_seed(service_client, pgsql):
     assert resp.status == 202
     job_id = resp.json()["uuid"]
 
-    for _ in range(60):
+    for _ in range(160):
         status_resp = await service_client.get(f"/v1/webshot/jobs/{job_id}")
         assert status_resp.status == 200
         job = status_resp.json()
@@ -217,13 +217,13 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
         pytest.fail("job did not complete in time")
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
-    seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/with-subresource")
+    seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/with-subresource")
     assert 200 in seed_statuses
 
-    style_statuses = _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/style.css")
+    style_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/style.css")
     assert 200 in style_statuses
 
-    script_statuses = _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/script.js")
+    script_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/script.js")
     assert 200 in script_statuses
 
 
@@ -231,7 +231,7 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 async def test_denylist_blocks_subresource_fetch(service_client, service_secdist_path):
     deny_resp = await service_client.post(
         "/v1/disallow_and_purge",
-        params={"host": f"http://{TEST_HOST}/denylist/style.css"},
+        params={"host": f"https://{TEST_HOST}/denylist/style.css"},
     )
     assert deny_resp.status == 202
 
@@ -254,16 +254,16 @@ async def test_denylist_blocks_subresource_fetch(service_client, service_secdist
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
-        wacz, f"http://{TEST_HOST}/with-subresource-denylist"
+        wacz, f"https://{TEST_HOST}/with-subresource-denylist"
     )
     assert 200 in seed_statuses
 
     blocked_style_statuses = _wacz_cdxj_statuses_for_url(
-        wacz, f"http://{TEST_HOST}/denylist/style.css"
+        wacz, f"https://{TEST_HOST}/denylist/style.css"
     )
     assert 200 not in blocked_style_statuses
 
-    script_statuses = _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/denylist/script.js")
+    script_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/denylist/script.js")
     assert 200 in script_statuses
 
 
@@ -289,7 +289,7 @@ async def test_capture_fetches_https_subresource_assets(service_client, service_
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
-        wacz, f"http://{TEST_HOST}/with-https-asset-subresource"
+        wacz, f"https://{TEST_HOST}/with-https-asset-subresource"
     )
     assert 200 in seed_statuses
 
@@ -327,7 +327,7 @@ async def test_denylist_blocks_https_subresource_fetch(service_client, service_s
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
-        wacz, f"http://{TEST_HOST}/with-https-asset-subresource-denylist"
+        wacz, f"https://{TEST_HOST}/with-https-asset-subresource-denylist"
     )
     assert 200 in seed_statuses
 
@@ -338,3 +338,78 @@ async def test_denylist_blocks_https_subresource_fetch(service_client, service_s
 
     js_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_ASSET_HOST}/denylist/asset.js")
     assert 200 in js_statuses
+
+
+@pytest.mark.asyncio
+async def test_https_first_succeeds_when_http_fails(service_client, service_secdist_path):
+    link = f"http://{TEST_HOST}/https-first-http-fails"
+
+    resp = await service_client.post("/v1/webshot", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    for _ in range(120):
+        status_resp = await service_client.get(f"/v1/webshot/jobs/{job_id}")
+        assert status_resp.status == 200
+        job = status_resp.json()
+        if job["status"] == "succeeded":
+            break
+        if job["status"] == "failed":
+            pytest.fail(f"job failed: {job}")
+        await asyncio.sleep(0.5)
+    else:
+        pytest.fail("job did not complete in time")
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/https-first-http-fails")
+    assert 200 in seed_statuses
+
+
+@pytest.mark.asyncio
+async def test_https_first_falls_back_to_http_when_https_no_response(
+    service_client, service_secdist_path
+):
+    link = f"http://{TEST_HOST}/http-fallback-success"
+
+    resp = await service_client.post("/v1/webshot", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    for _ in range(120):
+        status_resp = await service_client.get(f"/v1/webshot/jobs/{job_id}")
+        assert status_resp.status == 200
+        job = status_resp.json()
+        if job["status"] == "succeeded":
+            break
+        if job["status"] == "failed":
+            pytest.fail(f"job failed: {job}")
+        await asyncio.sleep(0.5)
+    else:
+        pytest.fail("job did not complete in time")
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    seed_statuses = _wacz_cdxj_statuses_for_url(wacz, link)
+    if 200 not in seed_statuses:
+        seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"{link}/")
+    assert 200 in seed_statuses
+
+
+@pytest.mark.asyncio
+async def test_https_first_falls_back_to_http_and_fails_when_http_fails(service_client):
+    link = f"http://{TEST_HOST}/http-fallback-fail"
+
+    resp = await service_client.post("/v1/webshot", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    for _ in range(160):
+        status_resp = await service_client.get(f"/v1/webshot/jobs/{job_id}")
+        assert status_resp.status == 200
+        job = status_resp.json()
+        if job["status"] == "failed":
+            break
+        if job["status"] == "succeeded":
+            pytest.fail(f"job succeeded unexpectedly: {job}")
+        await asyncio.sleep(0.5)
+    else:
+        pytest.fail("job did not fail in time")

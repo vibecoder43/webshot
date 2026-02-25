@@ -113,6 +113,10 @@ webshot_add_cpp_test(deadline_utils_test SOURCES
                      ${CMAKE_CURRENT_SOURCE_DIR}/deadline_utils_test.cpp)
 
 webshot_add_cpp_test(
+  crawler_fallback_test SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback_test.cpp)
+
+webshot_add_cpp_test(
   handler_simple_server_test SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/handler_simple_server_test.cpp LIBS userver::core)
 

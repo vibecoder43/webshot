@@ -7,11 +7,13 @@
  * metadata writes, and various paged queries.
  */
 #include "container_guard.hpp"
+#include "crawler_fallback.hpp"
 #include "link.hpp"
 #include "s3/s3_sts_client.hpp"
 #include "s3/s3_v4_client.hpp"
 #include "s3_refresh_utils.hpp"
 #include "s3_secdist.hpp"
+#include "schema/browsertrix_pages.hpp"
 #include "schema/webshot.hpp"
 #include "server_errors.hpp"
 #include "text.hpp"
@@ -87,10 +89,73 @@ using chrono::system_clock;
 namespace {
 const String kMitmTrustTarballPath = "/tmp/webshot_mitm/nssdb.tar.gz"_t;
 
-constexpr int kCrawlerExitSuccess = 0;
-constexpr int kCrawlerExitSizeLimit = 14;
-constexpr int kCrawlerExitTimeLimit = 15;
-constexpr int kCrawlerExitDiskUtilization = 16;
+constexpr int64_t kCrawlerSeedAttemptsMax = 2;
+
+[[nodiscard]] bool urlsMatchAllowTrailingSlash(const String &a, const String &b) noexcept
+{
+    const auto av = a.view();
+    const auto bv = b.view();
+    if (av == bv)
+        return true;
+    if (!av.empty() && av.back() == '/' && av.substr(0, av.size() - 1) == bv)
+        return true;
+    if (!bv.empty() && bv.back() == '/' && bv.substr(0, bv.size() - 1) == av)
+        return true;
+    return false;
+}
+
+[[nodiscard]] std::optional<crawler::SeedPageProbe>
+probeSeedPageFromPagesJsonl(const String &path, const String &expectedSeedUrl)
+{
+    std::string bytes;
+    try {
+        bytes = us::fs::blocking::ReadFileContents(std::string(path.view()));
+    } catch (const std::exception &) {
+        return {};
+    }
+
+    if (!una::is_valid_utf8(bytes)) {
+        LOG_ERROR() << fmt::format("pages.jsonl is not valid UTF-8: {}", path);
+        return {};
+    }
+
+    std::string_view sv(bytes);
+    while (!sv.empty()) {
+        const auto pos = sv.find('\n');
+        auto line = (pos == std::string_view::npos) ? sv : sv.substr(0, pos);
+        sv = (pos == std::string_view::npos) ? std::string_view() : sv.substr(pos + 1);
+
+        if (line.empty())
+            continue;
+        if (!line.empty() && line.back() == '\r')
+            line.remove_suffix(1);
+        if (line.empty())
+            continue;
+
+        dto::BrowsertrixPageEntry entry;
+        try {
+            entry = us::formats::json::FromString(line).As<dto::BrowsertrixPageEntry>();
+        } catch (const std::exception &) {
+            continue;
+        }
+
+        auto url = String::fromBytes(entry.url);
+        if (!url)
+            continue;
+        if (!entry.seed.value_or(false))
+            continue;
+        if (!urlsMatchAllowTrailingSlash(*url, expectedSeedUrl))
+            continue;
+        if (entry.depth.value_or(0) != 0)
+            continue;
+
+        crawler::SeedPageProbe out;
+        out.status = entry.status;
+        out.loadState = entry.loadState;
+        return out;
+    }
+    return {};
+}
 } // namespace
 
 us::yaml_config::Schema WebshotCrud::GetStaticConfigSchema()
@@ -280,6 +345,9 @@ public:
     void markJobFailed(Uuid id, const String &errorCategory, const String &errorMessage);
     [[nodiscard]] std::optional<dto::WebshotJob> loadJob(Uuid id);
     void runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
+    [[nodiscard]] crawler::AttemptSummary runCrawlerAttempt(
+        CrawlContext &ctx, engine::subprocess::ProcessStarter &starter, const String &seedUrl
+    );
     [[nodiscard]] std::optional<us::utils::datetime::TimePointTz>
     persistMetadataForContext(const CrawlContext &ctx);
     void purgePrefix(const String &prefixKey);
@@ -411,14 +479,13 @@ public:
 /** Lightweight context shared across steps of a single crawl job. */
 struct [[nodiscard]] CrawlContext {
     Link link;
-    us::fs::blocking::TempDirectory archiveRoot;
     Uuid id;
     String keyOnly;
     String s3Key;
     String location;
 
     CrawlContext(Uuid idIn, Link linkIn, const WebshotConfig &cfg)
-        : link(std::move(linkIn)), archiveRoot(us::fs::blocking::TempDirectory::Create()), id(idIn),
+        : link(std::move(linkIn)), id(idIn),
           keyOnly(String::fromBytesThrow(us::utils::ToString(id))),
           s3Key(String::fromBytesThrow(fmt::format("{}/{}", cfg.s3Bucket(), keyOnly))),
           location(String::fromBytesThrow(fmt::format("{}/{}", cfg.publicBaseUrl(), keyOnly)))
@@ -428,7 +495,8 @@ struct [[nodiscard]] CrawlContext {
 
 [[nodiscard]] dto::UuidWithTimeLink WebshotCrud::Impl::runCrawlJob(Uuid id, Link link)
 {
-    const auto totalCrawlTimeLimitSec = crawlerOverheadTimeoutSec + crawlerContainerTimeoutSec;
+    const auto totalCrawlTimeLimitSec = crawlerOverheadTimeoutSec +
+                                        crawlerContainerTimeoutSec * kCrawlerSeedAttemptsMax;
     engine::current_task::SetDeadline(
         engine::Deadline::FromDuration(chrono::seconds(totalCrawlTimeLimitSec))
     );
@@ -645,10 +713,11 @@ void WebshotCrud::Impl::cleanupOldJobs()
     }
 }
 
-void WebshotCrud::Impl::runCrawlerForContext(
-    CrawlContext &ctx, engine::subprocess::ProcessStarter &starter
+crawler::AttemptSummary WebshotCrud::Impl::runCrawlerAttempt(
+    CrawlContext &ctx, engine::subprocess::ProcessStarter &starter, const String &seedUrl
 )
 {
+    auto archiveRoot = us::fs::blocking::TempDirectory::Create();
     const auto cname = text::format(
         "btcx-{}", us::utils::ToString(us::utils::generators::GenerateBoostUuid())
     );
@@ -670,7 +739,7 @@ void WebshotCrud::Impl::runCrawlerForContext(
          text::format("{}:/crawls/nssdb.tar.gz:ro", kMitmTrustTarballPath)}
     );
     createArgs.push_back("-v"_t);
-    createArgs.push_back(text::format("{}:/crawls", ctx.archiveRoot.GetPath()));
+    createArgs.push_back(text::format("{}:/crawls", archiveRoot.GetPath()));
     createArgs.push_back("--network"_t);
     createArgs.push_back(crawlerNetwork);
     const auto collection = "1"_t;
@@ -718,7 +787,7 @@ void WebshotCrud::Impl::runCrawlerForContext(
         "--logging"_t,
         "debug,stats,jserrors"_t,
         "--url"_t,
-        ctx.link.httpUrl()
+        seedUrl
     };
     createArgs.insert(
         std::end(createArgs),
@@ -734,7 +803,7 @@ void WebshotCrud::Impl::runCrawlerForContext(
     }
 
     LOG_INFO() << text::format(
-        "Starting crawl for {} with timeLimit={}s", ctx.link.httpUrl(), crawlerContainerTimeoutSec
+        "Starting crawl for {} with timeLimit={}s", seedUrl, crawlerContainerTimeoutSec
     );
     ContainerGuard ctrGuard(starter, cname, createArgs);
 
@@ -743,51 +812,35 @@ void WebshotCrud::Impl::runCrawlerForContext(
         engine::subprocess::ExecOptions{.use_path = true}
     );
     auto status = startProc.Get();
-    if (!status.IsExited()) {
-        const auto msg = fmt::format(
-            "Failed to crawl {}, child process did not exit cleanly", ctx.link.httpUrl()
-        );
-        LOG_INFO() << msg;
-        throw errors::CrawlerFailedException(msg);
-    }
-    const auto code = status.GetExitCode();
-    if (code != kCrawlerExitSuccess) {
-        std::string reason = "crawler failed";
-        switch (code) {
-        case kCrawlerExitSizeLimit:
-            reason = "crawler hit Browsertrix sizeLimit (max WARC size)";
-            break;
-        case kCrawlerExitTimeLimit:
-            reason = "crawler hit Browsertrix timeLimit (max crawl duration)";
-            break;
-        case kCrawlerExitDiskUtilization:
-            reason = "crawler hit Browsertrix diskUtilization limit";
-            break;
-        default:
-            break;
-        }
-        const auto msg = fmt::format(
-            "Failed to crawl {} (exit code {}: {})", ctx.link.httpUrl(), code, reason
-        );
-        LOG_INFO() << msg;
-        if (code == kCrawlerExitSizeLimit)
-            throw errors::CrawlerSizeLimitException(msg);
-        throw errors::CrawlerFailedException(msg);
-    }
+
+    crawler::AttemptSummary res;
+    res.exited = status.IsExited();
+    res.exitCode = res.exited ? status.GetExitCode() : -1;
+    res.waczExists = false;
+
+    const auto pagesJsonlPath = text::format(
+        "{0}/collections/{1}/pages/pages.jsonl", archiveRoot.GetPath(), collection
+    );
+    res.seedProbe = probeSeedPageFromPagesJsonl(pagesJsonlPath, seedUrl);
+
+    if (!res.exited)
+        return res;
+
+    if (res.exitCode != static_cast<int>(crawler::CrawlerExitCode::kSuccess))
+        return res;
+
     // do eagerly
     ctrGuard.remove();
 
     const auto pathToArchive = text::format(
-        "{0}/collections/{1}/{1}.wacz", ctx.archiveRoot.GetPath(), collection
+        "{0}/collections/{1}/{1}.wacz", archiveRoot.GetPath(), collection
     );
 
-    if (!us::fs::FileExists(
-            engine::current_task::GetBlockingTaskProcessor(), std::string(pathToArchive.view())
-        )) {
-        const auto msg = fmt::format("Failed to crawl {}, no WACZ", ctx.link.httpUrl());
-        LOG_INFO() << msg;
-        throw errors::CrawlerFailedException(msg);
-    }
+    res.waczExists = us::fs::FileExists(
+        engine::current_task::GetBlockingTaskProcessor(), std::string(pathToArchive.view())
+    );
+    if (!res.waczExists)
+        return res;
 
     try {
         auto snapshot = s3State.Read();
@@ -800,6 +853,77 @@ void WebshotCrud::Impl::runCrawlerForContext(
         LOG_ERROR() << msg;
         throw;
     }
+
+    return res;
+}
+
+void WebshotCrud::Impl::runCrawlerForContext(
+    CrawlContext &ctx, engine::subprocess::ProcessStarter &starter
+)
+{
+    const auto httpsSeedUrl = ctx.link.httpsUrl();
+    const auto httpSeedUrl = ctx.link.httpUrl();
+
+    auto result = crawler::runHttpsFirstWithHttpFallback(
+        httpsSeedUrl, httpSeedUrl, [&ctx, &starter, this](const String &seedUrlIn) {
+            return runCrawlerAttempt(ctx, starter, seedUrlIn);
+        }
+    );
+
+    if (result.outcome == crawler::RunOutcome::kSucceeded) {
+        if (result.httpAttempt) {
+            LOG_INFO() << "HTTP fallback succeeded after HTTPS failed with no response";
+        }
+        return;
+    }
+
+    if (result.httpsAttempt.seedProbe && result.httpAttempt) {
+        LOG_INFO() << fmt::format(
+            "HTTPS seed probe before HTTP fallback: status={}, loadState={}",
+            result.httpsAttempt.seedProbe->status.value_or(0),
+            result.httpsAttempt.seedProbe->loadState.value_or(-1)
+        );
+    }
+
+    if (result.outcome == crawler::RunOutcome::kFailedSizeLimit) {
+        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto msg = fmt::format(
+            "Failed to crawl {} (exit code {}: {})",
+            result.httpAttempt ? httpSeedUrl : httpsSeedUrl, attempt.exitCode,
+            crawler::crawlerFailureReason(attempt.exitCode)
+        );
+        LOG_INFO() << msg;
+        throw errors::CrawlerSizeLimitException(msg);
+    }
+
+    if (result.outcome == crawler::RunOutcome::kFailedChildNoExit) {
+        const auto msg = fmt::format(
+            "Failed to crawl {}, child process did not exit cleanly",
+            result.httpAttempt ? httpSeedUrl : httpsSeedUrl
+        );
+        LOG_INFO() << msg;
+        throw errors::CrawlerFailedException(msg);
+    }
+
+    if (result.outcome == crawler::RunOutcome::kFailedNoWacz) {
+        const auto msg = fmt::format(
+            "Failed to crawl {}, no WACZ", result.httpAttempt ? httpSeedUrl : httpsSeedUrl
+        );
+        LOG_INFO() << msg;
+        throw errors::CrawlerFailedException(msg);
+    }
+
+    const auto msg = fmt::format(
+        "Failed to crawl {} (https exit code {}: {}{})", ctx.link.normalized(),
+        result.httpsAttempt.exitCode, crawler::crawlerFailureReason(result.httpsAttempt.exitCode),
+        result.httpAttempt ? fmt::format(
+                                 ", http exit code {}: {}", result.httpAttempt->exitCode,
+                                 crawler::crawlerFailureReason(result.httpAttempt->exitCode)
+                             )
+                           : std::string()
+    );
+    LOG_INFO() << msg;
+    throw errors::CrawlerFailedException(msg);
 }
 
 [[nodiscard]] std::optional<us::utils::datetime::TimePointTz>

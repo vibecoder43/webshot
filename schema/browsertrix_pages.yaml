@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Browsertrix Crawler pages.jsonl
+  version: 0.1.0
+paths: {}
+components:
+  schemas:
+    BrowsertrixPageEntry:
+      type: object
+      additionalProperties: false
+      required: [id, url]
+      properties:
+        id:
+          type: string
+          description: Unique page id (uuidv4 in Browsertrix)
+        url:
+          type: string
+          description: Page URL as recorded by the crawler
+        title:
+          type: string
+        loadState:
+          type: integer
+          format: int64
+          description: Page load state (0=FAILED, 1=CONTENT_LOADED, 2=FULL_PAGE_LOADED, ...)
+        mime:
+          type: string
+        seed:
+          type: boolean
+        text:
+          type: string
+        favIconUrl:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          format: int64
+          description: HTTP status code; 0 if no response
+        depth:
+          type: integer
+          format: int64
