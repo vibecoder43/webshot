@@ -13,5 +13,5 @@ need timeout
 
 compose_file="infra_prodlike.yaml"
 
-infra_down_compose_and_cleanup_mitm "${script_dir}" "${compose_file}"
+infra_down_compose "${script_dir}" "${compose_file}"
 exit 0

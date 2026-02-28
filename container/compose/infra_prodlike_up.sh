@@ -12,8 +12,6 @@ need_compose
 need timeout
 need squid-load-prodlike
 
-infra_mitm_bootstrap_if_needed "${script_dir}" prodlike
-
 cd -- "${script_dir}"
 compose_file="infra_prodlike.yaml"
 

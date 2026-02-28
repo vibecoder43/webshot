@@ -13,8 +13,8 @@ services:
     volumes:
       - ../squid/squid.conf:/etc/squid/squid.conf:ro
       - ../squid/squid.mode.dev.conf:/etc/squid/squid.mode.conf:ro
-      - /tmp/webshot_mitm/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
-      - /tmp/webshot_mitm/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
+      - ./mitm/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
+      - ./mitm/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
       - ../squid/squid_start.sh:/usr/local/bin/squid_start.sh:ro
       - ../squid/webshot_denylist_acl.sh:/usr/local/bin/webshot_denylist_acl.sh:ro
       - ../squid/healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
@@ -106,8 +106,8 @@ services:
           - asset.test-target
     volumes:
       - ../../container/nginx_test.conf:/etc/nginx/conf.d/default.conf:ro
-      - /tmp/webshot_mitm/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
-      - /tmp/webshot_mitm/test_target.key:/etc/nginx/ssl/test_target.key:ro
+      - ./mitm/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
+      - ./mitm/test_target.key:/etc/nginx/ssl/test_target.key:ro
 networks:
   crawler_net:
     name: crawler_net
