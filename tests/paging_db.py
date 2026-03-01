@@ -11,7 +11,7 @@ INSERT_WEBSHOT_SQL = _adapt_positional_to_psycopg(
 )
 
 
-async def test_list_webshots_orders_by_created_at(
+async def test_list_captures_orders_by_created_at(
     service_client,
     pgsql,
 ):
@@ -60,7 +60,7 @@ async def test_list_webshots_orders_by_created_at(
     assert set(uuids) == {str(newer_id), str(older_id)}
 
 
-async def test_list_webshots_prefix_sees_inserted_links(
+async def test_list_captures_prefix_sees_inserted_links(
     service_client,
     pgsql,
 ):
@@ -108,7 +108,7 @@ async def test_list_webshots_prefix_sees_inserted_links(
     assert {f"{TEST_HOST}/prefix/a", f"{TEST_HOST}/prefix/b"}.issubset(links)
 
 
-async def test_list_webshots_paged_two_pages(
+async def test_list_captures_paged_two_pages(
     service_client,
     pgsql,
 ):
@@ -137,7 +137,7 @@ async def test_list_webshots_paged_two_pages(
     finally:
         cur.close()
 
-    # First page: 2 items (webshots_page_max), next_page_token present.
+    # First page: 2 items (page size), next_page_token present.
     resp1 = await service_client.get(
         "/v1/webshot",
         params={"link": f"{TEST_HOST}/a"},

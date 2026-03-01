@@ -3,7 +3,7 @@ from helpers.constants import TEST_HOST
 INVALID_PAGE_TOKEN_MSG = "page_token: invalid page_token"
 
 
-async def test_list_webshots_missing_link(service_client):
+async def test_list_captures_missing_link(service_client):
     response = await service_client.get("/v1/webshot")
 
     assert response.status == 400
@@ -11,7 +11,7 @@ async def test_list_webshots_missing_link(service_client):
     assert body["error"]["message"] == "link: missing parameter"
 
 
-async def test_list_webshots_invalid_page_token(service_client):
+async def test_list_captures_invalid_page_token(service_client):
     response = await service_client.get(
         "/v1/webshot",
         params={"link": f"{TEST_HOST}/a", "page_token": "not-a-token"},
@@ -22,7 +22,7 @@ async def test_list_webshots_invalid_page_token(service_client):
     assert body["error"]["message"] == INVALID_PAGE_TOKEN_MSG
 
 
-async def test_list_webshots_empty_result(service_client):
+async def test_list_captures_empty_result(service_client):
     response = await service_client.get(
         "/v1/webshot",
         params={"link": f"{TEST_HOST}/a"},
@@ -35,7 +35,7 @@ async def test_list_webshots_empty_result(service_client):
     assert body.get("next_page_token") in (None, "")
 
 
-async def test_list_webshots_prefix_missing_prefix(service_client):
+async def test_list_captures_prefix_missing_prefix(service_client):
     response = await service_client.get("/v1/webshot/prefix")
 
     assert response.status == 400
@@ -43,7 +43,7 @@ async def test_list_webshots_prefix_missing_prefix(service_client):
     assert body["error"]["message"] == "prefix: missing parameter"
 
 
-async def test_list_webshots_prefix_invalid_page_token(service_client):
+async def test_list_captures_prefix_invalid_page_token(service_client):
     response = await service_client.get(
         "/v1/webshot/prefix",
         params={"prefix": f"{TEST_HOST}/a", "page_token": "not-a-token"},
@@ -54,7 +54,7 @@ async def test_list_webshots_prefix_invalid_page_token(service_client):
     assert body["error"]["message"] == INVALID_PAGE_TOKEN_MSG
 
 
-async def test_list_webshots_prefix_empty_result(service_client):
+async def test_list_captures_prefix_empty_result(service_client):
     response = await service_client.get(
         "/v1/webshot/prefix",
         params={"prefix": f"{TEST_HOST}/a"},

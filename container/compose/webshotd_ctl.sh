@@ -15,7 +15,7 @@ trap on_err ERR
 
 usage() {
   cat >&2 <<'EOF'
-Usage: webshot_ctl.sh <dev|prodlike> <up|down|status|logs>
+Usage: webshotd_ctl.sh <dev|prodlike> <up|down|status|logs>
 
 Uses:
   - WEBSHOTD_BUILD_DIR (required for up)

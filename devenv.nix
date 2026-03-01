@@ -27,8 +27,6 @@
     inherit chaoticPython;
   };
 
-  # Extra libs needed by C++ tests; used only in a dedicated wrapper,
-  # not exported globally into the dev shell.
   testLibs = userverDeps ++ [pkgsWithOverlay.stdenv.cc.cc];
 
   webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot-test-san" ''
@@ -219,22 +217,37 @@
     tag = "prodlike";
   };
 
-  squidLoadDev = pkgsWithOverlay.writeShellScriptBin "squid-load-dev" ''
+  squidLoadPreamble = ''
     set -euo pipefail
+
+    root="$PWD"
+    while [[ "$root" != "/" && ! -f "$root/devenv.nix" ]]; do
+      root="$(dirname "$root")"
+    done
+    [[ -f "$root/devenv.nix" ]] || { echo "Failed to find repo root (expected devenv.nix in a parent directory)" >&2; exit 2; }
+
+    # shellcheck source=shell/lib.sh
+    . "$root/shell/lib.sh"
+    need devenv
+    need podman
+    cd -- "$root"
+  '';
+
+  squidLoadDev = pkgsWithOverlay.writeShellScriptBin "squid-load-dev" ''
+    ${squidLoadPreamble}
     img="$(devenv build -q outputs.squidImageDev)"
     [[ -n "$img" ]] || { echo "Failed to build squidImageDev" >&2; exit 2; }
     exec podman load -i "$img"
   '';
 
   squidLoadProdlike = pkgsWithOverlay.writeShellScriptBin "squid-load-prodlike" ''
-    set -euo pipefail
+    ${squidLoadPreamble}
     img="$(devenv build -q outputs.squidImageProdlike)"
     [[ -n "$img" ]] || { echo "Failed to build squidImageProdlike" >&2; exit 2; }
     exec podman load -i "$img"
   '';
 in {
   cachix.enable = true;
-  # Default package build: Debug + ASan/UBSan, using the same userver build as the dev shell.
   outputs.webshot = mkWebshotOutput {userverPkg = userverPkgs.userver-debug-addr-ub;};
   outputs.squidImageDev = squidImageDev;
   outputs.squidImageProdlike = squidImageProdlike;
@@ -340,22 +353,22 @@ in {
   };
 
   tasks."webshot:devUp" = {
-    exec = "bash container/compose/webshot_ctl.sh dev up";
+    exec = "bash container/compose/webshotd_ctl.sh dev up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devDown" = {
-    exec = "bash container/compose/webshot_ctl.sh dev down";
+    exec = "bash container/compose/webshotd_ctl.sh dev down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devStatus" = {
-    exec = "bash container/compose/webshot_ctl.sh dev status";
+    exec = "bash container/compose/webshotd_ctl.sh dev status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devLogs" = {
-    exec = "bash container/compose/webshot_ctl.sh dev logs";
+    exec = "bash container/compose/webshotd_ctl.sh dev logs";
     cwd = config.devenv.root;
   };
 
@@ -370,22 +383,22 @@ in {
   };
 
   tasks."webshot:prodlikeUp" = {
-    exec = "bash container/compose/webshot_ctl.sh prodlike up";
+    exec = "bash container/compose/webshotd_ctl.sh prodlike up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeDown" = {
-    exec = "bash container/compose/webshot_ctl.sh prodlike down";
+    exec = "bash container/compose/webshotd_ctl.sh prodlike down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeStatus" = {
-    exec = "bash container/compose/webshot_ctl.sh prodlike status";
+    exec = "bash container/compose/webshotd_ctl.sh prodlike status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeLogs" = {
-    exec = "bash container/compose/webshot_ctl.sh prodlike logs";
+    exec = "bash container/compose/webshotd_ctl.sh prodlike logs";
     cwd = config.devenv.root;
   };
 
