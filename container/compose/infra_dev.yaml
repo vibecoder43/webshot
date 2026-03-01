@@ -13,8 +13,8 @@ services:
     volumes:
       - ../squid/squid.conf:/etc/squid/squid.conf:ro
       - ../squid/squid.mode.dev.conf:/etc/squid/squid.mode.conf:ro
-      - ./mitm/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
-      - ./mitm/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
+      - ./pki/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
+      - ./pki/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
       - ../squid/squid_start.sh:/usr/local/bin/squid_start.sh:ro
       - ../squid/webshot_denylist_acl.sh:/usr/local/bin/webshot_denylist_acl.sh:ro
       - ../squid/healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
@@ -61,7 +61,7 @@ services:
       - "127.0.0.1:9324:9324"
     volumes:
       - ../../container/seaweed/s3_config.json:/etc/seaweedfs/s3_config.json:ro
-      - ./healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
+      - ../../container/seaweed/healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_seaweedfs.sh"]
       interval: disable
@@ -106,8 +106,8 @@ services:
           - asset.test-target
     volumes:
       - ../../container/nginx_test.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./mitm/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
-      - ./mitm/test_target.key:/etc/nginx/ssl/test_target.key:ro
+      - ./pki/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
+      - ./pki/test_target.key:/etc/nginx/ssl/test_target.key:ro
 networks:
   crawler_net:
     name: crawler_net

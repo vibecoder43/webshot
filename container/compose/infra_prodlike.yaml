@@ -13,7 +13,7 @@ services:
     volumes:
       - ../squid/squid.conf:/etc/squid/squid.conf:ro
       - ../squid/squid.mode.prodlike.conf:/etc/squid/squid.mode.conf:ro
-      - ./mitm/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
+      - ./pki/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
       - ../squid/squid_start.sh:/usr/local/bin/squid_start.sh:ro
       - ../squid/webshot_denylist_acl.sh:/usr/local/bin/webshot_denylist_acl.sh:ro
       - ../squid/healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro

@@ -29,14 +29,14 @@
 
   testLibs = userverDeps ++ [pkgsWithOverlay.stdenv.cc.cc];
 
-  webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot-test-san" ''
+  webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot_test_san" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
     cd ${buildDirs.san}
     ctest --output-on-failure
   '';
 
-  webshotTestCov = pkgsWithOverlay.writeShellScriptBin "webshot-test-cov" ''
+  webshotTestCov = pkgsWithOverlay.writeShellScriptBin "webshot_test_cov" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
     cmake --build ${buildDirs.cov} --target coverage-html
@@ -233,18 +233,18 @@
     cd -- "$root"
   '';
 
-  squidLoadDev = pkgsWithOverlay.writeShellScriptBin "squid-load-dev" ''
+  squidLoadDev = pkgsWithOverlay.writeShellScriptBin "squid_load_dev" ''
     ${squidLoadPreamble}
     img="$(devenv build -q outputs.squidImageDev)"
     [[ -n "$img" ]] || { echo "Failed to build squidImageDev" >&2; exit 2; }
-    exec podman load -i "$img"
+    exec podman load --quiet -i "$img"
   '';
 
-  squidLoadProdlike = pkgsWithOverlay.writeShellScriptBin "squid-load-prodlike" ''
+  squidLoadProdlike = pkgsWithOverlay.writeShellScriptBin "squid_load_prodlike" ''
     ${squidLoadPreamble}
     img="$(devenv build -q outputs.squidImageProdlike)"
     [[ -n "$img" ]] || { echo "Failed to build squidImageProdlike" >&2; exit 2; }
-    exec podman load -i "$img"
+    exec podman load --quiet -i "$img"
   '';
 in {
   cachix.enable = true;
@@ -255,6 +255,7 @@ in {
     buildDeps.native
     ++ buildDeps.runtime
     ++ [
+      chaoticPython
       toolchain.cc
       llvm21.llvm
       llvm21.clang-tools
@@ -336,69 +337,71 @@ in {
 
   # Expose the yandex-taxi-testsuite Python package so pytest_userver
   # can import `testsuite` (for chaos, pgsql helpers, etc.).
-  env.PYTHONPATH = lib.makeSearchPath python.sitePackages [
-    yttsPkgs.default
-  ];
+  env.PYTHONPATH =
+    "${config.devenv.root}:"
+    + (lib.makeSearchPath python.sitePackages [
+      yttsPkgs.default
+    ]);
 
   env.WEBSHOTD_RUNTIME_LD_LIBRARY_PATH = lib.makeLibraryPath testLibs;
   env.WEBSHOTD_BUILD_DIR = buildDirs.san;
   tasks."webshot:infraDevUp" = {
-    exec = "bash container/compose/infra_dev_up.sh";
+    exec = "python3 container/compose/infra.py dev up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraDevDown" = {
-    exec = "bash container/compose/infra_dev_down.sh";
+    exec = "python3 container/compose/infra.py dev down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devUp" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev up";
+    exec = "python3 container/compose/infra.py dev up && python3 container/compose/webshotd.py dev start";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devDown" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev down";
+    exec = "python3 container/compose/webshotd.py dev stop && python3 container/compose/infra.py dev down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devStatus" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev status";
+    exec = "python3 container/compose/infra.py dev status && python3 container/compose/webshotd.py dev status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devLogs" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev logs";
+    exec = "python3 container/compose/webshotd.py dev logs";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeUp" = {
-    exec = "bash container/compose/infra_prodlike_up.sh";
+    exec = "python3 container/compose/infra.py prodlike up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeDown" = {
-    exec = "bash container/compose/infra_prodlike_down.sh";
+    exec = "python3 container/compose/infra.py prodlike down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeUp" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike up";
+    exec = "python3 container/compose/infra.py prodlike up && python3 container/compose/webshotd.py prodlike start";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeDown" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike down";
+    exec = "python3 container/compose/webshotd.py prodlike stop && python3 container/compose/infra.py prodlike down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeStatus" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike status";
+    exec = "python3 container/compose/infra.py prodlike status && python3 container/compose/webshotd.py prodlike status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeLogs" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike logs";
+    exec = "python3 container/compose/webshotd.py prodlike logs";
     cwd = config.devenv.root;
   };
 
@@ -428,11 +431,11 @@ in {
 
   tasks."webshot:testSan" = {
     package = webshotTestSan;
-    exec = "webshot-test-san";
+    exec = "webshot_test_san";
   };
 
   tasks."webshot:testCov" = {
     package = webshotTestCov;
-    exec = "webshot-test-cov";
+    exec = "webshot_test_cov";
   };
 }

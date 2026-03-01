@@ -57,52 +57,62 @@ in
     ];
 
     extraCommands = ''
-          set -euo pipefail
+                set -euo pipefail
 
-          mkdir -p bin etc etc/ssl/certs usr/lib/squid usr/libexec/squid usr/local/bin usr/local/share/ca-certificates usr/sbin var/lib/squid etc/squid
+                mkdir -p bin etc etc/ssl/certs usr/lib/squid usr/libexec/squid usr/local/bin usr/local/share/ca-certificates usr/sbin var/lib/squid etc/squid tmp var/log
+                chmod 1777 tmp
 
-          ln -sf ${pkgs.bash}/bin/bash bin/bash
-          ln -sf ${pkgs.bash}/bin/bash bin/sh
+                ln -sf ${pkgs.bash}/bin/bash bin/bash
+                ln -sf ${pkgs.bash}/bin/bash bin/sh
 
-          ln -sf ${securityFileCertgen} usr/libexec/squid/security_file_certgen
-          ln -sf /usr/libexec/squid/security_file_certgen usr/lib/squid/security_file_certgen
+                ln -sf ${securityFileCertgen} usr/libexec/squid/security_file_certgen
+                ln -sf /usr/libexec/squid/security_file_certgen usr/lib/squid/security_file_certgen
 
-          ln -sf ${updateCaCertificates} usr/sbin/update-ca-certificates
+                ln -sf ${updateCaCertificates} usr/sbin/update-ca-certificates
 
-          found=""
-          for p in \
-            "${squid}/libexec/security_file_certgen" \
-            "${squid}/libexec/security_file_certgen64" \
-            "${squid}/libexec/squid/security_file_certgen" \
-            "${squid}/lib/squid/security_file_certgen" \
-            "${squid}/libexec/squid/security_file_certgen64" \
-            "${squid}/lib/squid/security_file_certgen64"
-          do
-            if [ -x "$p" ]; then
-              found=1
-              break
-            fi
-          done
-          if [ -z "$found" ]; then
-            echo "Missing security_file_certgen in ${squid}" >&2
-            exit 2
-          fi
+                found=""
+                for p in \
+                  "${squid}/libexec/security_file_certgen" \
+                  "${squid}/libexec/security_file_certgen64" \
+                  "${squid}/libexec/squid/security_file_certgen" \
+                  "${squid}/lib/squid/security_file_certgen" \
+                  "${squid}/libexec/squid/security_file_certgen64" \
+                  "${squid}/lib/squid/security_file_certgen64"
+                do
+                  if [ -x "$p" ]; then
+                    found=1
+                    break
+                  fi
+                done
+                if [ -z "$found" ]; then
+                  echo "Missing security_file_certgen in ${squid}" >&2
+                  exit 2
+                fi
 
-          cp ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-certificates.crt
+                cp ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt etc/ssl/certs/ca-certificates.crt
 
-          cat >etc/passwd <<'EOF'
+                cat >etc/passwd <<'EOF'
       root:x:0:0:root:/root:/bin/sh
       proxy:x:13:13:proxy:/var/lib/squid:/bin/sh
       squid:x:23:23:squid:/var/lib/squid:/bin/sh
       EOF
 
-          cat >etc/group <<'EOF'
+                cat >etc/group <<'EOF'
       root:x:0:
       proxy:x:13:
       squid:x:23:
       EOF
 
-          cat >etc/os-release <<'EOF'
+                cat >etc/nsswitch.conf <<'EOF'
+      passwd: files
+      group: files
+      shadow: files
+
+      hosts: files dns
+      networks: files
+      EOF
+
+                cat >etc/os-release <<'EOF'
       NAME="NixOS"
       ID=nixos
       PRETTY_NAME="NixOS (dockerTools)"

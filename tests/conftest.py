@@ -5,9 +5,10 @@ from urllib.parse import urlparse, urlunparse
 import psycopg2
 import psycopg2.extras
 import pytest
-from helpers.s3_bucket import ensure_s3_bucket_exists
 from pytest_userver import chaos
 from testsuite.databases.pgsql import discover
+
+from compose_tools.s3_bucket import ensure_s3_bucket_exists
 
 pytest_plugins = [
     "pytest_userver.plugins.core",
