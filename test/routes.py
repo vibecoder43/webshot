@@ -1,4 +1,4 @@
-from helpers.constants import TEST_HOST
+from helper.constants import TEST_HOST
 
 INVALID_PAGE_TOKEN_MSG = "page_token: invalid page_token"
 

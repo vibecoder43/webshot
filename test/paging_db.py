@@ -1,9 +1,9 @@
 import pathlib
 import uuid
 
-from helpers.constants import TEST_HOST
-from helpers.prefix import prefix_key_from_link, prefix_tree_from_prefix_key
-from helpers.sql_loader import _adapt_positional_to_psycopg
+from helper.constants import TEST_HOST
+from helper.prefix import prefix_key_from_link, prefix_tree_from_prefix_key
+from helper.sql_loader import _adapt_positional_to_psycopg
 
 _SQL_QUERIES_DIR = pathlib.Path(__file__).resolve().parents[1] / "sql" / "query"
 INSERT_WEBSHOT_SQL = _adapt_positional_to_psycopg(

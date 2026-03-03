@@ -5,6 +5,38 @@ info:
 servers:
   - url: /
 paths:
+  /v1/denylist/check:
+    post:
+      operationId: checkDenylist
+      summary: Check whether a link is denylisted (internal)
+      description: |
+        Checks whether the provided link is allowed under the current denylist.
+
+        The request body is the raw link text (not JSON). The service normalizes the link
+        (defaulting scheme to http when absent) and checks the derived denylist prefix.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              $ref: '#/components/schemas/Link'
+            examples:
+              absolute:
+                value: https://example.com/a?b=1
+              host-without-scheme:
+                value: example.com/a?b=1
+          application/octet-stream:
+            schema:
+              $ref: '#/components/schemas/Link'
+      responses:
+        '204':
+          description: Link is allowed (not denylisted).
+        '400':
+          description: Missing or invalid request body.
+        '403':
+          description: Link is denylisted.
+        '500':
+          description: Internal server error.
   /v1/webshot:
     get:
       operationId: listWebshotsByUrl
@@ -50,11 +82,11 @@ paths:
                 missing_link:
                   value:
                     error:
-                      message: "missing parameter: link"
+                      message: "link: missing parameter"
                 bad_page_token:
                   value:
                     error:
-                      message: invalid page_token
+                      message: "page_token: invalid page_token"
         '500':
           description: Internal server error.
           content:
@@ -105,7 +137,7 @@ paths:
                 bad_link:
                   value:
                     error:
-                      message: forbidden host
+                      message: invalid host
         '403':
           description: Host is denylisted
           content:
@@ -154,7 +186,7 @@ paths:
           description: Opaque token from a previous response to get the next page.
       responses:
         '200':
-          description: Paged list of captures matching the prefix (latest first).
+          description: Paged list of captures matching the prefix.
           content:
             application/json:
               schema:
@@ -169,11 +201,11 @@ paths:
                 missing_prefix:
                   value:
                     error:
-                      message: "missing parameter: prefix"
+                      message: "prefix: missing parameter"
                 bad_page_token:
                   value:
                     error:
-                      message: invalid page_token
+                      message: "page_token: invalid page_token"
         '500':
           description: Internal server error.
           content:
@@ -209,7 +241,7 @@ paths:
                 invalid_uuid:
                   value:
                     error:
-                      message: "invalid uuid"
+                      message: "uuid: invalid parameter"
         '404':
           description: Job not found.
           content:
@@ -227,13 +259,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-  /v1/disallow-and-purge:
+  /v1/disallow_and_purge:
     post:
       operationId: disallowAndPurgePrefix
       summary: Disallow a host prefix and enqueue purge
       description: |
         Normalizes the provided host or URL, derives a host+path prefix, inserts it into the
         denylist, and enqueues background purge of all captures matching that prefix.
+
+        Port and query are ignored for denylisting; only the normalized host and path are used.
       parameters:
         - in: query
           name: host
@@ -242,12 +276,12 @@ paths:
             Host or URL prefix to disallow. Accepts a full HTTP/HTTPS link or a bare hostname;
             the normalized host and path (without query) are used for denylisting.
           schema:
-            type: string
+            $ref: '#/components/schemas/Link'
           examples:
             simple:
               value: example.com
             idn:
-              value: 'b\\u00fccher.de'
+              value: bucher.de
       responses:
         '202':
           description: Purge successfully enqueued for the normalized prefix.
@@ -261,11 +295,11 @@ paths:
                 missing_host:
                   value:
                     error:
-                      message: "missing parameter: host"
+                      message: "host: missing parameter"
                 invalid_host:
                   value:
                     error:
-                      message: "invalid host"
+                      message: "host: invalid parameter"
         '500':
           description: Internal server error.
           content:
@@ -304,7 +338,7 @@ paths:
                 missing_uuid:
                   value:
                     error:
-                      message: "missing parameter: uuid"
+                      message: "uuid: missing parameter"
         '404':
           description: Webshot not found.
           content:

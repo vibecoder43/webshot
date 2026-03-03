@@ -152,7 +152,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_sql)
 
 include(CTest)
 if(BUILD_TESTING)
-  add_subdirectory(tests)
+  add_subdirectory(test)
 endif()
 
 if(USE_SANITIZERS)

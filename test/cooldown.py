@@ -1,6 +1,6 @@
 import uuid
 
-from helpers.constants import TEST_HOST
+from helper.constants import TEST_HOST
 
 
 async def test_create_webshot_respects_link_cooldown(service_client, pgsql):

@@ -15,8 +15,8 @@ Use these rules whenever making code changes in this repository.
 ## Project structure
 - `src/` is the only allowed location for service `.cpp` sources; `src/main.cpp` wires core components.
 - Shared handlers/components MUST live in `include/` (for example, `webshot_handler.hpp`, `webshot_crud.hpp`), and all such headers MUST use `#pragma once`.
-- C++ unit tests MUST live under `tests/` and use `userver::utest` (`<userver/utest/utest.hpp>`).
-- Functional tests and testsuite helpers also live under `tests/` and are driven by `pytest`, `pytest_userver`, and `testsuite` (from yandex-taxi-testsuite).  All tests MUST live under `tests/` and MUST NOT be placed elsewhere.
+- C++ unit tests MUST live under `test/` and use `userver::utest` (`<userver/utest/utest.hpp>`).
+- Functional tests and testsuite helpers also live under `test/` and are driven by `pytest`, `pytest_userver`, and `testsuite` (from yandex-taxi-testsuite).  All tests MUST live under `test/` and MUST NOT be placed elsewhere.
 
 ## Style and naming
 - Classes MUST use PascalCase (for example, `WebshotCrud`).

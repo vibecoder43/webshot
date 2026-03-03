@@ -1,8 +1,8 @@
 import asyncio
 
 import pytest
-from helpers.constants import TEST_HOST
-from helpers.prefix import prefix_key_from_link
+from helper.constants import TEST_HOST
+from helper.prefix import prefix_key_from_link
 
 
 @pytest.mark.asyncio

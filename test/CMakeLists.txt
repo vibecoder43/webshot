@@ -174,7 +174,7 @@ if(USERVER_FEATURE_TESTSUITE)
     COMMAND
       llvm-cov report ${WEBSHOT_COVERAGE_TARGET_FILES}
       -instr-profile=${CMAKE_CURRENT_BINARY_DIR}/coverage/coverage.profdata
-      "-ignore-filename-regex=.*/tests/.*|.*/config\\.(cpp|hpp)"
+      "-ignore-filename-regex=.*/test/.*|.*/config\\.(cpp|hpp)"
       -show-instantiation-summary
     USES_TERMINAL VERBATIM)
 
@@ -194,7 +194,7 @@ if(USERVER_FEATURE_TESTSUITE)
       --output-dir=${CMAKE_CURRENT_BINARY_DIR}/coverage/html
       --instr-profile=${CMAKE_CURRENT_BINARY_DIR}/coverage/coverage.profdata
       ${WEBSHOT_COVERAGE_TARGET_FILES}
-      "-ignore-filename-regex=.*/tests/.*|.*/config\\.(cpp|hpp)"
+      "-ignore-filename-regex=.*/test/.*|.*/config\\.(cpp|hpp)"
       -show-instantiation-summary
     DEPENDS coverage
     USES_TERMINAL VERBATIM)

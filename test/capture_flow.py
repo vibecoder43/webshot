@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 import pytest
-from helpers.constants import TEST_ASSET_HOST, TEST_HOST
-from helpers.prefix import prefix_key_from_link
+from helper.constants import TEST_ASSET_HOST, TEST_HOST
+from helper.prefix import prefix_key_from_link
 from minio import Minio
 
 

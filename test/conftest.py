@@ -15,7 +15,7 @@ pytest_plugins = [
     "pytest_userver.plugins.postgresql",
     "pytest_userver.plugins.config",
     "pytest_userver.chaos",
-    "helpers.sql_loader",
+    "helper.sql_loader",
 ]
 
 psycopg2.extras.register_uuid()

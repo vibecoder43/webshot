@@ -2,7 +2,7 @@ import asyncio
 import uuid
 
 import pytest
-from helpers.constants import TEST_HOST
+from helper.constants import TEST_HOST
 
 
 @pytest.mark.asyncio

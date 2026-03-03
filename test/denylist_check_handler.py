@@ -1,5 +1,5 @@
 import pytest
-from helpers.constants import TEST_ASSET_HOST, TEST_HOST
+from helper.constants import TEST_ASSET_HOST, TEST_HOST
 
 
 @pytest.mark.asyncio
