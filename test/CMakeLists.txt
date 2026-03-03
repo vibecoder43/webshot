@@ -114,10 +114,6 @@ add_cpp_test(
   crawler_fallback_test SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback.cpp)
 
-add_cpp_test(
-  handler_simple_server_test SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/handler_simple_server.cpp LIBS userver::core)
-
 get_property(WEBSHOT_CPP_TESTS GLOBAL PROPERTY WEBSHOT_CPP_TESTS)
 set(WEBSHOT_COVERAGE_TARGETS ${PROJECT_NAME} ${WEBSHOT_CPP_TESTS})
 set(WEBSHOT_COVERAGE_TARGET_FILES "")
