@@ -356,12 +356,12 @@ in {
   };
 
   tasks."webshot:devUp" = {
-    exec = "python3 container/compose/infra.py dev up && python3 container/compose/webshotd.py dev start";
+    exec = "python3 container/compose/infra.py dev up && python3 container/compose/webshotd.py dev up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devDown" = {
-    exec = "python3 container/compose/webshotd.py dev stop && python3 container/compose/infra.py dev down";
+    exec = "python3 container/compose/webshotd.py dev down && python3 container/compose/infra.py dev down";
     cwd = config.devenv.root;
   };
 
@@ -386,12 +386,12 @@ in {
   };
 
   tasks."webshot:prodlikeUp" = {
-    exec = "python3 container/compose/infra.py prodlike up && python3 container/compose/webshotd.py prodlike start";
+    exec = "python3 container/compose/infra.py prodlike up && python3 container/compose/webshotd.py prodlike up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeDown" = {
-    exec = "python3 container/compose/webshotd.py prodlike stop && python3 container/compose/infra.py prodlike down";
+    exec = "python3 container/compose/webshotd.py prodlike down && python3 container/compose/infra.py prodlike down";
     cwd = config.devenv.root;
   };
 

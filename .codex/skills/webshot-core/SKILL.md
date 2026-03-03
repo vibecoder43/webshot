@@ -14,7 +14,7 @@ Use these rules whenever making code changes in this repository.
 
 ## Project structure
 - `src/` is the only allowed location for service `.cpp` sources; `src/main.cpp` wires core components.
-- Shared handlers/components MUST live in `include/` (for example, `webshot_handler.hpp`, `webshot_crud.hpp`), and all such headers MUST use `#pragma once`.
+- Shared handlers/components MUST live in `include/` (for example, `handler.hpp`, `crud.hpp`), and all such headers MUST use `#pragma once`.
 - C++ unit tests MUST live under `test/` and use `userver::utest` (`<userver/utest/utest.hpp>`).
 - Functional tests and testsuite helpers also live under `test/` and are driven by `pytest`, `pytest_userver`, and `testsuite` (from yandex-taxi-testsuite).  All tests MUST live under `test/` and MUST NOT be placed elsewhere.
 
@@ -27,7 +27,7 @@ Use these rules whenever making code changes in this repository.
 - Use `{}` instead of `std::nullopt` in return statements and obvious initialization sites whenever it compiles.
 - Use `size_t`, `int64_t` (not `std::size_t` or `std::int64_t`).
 - Never use `Type name = Type(...)`; use `auto name = Type(...)` instead to avoid writing the type twice.
-- Filenames MUST be snake_case (for example, `ip_utils.cpp`, `webshot_handler.hpp`).
+- Filenames MUST be snake_case (for example, `ip_utils.cpp`).
 - Declarations and definitions MUST exactly match (names and signatures).
 - Do not introduce duplicate code; factor common logic into reusable helpers.
 - Code MUST be designed to handle adversarial input too.

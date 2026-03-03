@@ -16,11 +16,18 @@ def main() -> int:
     repo_root = _bootstrap_repo_root()
 
     from compose_tools.common import ToolError
-    from compose_tools.infra import infra_down, infra_ready, infra_status, infra_up
+    from compose_tools.infra import (
+        infra_down,
+        infra_ready,
+        infra_status,
+        infra_supervise,
+        infra_up,
+        infra_watch,
+    )
 
     parser = argparse.ArgumentParser(prog="infra.py")
     parser.add_argument("mode", choices=["dev", "prodlike"])
-    parser.add_argument("action", choices=["up", "down", "ready", "status"])
+    parser.add_argument("action", choices=["up", "down", "ready", "status", "watch", "supervise"])
     parser.add_argument("--verbose", action="store_true", help="Show diagnostics for 'ready'")
     args = parser.parse_args()
 
@@ -34,10 +41,16 @@ def main() -> int:
             infra_down(mode=args.mode, compose_dir=compose_dir)
             return 0
         if args.action == "ready":
-            ok = infra_ready(mode=args.mode, verbose=args.verbose)
+            ok = infra_ready(mode=args.mode, compose_dir=compose_dir, verbose=args.verbose)
             return 0 if ok else 1
         if args.action == "status":
-            infra_status(mode=args.mode)
+            infra_status(mode=args.mode, compose_dir=compose_dir)
+            return 0
+        if args.action == "watch":
+            infra_watch(mode=args.mode, compose_dir=compose_dir)
+            return 0
+        if args.action == "supervise":
+            infra_supervise(mode=args.mode, compose_dir=compose_dir, repo_root=repo_root)
             return 0
         raise AssertionError("unreachable")
     except ToolError as e:

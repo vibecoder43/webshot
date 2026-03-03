@@ -255,7 +255,7 @@ def webshotd_wait_ready(*, log_file: Path) -> None:
         time.sleep(1)
 
 
-def webshotd_start(*, mode: str, repo_root: Path) -> None:
+def webshotd_up(*, mode: str, repo_root: Path) -> None:
     need_env("WEBSHOTD_RUNTIME_LD_LIBRARY_PATH")
 
     paths = _state_paths(mode=mode)
@@ -273,7 +273,7 @@ def webshotd_start(*, mode: str, repo_root: Path) -> None:
     env = _ensure_cpu_limits(dict(os.environ))
     env = env_with(env, {"LD_LIBRARY_PATH": need_env("WEBSHOTD_RUNTIME_LD_LIBRARY_PATH")})
 
-    print(f"Starting webshotd ({mode})...", file=sys.stderr)
+    print(f"Bringing up webshotd ({mode})...", file=sys.stderr)
     with paths.log_file.open("ab", buffering=0) as log:
         import subprocess
 
@@ -289,7 +289,7 @@ def webshotd_start(*, mode: str, repo_root: Path) -> None:
     webshotd_wait_ready(log_file=paths.log_file)
 
 
-def webshotd_stop(*, mode: str) -> None:
+def webshotd_down(*, mode: str) -> None:
     timeout_sec = int(os.environ.get("WEBSHOTD_STOP_TIMEOUT_SEC", "30"))
     paths = _state_paths(mode=mode)
     pid = _read_pid(paths.pid_file)

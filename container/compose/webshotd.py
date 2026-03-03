@@ -16,19 +16,19 @@ def main() -> int:
     repo_root = _bootstrap_repo_root()
 
     from compose_tools.common import ToolError
-    from compose_tools.webshotd import webshotd_logs, webshotd_start, webshotd_status, webshotd_stop
+    from compose_tools.webshotd import webshotd_down, webshotd_logs, webshotd_status, webshotd_up
 
     parser = argparse.ArgumentParser(prog="webshotd.py")
     parser.add_argument("mode", choices=["dev", "prodlike"])
-    parser.add_argument("action", choices=["start", "stop", "status", "logs"])
+    parser.add_argument("action", choices=["up", "down", "status", "logs"])
     args = parser.parse_args()
 
     try:
-        if args.action == "start":
-            webshotd_start(mode=args.mode, repo_root=repo_root)
+        if args.action == "up":
+            webshotd_up(mode=args.mode, repo_root=repo_root)
             return 0
-        if args.action == "stop":
-            webshotd_stop(mode=args.mode)
+        if args.action == "down":
+            webshotd_down(mode=args.mode)
             return 0
         if args.action == "status":
             webshotd_status(mode=args.mode)

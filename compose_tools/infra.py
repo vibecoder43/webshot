@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
+import threading
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 
-from compose_tools.common import ToolError, die, need_cmd, run
+from compose_tools.common import ToolError, die, need_cmd, run, wait_for_pid_exit
 from compose_tools.podman_compose import (
     ContainerState,
     compose,
@@ -16,6 +19,100 @@ from compose_tools.podman_compose import (
     wait_running,
 )
 from compose_tools.s3_bucket import ensure_s3_bucket_exists
+from compose_tools.stack_spec import StackSpec, loadStackSpec
+
+
+@dataclass(frozen=True)
+class InfraSupervisorPaths:
+    state_dir: Path
+    pid_file: Path
+    log_file: Path
+
+
+def _supervisor_state_paths(*, mode: str) -> InfraSupervisorPaths:
+    runtime_root = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    state_root = os.environ.get("INFRA_SUPERVISOR_STATE_DIR") or (
+        f"{runtime_root}/infra-supervisor-{os.getuid()}"
+    )
+    state_dir = Path(state_root) / mode
+    state_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = state_dir / "infra_supervisor.pid"
+    log_file = state_dir / "infra_supervisor.log"
+    return InfraSupervisorPaths(state_dir=state_dir, pid_file=pid_file, log_file=log_file)
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+
+
+def _read_pid(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def infra_supervisor_start(*, mode: str, compose_dir: Path, repo_root: Path) -> None:
+    paths = _supervisor_state_paths(mode=mode)
+    pid = _read_pid(paths.pid_file)
+    if pid is not None and _pid_is_running(pid):
+        return
+    if pid is not None:
+        with suppress(FileNotFoundError):
+            paths.pid_file.unlink()
+
+    cmd = [
+        sys.executable,
+        str(repo_root / "container/compose/infra.py"),
+        mode,
+        "watch",
+    ]
+
+    paths.log_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.log_file.touch(exist_ok=True)
+
+    with paths.log_file.open("ab", buffering=0) as log:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(repo_root),
+            env=dict(os.environ),
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    paths.pid_file.write_text(f"{proc.pid}\n", encoding="utf-8")
+
+
+def infra_supervisor_stop(*, mode: str) -> None:
+    import signal
+
+    timeout_sec = int(os.environ.get("INFRA_SUPERVISOR_STOP_TIMEOUT_SEC", "5"))
+    paths = _supervisor_state_paths(mode=mode)
+    pid = _read_pid(paths.pid_file)
+    if pid is None:
+        return
+    if not _pid_is_running(pid):
+        with suppress(FileNotFoundError):
+            paths.pid_file.unlink()
+        return
+
+    with suppress(ProcessLookupError):
+        os.kill(pid, signal.SIGTERM)
+    if not wait_for_pid_exit(pid, timeout_sec=float(timeout_sec)):
+        with suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+    with suppress(FileNotFoundError):
+        paths.pid_file.unlink()
 
 
 def ensure_networks() -> None:
@@ -53,15 +150,10 @@ def ensure_networks() -> None:
     ensure_network("egress_net", "false")
 
 
-def infra_ready(*, mode: str, verbose: bool = False) -> bool:
+def infra_ready(*, mode: str, compose_dir: Path, verbose: bool = False) -> bool:
     need_cmd("podman")
-
-    if mode == "dev":
-        names = ["egress_proxy", "servicedb", "seaweedfs", "scalar", "reverse_proxy", "test_target"]
-    elif mode == "prodlike":
-        names = ["egress_proxy", "servicedb"]
-    else:
-        die("mode must be 'dev' or 'prodlike'", exit_code=2)
+    spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
+    names = spec.containerNamesAll()
 
     for name in names:
         state: ContainerState | None = None
@@ -111,13 +203,13 @@ def infra_ready(*, mode: str, verbose: bool = False) -> bool:
     return True
 
 
-def infra_status(*, mode: str) -> None:
+def infra_status(*, mode: str, compose_dir: Path) -> None:
     print(f"Mode: {mode}")
-    if infra_ready(mode=mode):
+    if infra_ready(mode=mode, compose_dir=compose_dir):
         print("Infra: ready")
     else:
         print("Infra: not ready")
-        infra_ready(mode=mode, verbose=True)
+        infra_ready(mode=mode, compose_dir=compose_dir, verbose=True)
 
 
 def assert_servicedb_timezone_utc(*, container_name: str = "servicedb") -> None:
@@ -169,6 +261,10 @@ def assert_servicedb_timezone_utc(*, container_name: str = "servicedb") -> None:
         )
 
 
+def _compose_pod_name(*, compose_dir: Path) -> str:
+    return f"pod_{compose_dir.name}"
+
+
 def infra_down_compose(*, compose_dir: Path, compose_file: str) -> None:
     require_podman_compose()
     timeout_sec = int(os.environ.get("INFRA_DOWN_TIMEOUT_SEC", "90"))
@@ -186,18 +282,19 @@ def infra_down_compose(*, compose_dir: Path, compose_file: str) -> None:
         if proc.returncode == 0:
             return
 
-    pod_inspect = run(["podman", "pod", "inspect", "pod_compose"], check=False, capture=True)
+    pod_name = _compose_pod_name(compose_dir=compose_dir)
+    pod_inspect = run(["podman", "pod", "inspect", pod_name], check=False, capture=True)
     if pod_inspect.returncode != 0:
-        print("Infra is already down (pod 'pod_compose' not found).", file=sys.stderr)
+        print(f"Infra is already down (pod '{pod_name}' not found).", file=sys.stderr)
         return
 
     print(
         f"Warning: podman compose down failed/timed out after {timeout_sec}s; "
-        "forcing pod removal: pod_compose",
+        f"forcing pod removal: {pod_name}",
         file=sys.stderr,
     )
-    run(["podman", "pod", "rm", "-f", "pod_compose"], check=False)
-    run(["podman", "pod", "inspect", "pod_compose"], check=False)
+    run(["podman", "pod", "rm", "-f", pod_name], check=False)
+    run(["podman", "pod", "inspect", pod_name], check=False)
 
 
 def ensure_servicedb_timezone_utc_or_down(
@@ -249,27 +346,205 @@ def _ensure_s3_bucket_dev(*, repo_root: Path) -> None:
         time.sleep(retry_delay_sec)
 
 
+def _stack_wait_ready(*, spec: StackSpec) -> None:
+    for name in spec.containerNamesHealthchecked():
+        wait_healthy(name, 120)
+    for name in spec.containerNamesNonHealthchecked():
+        wait_running(name, 120)
+
+
+def _dump_diagnostics(name: str) -> None:
+    run(
+        [
+            "podman",
+            "ps",
+            "-a",
+            "--filter",
+            f"name=^{name}$",
+            "--format",
+            "infra: {{.Names}}: {{.Status}}",
+        ],
+        check=False,
+    )
+    run(["podman", "logs", "--tail=200", name], check=False)
+
+
+def _read_float_env(name: str, default: str) -> float:
+    raw = os.environ.get(name, default)
+    try:
+        value = float(raw)
+    except ValueError:
+        die(f"{name} must be a number, got: {raw!r}", exit_code=2)
+    return value
+
+
+def _read_int_env(name: str, default: str) -> int:
+    raw = os.environ.get(name, default)
+    try:
+        value = int(raw)
+    except ValueError:
+        die(f"{name} must be an int, got: {raw!r}", exit_code=2)
+    return value
+
+
+def _stack_supervise(*, spec: StackSpec, compose_dir: Path) -> None:
+    need_cmd("podman")
+    require_podman_compose()
+
+    period_sec = _read_float_env("INFRA_HEALTHCHECK_PERIOD_SEC", "10")
+    if period_sec <= 0:
+        die(f"INFRA_HEALTHCHECK_PERIOD_SEC must be > 0, got: {period_sec!r}", exit_code=2)
+
+    max_fails = _read_int_env("INFRA_HEALTHCHECK_FAILS", "3")
+    if max_fails <= 0:
+        die(f"INFRA_HEALTHCHECK_FAILS must be > 0, got: {max_fails!r}", exit_code=2)
+
+    names_all = spec.containerNamesAll()
+    names_health = spec.containerNamesHealthchecked()
+    compose_file = spec.compose_file.name
+
+    stop_event = threading.Event()
+    failure_event = threading.Event()
+    failure_lock = threading.Lock()
+    failure_name = ""
+    failure_reason = ""
+
+    def set_failure(name: str, reason: str) -> None:
+        nonlocal failure_name, failure_reason
+        with failure_lock:
+            if failure_event.is_set():
+                return
+            failure_name = name
+            failure_reason = reason
+            failure_event.set()
+            stop_event.set()
+
+    procs: dict[str, subprocess.Popen[str]] = {}
+
+    def stop_waiter(name: str, proc: subprocess.Popen[str]) -> None:
+        out, err = proc.communicate()
+        if stop_event.is_set():
+            return
+        if proc.returncode != 0:
+            detail = (err or out or "").strip()
+            suffix = f": {detail}" if detail else ""
+            set_failure(name, f"wait failed (exit={proc.returncode}){suffix}")
+            return
+
+        exit_code_raw = (out or "").strip().splitlines()
+        exit_code = exit_code_raw[0].strip() if exit_code_raw else ""
+        reason = f"stopped (exit_code={exit_code})" if exit_code else "stopped"
+        set_failure(name, reason)
+
+    for name in names_all:
+        proc = subprocess.Popen(
+            ["podman", "wait", "--condition", "stopped", "--interval", "2s", name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        procs[name] = proc
+        thread = threading.Thread(target=stop_waiter, args=(name, proc), daemon=True)
+        thread.start()
+
+    def health_driver() -> None:
+        fails: dict[str, int] = {name: 0 for name in names_health}
+        while not stop_event.is_set():
+            for name in names_health:
+                if stop_event.is_set():
+                    return
+                proc = run(["podman", "healthcheck", "run", name], check=False, capture=True)
+                if proc.returncode == 0:
+                    fails[name] = 0
+                    continue
+                fails[name] += 1
+                if fails[name] >= max_fails:
+                    set_failure(name, f"healthcheck failed {fails[name]} times")
+                    return
+            stop_event.wait(period_sec)
+
+    health_thread = threading.Thread(target=health_driver, daemon=True)
+    health_thread.start()
+
+    try:
+        while not failure_event.is_set():
+            failure_event.wait(timeout=0.2)
+    except KeyboardInterrupt:
+        stop_event.set()
+        for proc in procs.values():
+            if proc.poll() is None:
+                with suppress(Exception):
+                    proc.terminate()
+        time.sleep(0.2)
+        for proc in procs.values():
+            if proc.poll() is None:
+                with suppress(Exception):
+                    proc.kill()
+        raise
+
+    for proc in procs.values():
+        if proc.poll() is None:
+            with suppress(Exception):
+                proc.terminate()
+    time.sleep(0.2)
+    for proc in procs.values():
+        if proc.poll() is None:
+            with suppress(Exception):
+                proc.kill()
+
+    with failure_lock:
+        name = failure_name or "<unknown>"
+        reason = failure_reason or "unknown failure"
+
+    print(f"infra: {name}: {reason}", file=sys.stderr)
+    with suppress(ToolError):
+        if name != "<unknown>":
+            _dump_diagnostics(name)
+    with suppress(ToolError):
+        infra_down_compose(compose_dir=compose_dir, compose_file=compose_file)
+    die(f"Infra became not ready: {name}: {reason}", exit_code=1)
+
+
+def infra_watch(*, mode: str, compose_dir: Path) -> None:
+    spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
+    _stack_wait_ready(spec=spec)
+    _stack_supervise(spec=spec, compose_dir=compose_dir)
+
+
+def infra_supervise(*, mode: str, compose_dir: Path, repo_root: Path) -> None:
+    infra_up(mode=mode, compose_dir=compose_dir, repo_root=repo_root)
+    spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
+    try:
+        _stack_supervise(spec=spec, compose_dir=compose_dir)
+    except KeyboardInterrupt:
+        with suppress(ToolError):
+            infra_down(mode=mode, compose_dir=compose_dir)
+        raise
+
+
 def infra_up(*, mode: str, compose_dir: Path, repo_root: Path) -> None:
     ensure_networks()
     _squid_load(mode)
 
-    compose_file = "infra_dev.yaml" if mode == "dev" else "infra_prodlike.yaml"
+    spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
+    compose_file = spec.compose_file.name
     compose(["--in-pod", "true", "-f", compose_file, "up", "-d"], cwd=compose_dir)
 
-    wait_healthy("egress_proxy", 120)
-    wait_healthy("servicedb", 120)
+    _stack_wait_ready(spec=spec)
     ensure_servicedb_timezone_utc_or_down(
-        compose_dir=compose_dir, compose_file=compose_file, container_name="servicedb"
+        compose_dir=compose_dir,
+        compose_file=compose_file,
+        container_name=spec.serviceContainerName("servicedb"),
     )
 
     if mode == "dev":
-        wait_healthy("seaweedfs", 120)
         _ensure_s3_bucket_dev(repo_root=repo_root)
-        wait_running("scalar", 120)
-        wait_running("reverse_proxy", 120)
-        wait_running("test_target", 120)
+
+    infra_supervisor_start(mode=mode, compose_dir=compose_dir, repo_root=repo_root)
 
 
 def infra_down(*, mode: str, compose_dir: Path) -> None:
-    compose_file = "infra_dev.yaml" if mode == "dev" else "infra_prodlike.yaml"
+    spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
+    compose_file = spec.compose_file.name
+    infra_supervisor_stop(mode=mode)
     infra_down_compose(compose_dir=compose_dir, compose_file=compose_file)
