@@ -21,6 +21,11 @@ from compose_tools.podman_compose import (
 from compose_tools.s3_bucket import ensure_s3_bucket_exists
 from compose_tools.stack_spec import StackSpec, loadStackSpec
 
+_squid_load_timeout_sec = 1800.0
+_compose_up_timeout_sec = 1800.0
+_podman_cmd_timeout_sec = 10.0
+_podman_slow_timeout_sec = 30.0
+
 
 @dataclass(frozen=True)
 class InfraSupervisorPaths:
@@ -119,12 +124,18 @@ def ensure_networks() -> None:
     need_cmd("podman")
 
     def ensure_network(name: str, want_internal: str) -> None:
-        inspect = run(["podman", "network", "inspect", name], check=False, capture=True)
+        inspect = run(
+            ["podman", "network", "inspect", name],
+            check=False,
+            capture=True,
+            timeout_sec=_podman_cmd_timeout_sec,
+        )
         if inspect.returncode == 0:
             internal = run(
                 ["podman", "network", "inspect", "-f", "{{.Internal}}", name],
                 capture=True,
                 check=False,
+                timeout_sec=_podman_cmd_timeout_sec,
             ).stdout.strip()
             if internal != want_internal:
                 print(
@@ -142,9 +153,12 @@ def ensure_networks() -> None:
             return
 
         if want_internal == "true":
-            run(["podman", "network", "create", "--internal", name])
+            run(
+                ["podman", "network", "create", "--internal", name],
+                timeout_sec=_podman_slow_timeout_sec,
+            )
         else:
-            run(["podman", "network", "create", name])
+            run(["podman", "network", "create", name], timeout_sec=_podman_slow_timeout_sec)
 
     ensure_network("crawler_net", "true")
     ensure_network("egress_net", "false")
@@ -153,7 +167,7 @@ def ensure_networks() -> None:
 def infra_ready(*, mode: str, compose_dir: Path, verbose: bool = False) -> bool:
     need_cmd("podman")
     spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
-    names = spec.containerNamesAll()
+    names = spec.container_names_all()
 
     for name in names:
         state: ContainerState | None = None
@@ -173,6 +187,7 @@ def infra_ready(*, mode: str, compose_dir: Path, verbose: bool = False) -> bool:
                         "infra: {{.Names}}: {{.Status}}",
                     ],
                     check=False,
+                    timeout_sec=_podman_cmd_timeout_sec,
                 )
             return False
 
@@ -190,14 +205,23 @@ def infra_ready(*, mode: str, compose_dir: Path, verbose: bool = False) -> bool:
                         "infra: {{.Names}}: {{.Status}}",
                     ],
                     check=False,
+                    timeout_sec=_podman_cmd_timeout_sec,
                 )
-                run(["podman", "logs", "--tail=50", name], check=False)
+                run(
+                    ["podman", "logs", "--tail=50", name],
+                    check=False,
+                    timeout_sec=_podman_cmd_timeout_sec,
+                )
             return False
 
         if state.health and state.health != "healthy":
             if verbose:
                 print(f"infra: {name}: health='{state.health}'", file=sys.stderr)
-                run(["podman", "logs", "--tail=50", name], check=False)
+                run(
+                    ["podman", "logs", "--tail=50", name],
+                    check=False,
+                    timeout_sec=_podman_cmd_timeout_sec,
+                )
             return False
 
     return True
@@ -217,6 +241,7 @@ def assert_servicedb_timezone_utc(*, container_name: str = "servicedb") -> None:
         ["podman", "exec", container_name, "psql", "-U", "postgres", "-tAqc", "SHOW TimeZone;"],
         capture=True,
         check=False,
+        timeout_sec=_podman_cmd_timeout_sec,
     )
     if tz_raw.returncode != 0:
         print(
@@ -230,6 +255,7 @@ def assert_servicedb_timezone_utc(*, container_name: str = "servicedb") -> None:
         ["podman", "exec", container_name, "psql", "-U", "postgres", "-tAqc", "SHOW log_timezone;"],
         capture=True,
         check=False,
+        timeout_sec=_podman_cmd_timeout_sec,
     )
     if log_tz_raw.returncode != 0:
         print(
@@ -268,6 +294,11 @@ def _compose_pod_name(*, compose_dir: Path) -> str:
 def infra_down_compose(*, compose_dir: Path, compose_file: str) -> None:
     require_podman_compose()
     timeout_sec = int(os.environ.get("INFRA_DOWN_TIMEOUT_SEC", "90"))
+    print(
+        f"infra: compose down ({compose_file}) (timeout={timeout_sec}s)...",
+        file=sys.stderr,
+        flush=True,
+    )
     try:
         proc = run(
             ["podman", "compose", "--in-pod", "true", "-f", compose_file, "down"],
@@ -283,7 +314,12 @@ def infra_down_compose(*, compose_dir: Path, compose_file: str) -> None:
             return
 
     pod_name = _compose_pod_name(compose_dir=compose_dir)
-    pod_inspect = run(["podman", "pod", "inspect", pod_name], check=False, capture=True)
+    pod_inspect = run(
+        ["podman", "pod", "inspect", pod_name],
+        check=False,
+        capture=True,
+        timeout_sec=_podman_cmd_timeout_sec,
+    )
     if pod_inspect.returncode != 0:
         print(f"Infra is already down (pod '{pod_name}' not found).", file=sys.stderr)
         return
@@ -293,8 +329,12 @@ def infra_down_compose(*, compose_dir: Path, compose_file: str) -> None:
         f"forcing pod removal: {pod_name}",
         file=sys.stderr,
     )
-    run(["podman", "pod", "rm", "-f", pod_name], check=False)
-    run(["podman", "pod", "inspect", pod_name], check=False)
+    run(["podman", "pod", "rm", "-f", pod_name], check=False, timeout_sec=_podman_slow_timeout_sec)
+    run(
+        ["podman", "pod", "inspect", pod_name],
+        check=False,
+        timeout_sec=_podman_cmd_timeout_sec,
+    )
 
 
 def ensure_servicedb_timezone_utc_or_down(
@@ -316,7 +356,32 @@ def _squid_load(mode: str) -> None:
     else:
         die("mode must be 'dev' or 'prodlike'", exit_code=2)
     need_cmd(cmd)
-    run([cmd])
+    run([cmd], timeout_sec=_squid_load_timeout_sec)
+
+
+def _squid_image_tag(mode: str) -> str:
+    if mode == "dev":
+        return "localhost/squid:dev"
+    if mode == "prodlike":
+        return "localhost/squid:prodlike"
+    die("mode must be 'dev' or 'prodlike'", exit_code=2)
+    raise AssertionError("unreachable")
+
+
+def ensure_squid_image_loaded(*, mode: str) -> None:
+    need_cmd("podman")
+    require_podman_compose()
+    tag = _squid_image_tag(mode)
+    inspect = run(
+        ["podman", "image", "inspect", tag],
+        check=False,
+        capture=True,
+        timeout_sec=_podman_cmd_timeout_sec,
+    )
+    if inspect.returncode == 0:
+        return
+    print(f"infra: squid image missing, loading: {tag}", file=sys.stderr, flush=True)
+    _squid_load(mode)
 
 
 def _ensure_s3_bucket_dev(*, repo_root: Path) -> None:
@@ -347,9 +412,9 @@ def _ensure_s3_bucket_dev(*, repo_root: Path) -> None:
 
 
 def _stack_wait_ready(*, spec: StackSpec) -> None:
-    for name in spec.containerNamesHealthchecked():
+    for name in spec.container_names_healthchecked():
         wait_healthy(name, 120)
-    for name in spec.containerNamesNonHealthchecked():
+    for name in spec.container_names_non_healthchecked():
         wait_running(name, 120)
 
 
@@ -365,8 +430,9 @@ def _dump_diagnostics(name: str) -> None:
             "infra: {{.Names}}: {{.Status}}",
         ],
         check=False,
+        timeout_sec=_podman_cmd_timeout_sec,
     )
-    run(["podman", "logs", "--tail=200", name], check=False)
+    run(["podman", "logs", "--tail=200", name], check=False, timeout_sec=_podman_cmd_timeout_sec)
 
 
 def _read_float_env(name: str, default: str) -> float:
@@ -399,8 +465,8 @@ def _stack_supervise(*, spec: StackSpec, compose_dir: Path) -> None:
     if max_fails <= 0:
         die(f"INFRA_HEALTHCHECK_FAILS must be > 0, got: {max_fails!r}", exit_code=2)
 
-    names_all = spec.containerNamesAll()
-    names_health = spec.containerNamesHealthchecked()
+    names_all = spec.container_names_all()
+    names_health = spec.container_names_healthchecked()
     compose_file = spec.compose_file.name
 
     stop_event = threading.Event()
@@ -448,20 +514,28 @@ def _stack_supervise(*, spec: StackSpec, compose_dir: Path) -> None:
         thread.start()
 
     def health_driver() -> None:
-        fails: dict[str, int] = {name: 0 for name in names_health}
-        while not stop_event.is_set():
-            for name in names_health:
-                if stop_event.is_set():
-                    return
-                proc = run(["podman", "healthcheck", "run", name], check=False, capture=True)
-                if proc.returncode == 0:
-                    fails[name] = 0
-                    continue
-                fails[name] += 1
-                if fails[name] >= max_fails:
-                    set_failure(name, f"healthcheck failed {fails[name]} times")
-                    return
-            stop_event.wait(period_sec)
+        try:
+            fails: dict[str, int] = {name: 0 for name in names_health}
+            while not stop_event.is_set():
+                for name in names_health:
+                    if stop_event.is_set():
+                        return
+                    proc = run(
+                        ["podman", "healthcheck", "run", name],
+                        check=False,
+                        capture=True,
+                        timeout_sec=_podman_cmd_timeout_sec,
+                    )
+                    if proc.returncode == 0:
+                        fails[name] = 0
+                        continue
+                    fails[name] += 1
+                    if fails[name] >= max_fails:
+                        set_failure(name, f"healthcheck failed {fails[name]} times")
+                        return
+                stop_event.wait(period_sec)
+        except Exception as e:
+            set_failure("<health_driver>", f"crashed: {e}")
 
     health_thread = threading.Thread(target=health_driver, daemon=True)
     health_thread.start()
@@ -523,28 +597,50 @@ def infra_supervise(*, mode: str, compose_dir: Path, repo_root: Path) -> None:
 
 
 def infra_up(*, mode: str, compose_dir: Path, repo_root: Path) -> None:
+    print(f"infra: up ({mode})", file=sys.stderr, flush=True)
     ensure_networks()
-    _squid_load(mode)
+    ensure_squid_image_loaded(mode=mode)
 
     spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
     compose_file = spec.compose_file.name
-    compose(["--in-pod", "true", "-f", compose_file, "up", "-d"], cwd=compose_dir)
 
-    _stack_wait_ready(spec=spec)
-    ensure_servicedb_timezone_utc_or_down(
-        compose_dir=compose_dir,
-        compose_file=compose_file,
-        container_name=spec.serviceContainerName("servicedb"),
-    )
+    compose_attempted = False
+    try:
+        print("infra: starting containers...", file=sys.stderr, flush=True)
+        compose_attempted = True
+        compose(
+            ["--in-pod", "true", "-f", compose_file, "up", "-d"],
+            cwd=compose_dir,
+            timeout_sec=_compose_up_timeout_sec,
+        )
 
-    if mode == "dev":
-        _ensure_s3_bucket_dev(repo_root=repo_root)
+        print("infra: waiting for readiness...", file=sys.stderr, flush=True)
+        _stack_wait_ready(spec=spec)
+        ensure_servicedb_timezone_utc_or_down(
+            compose_dir=compose_dir,
+            compose_file=compose_file,
+            container_name=spec.service_container_name("servicedb"),
+        )
 
-    infra_supervisor_start(mode=mode, compose_dir=compose_dir, repo_root=repo_root)
+        if mode == "dev":
+            print("infra: ensuring dev S3 bucket...", file=sys.stderr, flush=True)
+            _ensure_s3_bucket_dev(repo_root=repo_root)
+
+        print("infra: starting supervisor...", file=sys.stderr, flush=True)
+        infra_supervisor_start(mode=mode, compose_dir=compose_dir, repo_root=repo_root)
+    except ToolError:
+        if compose_attempted:
+            print("infra: failed; bringing infra down...", file=sys.stderr, flush=True)
+            with suppress(ToolError):
+                infra_down_compose(compose_dir=compose_dir, compose_file=compose_file)
+        raise
 
 
 def infra_down(*, mode: str, compose_dir: Path) -> None:
+    print(f"infra: down ({mode})", file=sys.stderr, flush=True)
     spec = loadStackSpec(mode=mode, compose_dir=compose_dir)
     compose_file = spec.compose_file.name
+    print("infra: stopping supervisor...", file=sys.stderr, flush=True)
     infra_supervisor_stop(mode=mode)
+    print("infra: bringing down containers...", file=sys.stderr, flush=True)
     infra_down_compose(compose_dir=compose_dir, compose_file=compose_file)

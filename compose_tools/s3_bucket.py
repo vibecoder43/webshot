@@ -5,6 +5,8 @@ from pathlib import Path
 
 from compose_tools.common import ToolError, die
 
+_s3_http_timeout_sec = 2.0
+
 
 def ensure_s3_bucket_exists(*, secrets_path: Path, endpoint: str, bucket: str) -> None:
     if not bucket:
@@ -14,6 +16,11 @@ def ensure_s3_bucket_exists(*, secrets_path: Path, endpoint: str, bucket: str) -
         import minio  # type: ignore[import-not-found]
     except Exception as e:
         raise ToolError(message="Missing Python package: minio", exit_code=2) from e
+
+    try:
+        import urllib3  # type: ignore[import-not-found]
+    except Exception as e:
+        raise ToolError(message="Missing Python package: urllib3", exit_code=2) from e
 
     try:
         raw = json.loads(secrets_path.read_text(encoding="utf-8"))
@@ -32,11 +39,15 @@ def ensure_s3_bucket_exists(*, secrets_path: Path, endpoint: str, bucket: str) -
     if not access_key or not secret_key:
         die("secdist must include s3_credentials access_key_id and secret_access_key", exit_code=2)
 
+    http_client = urllib3.PoolManager(
+        timeout=urllib3.Timeout(connect=_s3_http_timeout_sec, read=_s3_http_timeout_sec)
+    )
     client = minio.Minio(
         endpoint,
         access_key=access_key,
         secret_key=secret_key,
         secure=False,
+        http_client=http_client,
     )
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)

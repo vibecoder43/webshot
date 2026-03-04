@@ -7,6 +7,9 @@ from pathlib import Path
 from compose_tools.common import ToolError, die, need_cmd, run
 
 _checked_compose = False
+_podman_compose_version_timeout_sec = 10.0
+_podman_inspect_timeout_sec = 10.0
+_podman_healthcheck_run_timeout_sec = 10.0
 
 
 @dataclass(frozen=True)
@@ -21,15 +24,20 @@ def require_podman_compose() -> None:
     if _checked_compose:
         return
     need_cmd("podman")
-    proc = run(["podman", "compose", "version"], capture=True, check=False)
+    proc = run(
+        ["podman", "compose", "version"],
+        capture=True,
+        check=False,
+        timeout_sec=_podman_compose_version_timeout_sec,
+    )
     if proc.returncode != 0:
         die("Missing compose support (need 'podman compose').", exit_code=2)
     _checked_compose = True
 
 
-def compose(args: list[str], *, cwd: Path) -> None:
+def compose(args: list[str], *, cwd: Path, timeout_sec: float | None = None) -> None:
     require_podman_compose()
-    run(["podman", "compose", *args], cwd=cwd)
+    run(["podman", "compose", *args], cwd=cwd, timeout_sec=timeout_sec)
 
 
 def podman_inspect_state(name: str) -> ContainerState:
@@ -44,6 +52,7 @@ def podman_inspect_state(name: str) -> ContainerState:
             name,
         ],
         capture=True,
+        timeout_sec=_podman_inspect_timeout_sec,
     ).stdout.strip()
     parts = out.split("|")
     if len(parts) != 3:
@@ -110,9 +119,19 @@ def wait_healthy(name: str, timeout_sec: int = 120) -> None:
                 exit_code=1,
             )
 
+        report = f"state='{state.status or 'unknown'}' health='{state.health or 'unknown'}'"
+        if report != last_reported:
+            print(f"Waiting for '{name}' to become healthy ({report})", flush=True)
+            last_reported = report
+
         # In some environments Podman cannot schedule healthcheck timers.
         # We drive checks manually, matching the repo's compose config.
-        run(["podman", "healthcheck", "run", name], check=False, capture=True)
+        run(
+            ["podman", "healthcheck", "run", name],
+            check=False,
+            capture=True,
+            timeout_sec=_podman_healthcheck_run_timeout_sec,
+        )
 
         state = _inspect_with_retries(name)
         if state.health == "healthy":
@@ -127,9 +146,4 @@ def wait_healthy(name: str, timeout_sec: int = 120) -> None:
                 f"(health='{health}', state='{status}')",
                 exit_code=1,
             )
-
-        report = f"state='{state.status or 'unknown'}' health='{state.health or 'unknown'}'"
-        if report != last_reported:
-            print(f"Waiting for '{name}' to become healthy ({report})", flush=True)
-            last_reported = report
         time.sleep(1)

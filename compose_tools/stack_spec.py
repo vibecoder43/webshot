@@ -8,9 +8,9 @@ from compose_tools.common import die
 
 @dataclass(frozen=True)
 class ServiceSpec:
-    serviceKey: str
-    containerName: str
-    hasHealthcheck: bool
+    service_key: str
+    container_name: str
+    has_healthcheck: bool
 
 
 @dataclass(frozen=True)
@@ -19,19 +19,19 @@ class StackSpec:
     compose_file: Path
     services: tuple[ServiceSpec, ...]
 
-    def containerNamesAll(self) -> list[str]:
-        return [svc.containerName for svc in self.services]
+    def container_names_all(self) -> list[str]:
+        return [svc.container_name for svc in self.services]
 
-    def containerNamesHealthchecked(self) -> list[str]:
-        return [svc.containerName for svc in self.services if svc.hasHealthcheck]
+    def container_names_healthchecked(self) -> list[str]:
+        return [svc.container_name for svc in self.services if svc.has_healthcheck]
 
-    def containerNamesNonHealthchecked(self) -> list[str]:
-        return [svc.containerName for svc in self.services if not svc.hasHealthcheck]
+    def container_names_non_healthchecked(self) -> list[str]:
+        return [svc.container_name for svc in self.services if not svc.has_healthcheck]
 
-    def serviceContainerName(self, service_key: str) -> str:
+    def service_container_name(self, service_key: str) -> str:
         for svc in self.services:
-            if svc.serviceKey == service_key:
-                return svc.containerName
+            if svc.service_key == service_key:
+                return svc.container_name
         die(
             f"Service '{service_key}' not found in {self.compose_file} (mode='{self.mode}')",
             exit_code=2,
@@ -57,12 +57,12 @@ def loadStackSpec(*, mode: str, compose_dir: Path) -> StackSpec:
 
     container_names: set[str] = set()
     for svc in services:
-        if svc.containerName in container_names:
+        if svc.container_name in container_names:
             die(
-                f"Duplicate container_name in {compose_file}: '{svc.containerName}'",
+                f"Duplicate container_name in {compose_file}: '{svc.container_name}'",
                 exit_code=2,
             )
-        container_names.add(svc.containerName)
+        container_names.add(svc.container_name)
 
     return StackSpec(mode=mode, compose_file=compose_file, services=tuple(services))
 
@@ -82,9 +82,9 @@ def _parse_services(raw: str, *, source: str) -> list[ServiceSpec]:
             die(f"Missing container_name for service '{cur_key}' in {source}", exit_code=2)
         out.append(
             ServiceSpec(
-                serviceKey=cur_key,
-                containerName=cur_container_name,
-                hasHealthcheck=cur_has_healthcheck,
+                service_key=cur_key,
+                container_name=cur_container_name,
+                has_healthcheck=cur_has_healthcheck,
             )
         )
         cur_key = None

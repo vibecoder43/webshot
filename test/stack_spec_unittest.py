@@ -15,17 +15,17 @@ class StackSpecTest(unittest.TestCase):
     def test_stack_spec_dev_compose(self) -> None:
         spec = loadStackSpec(mode="dev", compose_dir=_repo_root() / "container/compose")
         self.assertEqual(
-            set(spec.containerNamesAll()),
+            set(spec.container_names_all()),
             {"egress_proxy", "servicedb", "seaweedfs", "scalar", "reverse_proxy", "test_target"},
         )
         self.assertEqual(
-            set(spec.containerNamesHealthchecked()), {"egress_proxy", "servicedb", "seaweedfs"}
+            set(spec.container_names_healthchecked()), {"egress_proxy", "servicedb", "seaweedfs"}
         )
 
     def test_stack_spec_prodlike_compose(self) -> None:
         spec = loadStackSpec(mode="prodlike", compose_dir=_repo_root() / "container/compose")
-        self.assertEqual(set(spec.containerNamesAll()), {"egress_proxy", "servicedb"})
-        self.assertEqual(set(spec.containerNamesHealthchecked()), {"egress_proxy", "servicedb"})
+        self.assertEqual(set(spec.container_names_all()), {"egress_proxy", "servicedb"})
+        self.assertEqual(set(spec.container_names_healthchecked()), {"egress_proxy", "servicedb"})
 
     def test_stack_spec_requires_container_name(self) -> None:
         raw = """
