@@ -85,9 +85,105 @@
     "-DWEBSHOT_ENABLE_SQL_COVERAGE=OFF"
   ];
 
+  cmakeBool = value:
+    if value
+    then "ON"
+    else "OFF";
+
+  buildVariants = rec {
+    san = {
+      buildType = "Debug";
+      exportCompileCommands = true;
+      useSanitizers = true;
+      buildTesting = true;
+      enableCoverage = false;
+    };
+
+    tidy =
+      san
+      // {
+        clangTidy = "clang-tidy";
+      };
+
+    cov =
+      san
+      // {
+        enableCoverage = true;
+      };
+
+    release = {
+      buildType = "Release";
+      exportCompileCommands = true;
+      useSanitizers = false;
+      buildTesting = false;
+      enableCoverage = false;
+    };
+  };
+
+  mkCmakeVariantFlags = variant:
+    [
+      "-DCMAKE_BUILD_TYPE=${variant.buildType}"
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=${cmakeBool variant.exportCompileCommands}"
+      "-DUSE_SANITIZERS=${cmakeBool variant.useSanitizers}"
+      "-DBUILD_TESTING=${cmakeBool variant.buildTesting}"
+      "-DWEBSHOT_ENABLE_COVERAGE=${cmakeBool variant.enableCoverage}"
+    ]
+    ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}";
+
+  mkTaskCmakeFlags = variant:
+    [
+      "-S"
+      "."
+      "-G"
+      "Ninja"
+      "-DCMAKE_CXX_COMPILER=clang++"
+      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    ]
+    ++ mkCmakeCommonFlags {
+      userverDir = "${userverPkgs.userver-debug-addr-ub}/lib/cmake/userver";
+      pythonPath = "${chaoticPython}/bin/python3";
+    }
+    ++ mkCmakeVariantFlags variant
+    ++ [
+      "-DUSERVER_FEATURE_TESTSUITE=ON"
+      "-DUSERVER_TESTSUITE_USE_VENV=OFF"
+      "-DUSERVER_SQL_USE_VENV=OFF"
+      "-DUSERVER_CHAOTIC_USE_VENV=OFF"
+      "-DTESTSUITE_PYTHON_BINARY=${chaoticPython}/bin/python3"
+      "-Wno-dev"
+    ];
+
+  mkOutputCmakeFlags = {
+    userverPkg,
+    variant,
+  }:
+    mkCmakeVariantFlags variant
+    ++ [
+      "-DUSERVER_USE_CCACHE=OFF"
+      "-DCMAKE_C_COMPILER_LAUNCHER="
+      "-DCMAKE_CXX_COMPILER_LAUNCHER="
+      "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON"
+      "-DCMAKE_INSTALL_RPATH=${lib.makeLibraryPath ([userverPkg uniAlgoPkgs.default pkgsWithOverlay.stdenv.cc.cc.lib] ++ userverDeps)}"
+    ]
+    ++ mkCmakeCommonFlags {
+      userverDir = "${userverPkg}/lib/cmake/userver";
+      pythonPath = "${chaoticPython}/bin/python3";
+    }
+    ++ [
+      "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
+      "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
+    ];
+
   mkWebshotOutput = {
     pnameSuffix ? "",
     userverPkg,
+    variant ?
+      buildVariants.san
+      // {
+        buildTesting = false;
+        exportCompileCommands = false;
+      },
   }:
     toolchain.stdenv.mkDerivation {
       pname = "webshot${pnameSuffix}";
@@ -104,81 +200,15 @@
         ]
         ++ userverDeps;
 
-      cmakeFlags =
-        [
-          "-DCMAKE_BUILD_TYPE=Debug"
-          "-DBUILD_TESTING=OFF"
-          "-DUSE_SANITIZERS=ON"
-          "-DWEBSHOT_ENABLE_COVERAGE=OFF"
-          "-DUSERVER_USE_CCACHE=OFF"
-          "-DCMAKE_C_COMPILER_LAUNCHER="
-          "-DCMAKE_CXX_COMPILER_LAUNCHER="
-          "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON"
-          "-DCMAKE_INSTALL_RPATH=${lib.makeLibraryPath ([userverPkg uniAlgoPkgs.default pkgsWithOverlay.stdenv.cc.cc.lib] ++ userverDeps)}"
-        ]
-        ++ mkCmakeCommonFlags {
-          userverDir = "${userverPkg}/lib/cmake/userver";
-          pythonPath = "${chaoticPython}/bin/python3";
-        }
-        ++ [
-          "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
-          "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
-        ];
+      cmakeFlags = mkOutputCmakeFlags {
+        inherit userverPkg variant;
+      };
 
       postFixup = ''
         wrapProgram "$out/bin/webshotd" \
           --prefix PATH : "${lib.makeBinPath [pkgsWithOverlay.podman]}"
       '';
     };
-
-  cmakeTaskBaseFlags =
-    [
-      "-S"
-      "."
-      "-G"
-      "Ninja"
-      "-DCMAKE_CXX_COMPILER=clang++"
-      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-    ]
-    ++ mkCmakeCommonFlags {
-      userverDir = "${userverPkgs.userver-debug-addr-ub}/lib/cmake/userver";
-      pythonPath = "${chaoticPython}/bin/python3";
-    }
-    ++ [
-      "-DUSERVER_FEATURE_TESTSUITE=ON"
-      "-DUSERVER_TESTSUITE_USE_VENV=OFF"
-      "-DUSERVER_SQL_USE_VENV=OFF"
-      "-DUSERVER_CHAOTIC_USE_VENV=OFF"
-      "-DTESTSUITE_PYTHON_BINARY=${chaoticPython}/bin/python3"
-      "-Wno-dev"
-    ];
-
-  sanFlags = [
-    "-DCMAKE_BUILD_TYPE=Debug"
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-    "-DUSE_SANITIZERS=ON"
-    "-DBUILD_TESTING=ON"
-  ];
-
-  tidyFlags =
-    sanFlags
-    ++ [
-      "-DCMAKE_CXX_CLANG_TIDY=clang-tidy"
-    ];
-
-  covFlags =
-    sanFlags
-    ++ [
-      "-DWEBSHOT_ENABLE_COVERAGE=ON"
-    ];
-
-  releaseFlags = [
-    "-DCMAKE_BUILD_TYPE=Release"
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-    "-DUSE_SANITIZERS=OFF"
-    "-DBUILD_TESTING=OFF"
-  ];
 
   mkClangdConfig = name: buildDir:
     pkgsWithOverlay.writeText "webshot-clangd-${name}" ''
@@ -193,18 +223,26 @@
     release = mkClangdConfig "release" buildDirs.release;
   };
 
-  mkConfigureTask = buildDir: clangdConfig: extraFlags: {
+  mkConfigureTaskCommands = buildDir: clangdConfig: variant: ''
+    ${lib.escapeShellArgs (["cmake" "-B" buildDir] ++ mkTaskCmakeFlags variant)}
+    ln -sf "${clangdConfig}" .clangd
+  '';
+
+  mkConfigureTask = buildDir: clangdConfig: variant: {
     cwd = config.devenv.root;
-    exec =
-      lib.escapeShellArgs (
-        ["cmake" "-B" buildDir] ++ cmakeTaskBaseFlags ++ extraFlags
-      )
-      + " && ln -sf ${clangdConfig} .clangd";
+    exec = ''
+      set -euo pipefail
+      ${mkConfigureTaskCommands buildDir clangdConfig variant}
+    '';
   };
 
-  mkBuildTask = buildDir: {
+  mkBuildTask = buildDir: clangdConfig: variant: {
     cwd = config.devenv.root;
-    exec = "cmake --build ${buildDir}";
+    exec = ''
+      set -euo pipefail
+      ${mkConfigureTaskCommands buildDir clangdConfig variant}
+      cmake --build ${buildDir}
+    '';
   };
 
   squidImageDev = import ./container/squid/squid.nix {
@@ -406,28 +444,28 @@ in {
   };
 
   tasks."webshot:configureSan" =
-    mkConfigureTask buildDirs.san clangdConfigs.san sanFlags;
+    mkConfigureTask buildDirs.san clangdConfigs.san buildVariants.san;
 
   tasks."webshot:configureTidy" =
-    mkConfigureTask buildDirs.tidy clangdConfigs.tidy tidyFlags;
+    mkConfigureTask buildDirs.tidy clangdConfigs.tidy buildVariants.tidy;
 
   tasks."webshot:configureCov" =
-    mkConfigureTask buildDirs.cov clangdConfigs.cov covFlags;
+    mkConfigureTask buildDirs.cov clangdConfigs.cov buildVariants.cov;
 
   tasks."webshot:configureRelease" =
-    mkConfigureTask buildDirs.release clangdConfigs.release releaseFlags;
+    mkConfigureTask buildDirs.release clangdConfigs.release buildVariants.release;
 
   tasks."webshot:buildSan" =
-    mkBuildTask buildDirs.san;
+    mkBuildTask buildDirs.san clangdConfigs.san buildVariants.san;
 
   tasks."webshot:buildTidy" =
-    mkBuildTask buildDirs.tidy;
+    mkBuildTask buildDirs.tidy clangdConfigs.tidy buildVariants.tidy;
 
   tasks."webshot:buildCov" =
-    mkBuildTask buildDirs.cov;
+    mkBuildTask buildDirs.cov clangdConfigs.cov buildVariants.cov;
 
   tasks."webshot:buildRelease" =
-    mkBuildTask buildDirs.release;
+    mkBuildTask buildDirs.release clangdConfigs.release buildVariants.release;
 
   tasks."webshot:testSan" = {
     package = webshotTestSan;
