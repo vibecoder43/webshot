@@ -8,6 +8,7 @@
  */
 #include "config.hpp"
 #include "container_guard.hpp"
+#include "crawler_failure.hpp"
 #include "crawler_fallback.hpp"
 #include "denylist.hpp"
 #include "link.hpp"
@@ -34,6 +35,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <boost/uuid/uuid.hpp>
@@ -334,11 +336,11 @@ public:
 
     [[nodiscard]] dto::UuidWithTimeLink runCrawlJob(Uuid id, Link link);
     [[nodiscard]] us::utils::datetime::TimePointTz insertJob(Uuid id, String link);
-    [[nodiscard]] std::optional<dto::WebshotJob> findLatestJobForLink(const String &link);
+    [[nodiscard]] std::optional<dto::CaptureJob> findLatestJobForLink(const String &link);
     void markJobRunning(Uuid id);
     void markJobSucceeded(Uuid id, const us::utils::datetime::TimePointTz &createdAt);
     void markJobFailed(Uuid id, const String &errorCategory, const String &errorMessage);
-    [[nodiscard]] std::optional<dto::WebshotJob> loadJob(Uuid id);
+    [[nodiscard]] std::optional<dto::CaptureJob> loadJob(Uuid id);
     void runCrawlerForContext(CrawlContext &ctx, engine::subprocess::ProcessStarter &starter);
     [[nodiscard]] crawler::AttemptSummary runCrawlerAttempt(
         CrawlContext &ctx, engine::subprocess::ProcessStarter &starter, const String &seedUrl
@@ -530,7 +532,7 @@ void Crud::Impl::markJobFailed(Uuid id, const String &errorCategory, const Strin
     static_cast<void>(sharedReadwrite(sql::kUpdateCrawlJobFailed, id, errorCategory, errorMessage));
 }
 
-std::optional<dto::WebshotJob> Crud::Impl::loadJob(Uuid id)
+std::optional<dto::CaptureJob> Crud::Impl::loadJob(Uuid id)
 {
     struct Row {
         Uuid uuid;
@@ -547,17 +549,17 @@ std::optional<dto::WebshotJob> Crud::Impl::loadJob(Uuid id)
     if (!rowOpt)
         return {};
 
-    dto::WebshotJob job;
+    dto::CaptureJob job;
     job.uuid = rowOpt->uuid;
     job.link = std::string(rowOpt->link.view());
     if (rowOpt->status == "pending")
-        job.status = dto::WebshotJob::Status::kPending;
+        job.status = dto::CaptureJob::Status::kPending;
     else if (rowOpt->status == "running")
-        job.status = dto::WebshotJob::Status::kRunning;
+        job.status = dto::CaptureJob::Status::kRunning;
     else if (rowOpt->status == "succeeded")
-        job.status = dto::WebshotJob::Status::kSucceeded;
+        job.status = dto::CaptureJob::Status::kSucceeded;
     else
-        job.status = dto::WebshotJob::Status::kFailed;
+        job.status = dto::CaptureJob::Status::kFailed;
     job.created_at = us::utils::datetime::TimePointTz(
         static_cast<system_clock::time_point>(rowOpt->createdAt)
     );
@@ -573,11 +575,11 @@ std::optional<dto::WebshotJob> Crud::Impl::loadJob(Uuid id)
         job.result_created_at = us::utils::datetime::TimePointTz(
             static_cast<system_clock::time_point>(*rowOpt->resultCreatedAt)
         );
-    if (job.status == dto::WebshotJob::Status::kFailed && rowOpt->errorMessage) {
+    if (job.status == dto::CaptureJob::Status::kFailed && rowOpt->errorMessage) {
         dto::ErrorEnvelope::Error err{*rowOpt->errorMessage};
         job.error = dto::ErrorEnvelope{err};
     }
-    if (job.status == dto::WebshotJob::Status::kSucceeded && job.result_created_at)
+    if (job.status == dto::CaptureJob::Status::kSucceeded && job.result_created_at)
         job.result = dto::UuidWithTimeLink(job.uuid, *job.result_created_at, job.link);
     return job;
 }
@@ -614,7 +616,7 @@ Crud::Impl::S3ClientState Crud::Impl::fetchS3ClientStateFromSts() const
     return state;
 }
 
-std::optional<dto::WebshotJob> Crud::Impl::findLatestJobForLink(const String &link)
+std::optional<dto::CaptureJob> Crud::Impl::findLatestJobForLink(const String &link)
 {
     auto idOpt = sharedReadonly(sql::kSelectLatestCrawlJobByLink, link).AsOptionalSingleRow<Uuid>();
     if (!idOpt)
@@ -791,9 +793,15 @@ crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(
     );
     ContainerGuard ctrGuard(starter, cname, createArgs);
 
+    const auto stdoutPath = fmt::format("{}/browsertrix.stdout.log", archiveRoot.GetPath());
+    const auto stderrPath = fmt::format("{}/browsertrix.stderr.log", archiveRoot.GetPath());
     auto startProc = starter.Exec(
         "podman", std::vector<std::string>{"start", "-a", std::string(cname.view())},
-        engine::subprocess::ExecOptions{.use_path = true}
+        engine::subprocess::ExecOptions{
+            .stdout_file = stdoutPath,
+            .stderr_file = stderrPath,
+            .use_path = true,
+        }
     );
     auto status = startProc.Get();
 
@@ -801,17 +809,28 @@ crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(
     res.exited = status.IsExited();
     res.exitCode = res.exited ? status.GetExitCode() : -1;
     res.waczExists = false;
+    res.failureDetail = crawler::summarizeProcessOutputs(stdoutPath, stderrPath);
 
     const auto pagesJsonlPath = text::format(
         "{0}/collections/{1}/pages/pages.jsonl", archiveRoot.GetPath(), collection
     );
     res.seedProbe = probeSeedPageFromPagesJsonl(pagesJsonlPath, seedUrl);
 
-    if (!res.exited)
+    if (!res.exited) {
+        const auto attemptContext = crawler::formatAttemptContext(res);
+        LOG_INFO() << fmt::format(
+            "Crawler attempt failed for {}{}", seedUrl,
+            attemptContext.empty() ? std::string() : fmt::format(" ({})", attemptContext)
+        );
         return res;
+    }
 
-    if (res.exitCode != static_cast<int>(crawler::CrawlerExitCode::kSuccess))
+    if (res.exitCode != static_cast<int>(crawler::CrawlerExitCode::kSuccess)) {
+        LOG_INFO() << fmt::format(
+            "Crawler attempt failed for {} ({})", seedUrl, crawler::formatAttemptStatus({}, res)
+        );
         return res;
+    }
 
     // do eagerly
     ctrGuard.remove();
@@ -872,39 +891,44 @@ void Crud::Impl::runCrawlerForContext(
     if (result.outcome == crawler::RunOutcome::kFailedSizeLimit) {
         const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
         const auto msg = fmt::format(
-            "Failed to crawl {} (exit code {}: {})",
-            result.httpAttempt ? httpSeedUrl : httpsSeedUrl, attempt.exitCode,
-            crawler::crawlerFailureReason(attempt.exitCode)
+            "Failed to crawl {} ({})", result.httpAttempt ? httpSeedUrl : httpsSeedUrl,
+            crawler::formatAttemptStatus(result.httpAttempt ? "http" : "https", attempt)
         );
         LOG_INFO() << msg;
         throw errors::CrawlerSizeLimitException(msg);
     }
 
     if (result.outcome == crawler::RunOutcome::kFailedChildNoExit) {
+        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto attemptContext = crawler::formatAttemptContext(attempt);
         const auto msg = fmt::format(
-            "Failed to crawl {}, child process did not exit cleanly",
-            result.httpAttempt ? httpSeedUrl : httpsSeedUrl
+            "Failed to crawl {}, child process did not exit cleanly{}",
+            result.httpAttempt ? httpSeedUrl : httpsSeedUrl,
+            attemptContext.empty() ? std::string() : fmt::format(" ({})", attemptContext)
         );
         LOG_INFO() << msg;
         throw errors::CrawlerFailedException(msg);
     }
 
     if (result.outcome == crawler::RunOutcome::kFailedNoWacz) {
+        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto attemptContext = crawler::formatAttemptContext(attempt);
         const auto msg = fmt::format(
-            "Failed to crawl {}, no WACZ", result.httpAttempt ? httpSeedUrl : httpsSeedUrl
+            "Failed to crawl {}, no WACZ{}", result.httpAttempt ? httpSeedUrl : httpsSeedUrl,
+            attemptContext.empty() ? std::string() : fmt::format(" ({})", attemptContext)
         );
         LOG_INFO() << msg;
         throw errors::CrawlerFailedException(msg);
     }
 
     const auto msg = fmt::format(
-        "Failed to crawl {} (https exit code {}: {}{})", ctx.link.normalized(),
-        result.httpsAttempt.exitCode, crawler::crawlerFailureReason(result.httpsAttempt.exitCode),
-        result.httpAttempt ? fmt::format(
-                                 ", http exit code {}: {}", result.httpAttempt->exitCode,
-                                 crawler::crawlerFailureReason(result.httpAttempt->exitCode)
-                             )
-                           : std::string()
+        "Failed to crawl {} ({})", ctx.link.normalized(),
+        result.httpAttempt
+            ? fmt::format(
+                  "{}, {}", crawler::formatAttemptStatus("https", result.httpsAttempt),
+                  crawler::formatAttemptStatus("http", *result.httpAttempt)
+              )
+            : std::string(crawler::formatAttemptStatus("https", result.httpsAttempt).view())
     );
     LOG_INFO() << msg;
     throw errors::CrawlerFailedException(msg);
@@ -934,7 +958,7 @@ Crud::Impl::persistMetadataForContext(const CrawlContext &ctx)
             pg::TimePointTz createdAt;
         };
         auto row = readwrite(
-                       sql::kInsertWebshot, ctx.id, ctx.link.normalized(), prefixKey, prefixTree,
+                       sql::kInsertCapture, ctx.id, ctx.link.normalized(), prefixKey, prefixTree,
                        ctx.location
         )
                        .AsSingleRow<Row>(pg::kRowTag);
@@ -976,7 +1000,7 @@ void Crud::Impl::purgePrefix(const String &prefixKey)
                     LOG_ERROR() << fmt::format("S3 delete failed for key {}: {}", key, e.what());
                 }
             }
-            static_cast<void>(readwrite(sql::kDeleteWebshotsByIds, ids));
+            static_cast<void>(readwrite(sql::kDeleteCapturesByIds, ids));
         } catch (const std::exception &e) {
             LOG_ERROR() << fmt::format("denylist purge failed for {}: {}", prefixKey, e.what());
             throw;
@@ -984,17 +1008,17 @@ void Crud::Impl::purgePrefix(const String &prefixKey)
     }
 }
 
-dto::UuidWithTimeLink Crud::createWebshot(Link link)
+dto::UuidWithTimeLink Crud::createCapture(Link link)
 {
     auto *implPtr = impl.get();
     auto id = us::utils::generators::GenerateBoostUuid();
     return us::utils::Async(
-               "create_webshot",
+               "create_capture",
                [implPtr, id, link = std::move(link)]() { return implPtr->runCrawlJob(id, link); }
     ).Get();
 }
 
-dto::WebshotJob Crud::createWebshotJob(Link link)
+dto::CaptureJob Crud::createCaptureJob(Link link)
 {
     auto *implPtr = impl.get();
     const auto normalizedLink = link.normalized();
@@ -1020,16 +1044,18 @@ dto::WebshotJob Crud::createWebshotJob(Link link)
         } catch (const errors::CrawlerSizeLimitException &e) {
             implPtr->markJobFailed(id, "size_limit"_t, "capture exceeded archive size limit"_t);
         } catch (const errors::CrawlerFailedException &e) {
-            implPtr->markJobFailed(id, "crawler_failed"_t, "internal crawler error"_t);
+            implPtr->markJobFailed(
+                id, "crawler_failed"_t, String::fromBytesThrow(std::string_view(e.what()))
+            );
         } catch (const std::exception &e) {
             implPtr->markJobFailed(id, "internal_server_error"_t, "internal server error"_t);
         }
     });
 
-    dto::WebshotJob job;
+    dto::CaptureJob job;
     job.uuid = id;
     job.link = std::string(normalizedLink.view());
-    job.status = dto::WebshotJob::Status::kPending;
+    job.status = dto::CaptureJob::Status::kPending;
     job.created_at = createdAt;
     job.started_at = {};
     job.finished_at = {};
@@ -1039,10 +1065,10 @@ dto::WebshotJob Crud::createWebshotJob(Link link)
     return job;
 }
 
-std::optional<Link> Crud::findWebshot(Uuid uuid)
+std::optional<Link> Crud::findCapture(Uuid uuid)
 {
     const auto location =
-        impl->readonly(sql::kSelectWebshot, uuid).AsOptionalSingleRow<std::string>();
+        impl->readonly(sql::kSelectCapture, uuid).AsOptionalSingleRow<std::string>();
     if (!location) {
         LOG_INFO() << fmt::format("UUID not found: {}", us::utils::ToString(uuid));
         return {};
@@ -1050,9 +1076,9 @@ std::optional<Link> Crud::findWebshot(Uuid uuid)
     return {Link::fromText(String::fromBytesThrow(*location), impl->svcCfg.queryPartLengthMax())};
 }
 
-std::optional<dto::WebshotJob> Crud::findCrawlJob(Uuid uuid) { return impl->loadJob(uuid); }
+std::optional<dto::CaptureJob> Crud::findCaptureJob(Uuid uuid) { return impl->loadJob(uuid); }
 
-dto::PagedFindWebshotByUrlResponse Crud::findWebshotByLinkPage(const Link &link, String pageToken)
+dto::PagedFindCapturesByUrlResponse Crud::findCapturesByLinkPage(const Link &link, String pageToken)
 {
     namespace crud = v1::crud;
 
@@ -1062,14 +1088,14 @@ dto::PagedFindWebshotByUrlResponse Crud::findWebshotByLinkPage(const Link &link,
     };
     std::vector<Row> dbRows;
     if (pageToken.empty()) {
-        dbRows = impl->readonly(sql::kSelectWebshotByLinkFirst, link.normalized(), impl->pageMax)
+        dbRows = impl->readonly(sql::kSelectCaptureByLinkFirst, link.normalized(), impl->pageMax)
                      .AsContainer<std::vector<Row>>(pg::kRowTag);
     } else {
         auto cur = crud::decodeCursor(pageToken);
         if (!cur)
             throw errors::InvalidPageTokenException("invalid page_token");
         dbRows = impl->readonly(
-                         sql::kSelectWebshotByLinkNext, link.normalized(), impl->pageMax,
+                         sql::kSelectCaptureByLinkNext, link.normalized(), impl->pageMax,
                          pg::TimePointTz(cur->createdAt), cur->id
         )
                      .AsContainer<std::vector<Row>>(pg::kRowTag);
@@ -1091,8 +1117,8 @@ dto::PagedFindWebshotByUrlResponse Crud::findWebshotByLinkPage(const Link &link,
     return {items, {}};
 }
 
-dto::PagedFindWebshotByPrefixResponse
-Crud::findWebshotsByPrefixPage(String normalizedPrefix, String pageToken)
+dto::PagedFindCapturesByPrefixResponse
+Crud::findCapturesByPrefixPage(String normalizedPrefix, String pageToken)
 {
     namespace crud = v1::crud;
 
@@ -1151,12 +1177,12 @@ Crud::findWebshotsByPrefixPage(String normalizedPrefix, String pageToken)
         if (idx == 0 && cur && cur->createdAt && cur->id) {
             return impl
                 ->readonly(
-                    sql::kSelectWebshotByLinkNext, link, impl->perLinkMax,
+                    sql::kSelectCaptureByLinkNext, link, impl->perLinkMax,
                     pg::TimePointTz(*cur->createdAt), *cur->id
                 )
                 .AsContainer<std::vector<Row>>(pg::kRowTag);
         }
-        return impl->readonly(sql::kSelectWebshotByLinkFirst, link, impl->perLinkMax)
+        return impl->readonly(sql::kSelectCaptureByLinkFirst, link, impl->perLinkMax)
             .AsContainer<std::vector<Row>>(pg::kRowTag);
     };
 

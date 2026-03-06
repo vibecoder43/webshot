@@ -32,8 +32,91 @@
   webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot_test_san" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
+    export WEBSHOT_TEST_RUN_ID="webshot-test-san-$$-$(date +%s)"
+    ctest_timeout_sec="''${WEBSHOT_TEST_SAN_TIMEOUT_SEC:-1800}"
+    ctest_pid=""
+    watchdog_pid=""
+
+    find_tagged_pids() {
+      local pid
+      for envfile in /proc/[0-9]*/environ; do
+        pid="''${envfile#/proc/}"
+        pid="''${pid%/environ}"
+        if [[ "$pid" == "$$" ]]; then
+          continue
+        fi
+        if [[ ! -r "$envfile" ]]; then
+          continue
+        fi
+        if tr '\0' '\n' <"$envfile" | grep -Fxq "WEBSHOT_TEST_RUN_ID=$WEBSHOT_TEST_RUN_ID"; then
+          printf '%s\n' "$pid"
+        fi
+      done
+    }
+
+    cleanup_tagged_processes() {
+      local status="$1"
+      if [[ -n "$watchdog_pid" ]]; then
+        kill "$watchdog_pid" 2>/dev/null || true
+        wait "$watchdog_pid" 2>/dev/null || true
+      fi
+      local pids
+      pids="$(find_tagged_pids)"
+      if [[ -n "$pids" ]]; then
+        echo "webshot_test_san: terminating leaked tagged processes" >&2
+        ps -o pid=,ppid=,pgid=,sid=,stat=,etime=,cmd= -p "$(paste -sd, <<<"$pids")" >&2 || true
+        kill -TERM $pids 2>/dev/null || true
+        sleep 2
+
+        pids="$(find_tagged_pids)"
+        if [[ -n "$pids" ]]; then
+          echo "webshot_test_san: killing unresponsive tagged processes" >&2
+          ps -o pid=,ppid=,pgid=,sid=,stat=,etime=,cmd= -p "$(paste -sd, <<<"$pids")" >&2 || true
+          kill -KILL $pids 2>/dev/null || true
+        fi
+      fi
+      exit "$status"
+    }
+
+    watchdog_ctest() {
+      while kill -0 "$ctest_pid" 2>/dev/null; do
+        sleep "$ctest_timeout_sec" || return 0
+        if ! kill -0 "$ctest_pid" 2>/dev/null; then
+          return 0
+        fi
+
+        echo "webshot_test_san: ctest exceeded outer timeout of $ctest_timeout_sec seconds" >&2
+        ps -o pid=,ppid=,pgid=,sid=,stat=,etime=,cmd= -p "$ctest_pid" >&2 || true
+
+        local pids
+        pids="$(find_tagged_pids)"
+        if [[ -n "$pids" ]]; then
+          echo "webshot_test_san: tagged processes still alive at timeout" >&2
+          ps -o pid=,ppid=,pgid=,sid=,stat=,etime=,cmd= -p "$(paste -sd, <<<"$pids")" >&2 || true
+        fi
+
+        kill -TERM "$ctest_pid" 2>/dev/null || true
+        if [[ -n "$pids" ]]; then
+          kill -TERM $pids 2>/dev/null || true
+        fi
+        sleep 10
+
+        kill -KILL "$ctest_pid" 2>/dev/null || true
+        pids="$(find_tagged_pids)"
+        if [[ -n "$pids" ]]; then
+          kill -KILL $pids 2>/dev/null || true
+        fi
+        return 0
+      done
+    }
+
+    trap 'cleanup_tagged_processes "$?"' EXIT
     cd ${buildDirs.san}
-    ctest --output-on-failure
+    ctest --progress --output-on-failure -V &
+    ctest_pid="$!"
+    watchdog_ctest &
+    watchdog_pid="$!"
+    wait "$ctest_pid"
   '';
 
   webshotTestCov = pkgsWithOverlay.writeShellScriptBin "webshot_test_cov" ''
@@ -85,9 +168,105 @@
     "-DWEBSHOT_ENABLE_SQL_COVERAGE=OFF"
   ];
 
+  cmakeBool = value:
+    if value
+    then "ON"
+    else "OFF";
+
+  buildVariants = rec {
+    san = {
+      buildType = "Debug";
+      exportCompileCommands = true;
+      useSanitizers = true;
+      buildTesting = true;
+      enableCoverage = false;
+    };
+
+    tidy =
+      san
+      // {
+        clangTidy = "clang-tidy";
+      };
+
+    cov =
+      san
+      // {
+        enableCoverage = true;
+      };
+
+    release = {
+      buildType = "Release";
+      exportCompileCommands = true;
+      useSanitizers = false;
+      buildTesting = false;
+      enableCoverage = false;
+    };
+  };
+
+  mkCmakeVariantFlags = variant:
+    [
+      "-DCMAKE_BUILD_TYPE=${variant.buildType}"
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=${cmakeBool variant.exportCompileCommands}"
+      "-DUSE_SANITIZERS=${cmakeBool variant.useSanitizers}"
+      "-DBUILD_TESTING=${cmakeBool variant.buildTesting}"
+      "-DWEBSHOT_ENABLE_COVERAGE=${cmakeBool variant.enableCoverage}"
+    ]
+    ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}";
+
+  mkTaskCmakeFlags = variant:
+    [
+      "-S"
+      "."
+      "-G"
+      "Ninja"
+      "-DCMAKE_CXX_COMPILER=clang++"
+      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    ]
+    ++ mkCmakeCommonFlags {
+      userverDir = "${userverPkgs.userver-debug-addr-ub}/lib/cmake/userver";
+      pythonPath = "${chaoticPython}/bin/python3";
+    }
+    ++ mkCmakeVariantFlags variant
+    ++ [
+      "-DUSERVER_FEATURE_TESTSUITE=ON"
+      "-DUSERVER_TESTSUITE_USE_VENV=OFF"
+      "-DUSERVER_SQL_USE_VENV=OFF"
+      "-DUSERVER_CHAOTIC_USE_VENV=OFF"
+      "-DTESTSUITE_PYTHON_BINARY=${chaoticPython}/bin/python3"
+      "-Wno-dev"
+    ];
+
+  mkOutputCmakeFlags = {
+    userverPkg,
+    variant,
+  }:
+    mkCmakeVariantFlags variant
+    ++ [
+      "-DUSERVER_USE_CCACHE=OFF"
+      "-DCMAKE_C_COMPILER_LAUNCHER="
+      "-DCMAKE_CXX_COMPILER_LAUNCHER="
+      "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON"
+      "-DCMAKE_INSTALL_RPATH=${lib.makeLibraryPath ([userverPkg uniAlgoPkgs.default pkgsWithOverlay.stdenv.cc.cc.lib] ++ userverDeps)}"
+    ]
+    ++ mkCmakeCommonFlags {
+      userverDir = "${userverPkg}/lib/cmake/userver";
+      pythonPath = "${chaoticPython}/bin/python3";
+    }
+    ++ [
+      "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
+      "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
+    ];
+
   mkWebshotOutput = {
     pnameSuffix ? "",
     userverPkg,
+    variant ?
+      buildVariants.san
+      // {
+        buildTesting = false;
+        exportCompileCommands = false;
+      },
   }:
     toolchain.stdenv.mkDerivation {
       pname = "webshot${pnameSuffix}";
@@ -104,81 +283,15 @@
         ]
         ++ userverDeps;
 
-      cmakeFlags =
-        [
-          "-DCMAKE_BUILD_TYPE=Debug"
-          "-DBUILD_TESTING=OFF"
-          "-DUSE_SANITIZERS=ON"
-          "-DWEBSHOT_ENABLE_COVERAGE=OFF"
-          "-DUSERVER_USE_CCACHE=OFF"
-          "-DCMAKE_C_COMPILER_LAUNCHER="
-          "-DCMAKE_CXX_COMPILER_LAUNCHER="
-          "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON"
-          "-DCMAKE_INSTALL_RPATH=${lib.makeLibraryPath ([userverPkg uniAlgoPkgs.default pkgsWithOverlay.stdenv.cc.cc.lib] ++ userverDeps)}"
-        ]
-        ++ mkCmakeCommonFlags {
-          userverDir = "${userverPkg}/lib/cmake/userver";
-          pythonPath = "${chaoticPython}/bin/python3";
-        }
-        ++ [
-          "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
-          "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
-        ];
+      cmakeFlags = mkOutputCmakeFlags {
+        inherit userverPkg variant;
+      };
 
       postFixup = ''
         wrapProgram "$out/bin/webshotd" \
           --prefix PATH : "${lib.makeBinPath [pkgsWithOverlay.podman]}"
       '';
     };
-
-  cmakeTaskBaseFlags =
-    [
-      "-S"
-      "."
-      "-G"
-      "Ninja"
-      "-DCMAKE_CXX_COMPILER=clang++"
-      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-    ]
-    ++ mkCmakeCommonFlags {
-      userverDir = "${userverPkgs.userver-debug-addr-ub}/lib/cmake/userver";
-      pythonPath = "${chaoticPython}/bin/python3";
-    }
-    ++ [
-      "-DUSERVER_FEATURE_TESTSUITE=ON"
-      "-DUSERVER_TESTSUITE_USE_VENV=OFF"
-      "-DUSERVER_SQL_USE_VENV=OFF"
-      "-DUSERVER_CHAOTIC_USE_VENV=OFF"
-      "-DTESTSUITE_PYTHON_BINARY=${chaoticPython}/bin/python3"
-      "-Wno-dev"
-    ];
-
-  sanFlags = [
-    "-DCMAKE_BUILD_TYPE=Debug"
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-    "-DUSE_SANITIZERS=ON"
-    "-DBUILD_TESTING=ON"
-  ];
-
-  tidyFlags =
-    sanFlags
-    ++ [
-      "-DCMAKE_CXX_CLANG_TIDY=clang-tidy"
-    ];
-
-  covFlags =
-    sanFlags
-    ++ [
-      "-DWEBSHOT_ENABLE_COVERAGE=ON"
-    ];
-
-  releaseFlags = [
-    "-DCMAKE_BUILD_TYPE=Release"
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-    "-DUSE_SANITIZERS=OFF"
-    "-DBUILD_TESTING=OFF"
-  ];
 
   mkClangdConfig = name: buildDir:
     pkgsWithOverlay.writeText "webshot-clangd-${name}" ''
@@ -193,18 +306,26 @@
     release = mkClangdConfig "release" buildDirs.release;
   };
 
-  mkConfigureTask = buildDir: clangdConfig: extraFlags: {
+  mkConfigureTaskCommands = buildDir: clangdConfig: variant: ''
+    ${lib.escapeShellArgs (["cmake" "-B" buildDir] ++ mkTaskCmakeFlags variant)}
+    ln -sf "${clangdConfig}" .clangd
+  '';
+
+  mkConfigureTask = buildDir: clangdConfig: variant: {
     cwd = config.devenv.root;
-    exec =
-      lib.escapeShellArgs (
-        ["cmake" "-B" buildDir] ++ cmakeTaskBaseFlags ++ extraFlags
-      )
-      + " && ln -sf ${clangdConfig} .clangd";
+    exec = ''
+      set -euo pipefail
+      ${mkConfigureTaskCommands buildDir clangdConfig variant}
+    '';
   };
 
-  mkBuildTask = buildDir: {
+  mkBuildTask = buildDir: clangdConfig: variant: {
     cwd = config.devenv.root;
-    exec = "cmake --build ${buildDir}";
+    exec = ''
+      set -euo pipefail
+      ${mkConfigureTaskCommands buildDir clangdConfig variant}
+      cmake --build ${buildDir}
+    '';
   };
 
   squidImageDev = import ./container/squid/squid.nix {
@@ -255,6 +376,7 @@ in {
     buildDeps.native
     ++ buildDeps.runtime
     ++ [
+      chaoticPython
       toolchain.cc
       llvm21.llvm
       llvm21.clang-tools
@@ -336,95 +458,97 @@ in {
 
   # Expose the yandex-taxi-testsuite Python package so pytest_userver
   # can import `testsuite` (for chaos, pgsql helpers, etc.).
-  env.PYTHONPATH = lib.makeSearchPath python.sitePackages [
-    yttsPkgs.default
-  ];
+  env.PYTHONPATH =
+    "${config.devenv.root}:"
+    + (lib.makeSearchPath python.sitePackages [
+      yttsPkgs.default
+    ]);
 
   env.WEBSHOTD_RUNTIME_LD_LIBRARY_PATH = lib.makeLibraryPath testLibs;
   env.WEBSHOTD_BUILD_DIR = buildDirs.san;
   tasks."webshot:infraDevUp" = {
-    exec = "bash container/compose/infra_dev_up.sh";
+    exec = "python3 container/compose/infra.py dev up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraDevDown" = {
-    exec = "bash container/compose/infra_dev_down.sh";
+    exec = "python3 container/compose/infra.py dev down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devUp" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev up";
+    exec = "python3 container/compose/infra.py dev up && python3 container/compose/webshotd.py dev up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devDown" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev down";
+    exec = "python3 container/compose/webshotd.py dev down && python3 container/compose/infra.py dev down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devStatus" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev status";
+    exec = "python3 container/compose/infra.py dev status && python3 container/compose/webshotd.py dev status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:devLogs" = {
-    exec = "bash container/compose/webshotd_ctl.sh dev logs";
+    exec = "python3 container/compose/webshotd.py dev logs";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeUp" = {
-    exec = "bash container/compose/infra_prodlike_up.sh";
+    exec = "python3 container/compose/infra.py prodlike up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:infraProdlikeDown" = {
-    exec = "bash container/compose/infra_prodlike_down.sh";
+    exec = "python3 container/compose/infra.py prodlike down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeUp" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike up";
+    exec = "python3 container/compose/infra.py prodlike up && python3 container/compose/webshotd.py prodlike up";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeDown" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike down";
+    exec = "python3 container/compose/webshotd.py prodlike down && python3 container/compose/infra.py prodlike down";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeStatus" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike status";
+    exec = "python3 container/compose/infra.py prodlike status && python3 container/compose/webshotd.py prodlike status";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:prodlikeLogs" = {
-    exec = "bash container/compose/webshotd_ctl.sh prodlike logs";
+    exec = "python3 container/compose/webshotd.py prodlike logs";
     cwd = config.devenv.root;
   };
 
   tasks."webshot:configureSan" =
-    mkConfigureTask buildDirs.san clangdConfigs.san sanFlags;
+    mkConfigureTask buildDirs.san clangdConfigs.san buildVariants.san;
 
   tasks."webshot:configureTidy" =
-    mkConfigureTask buildDirs.tidy clangdConfigs.tidy tidyFlags;
+    mkConfigureTask buildDirs.tidy clangdConfigs.tidy buildVariants.tidy;
 
   tasks."webshot:configureCov" =
-    mkConfigureTask buildDirs.cov clangdConfigs.cov covFlags;
+    mkConfigureTask buildDirs.cov clangdConfigs.cov buildVariants.cov;
 
   tasks."webshot:configureRelease" =
-    mkConfigureTask buildDirs.release clangdConfigs.release releaseFlags;
+    mkConfigureTask buildDirs.release clangdConfigs.release buildVariants.release;
 
   tasks."webshot:buildSan" =
-    mkBuildTask buildDirs.san;
+    mkBuildTask buildDirs.san clangdConfigs.san buildVariants.san;
 
   tasks."webshot:buildTidy" =
-    mkBuildTask buildDirs.tidy;
+    mkBuildTask buildDirs.tidy clangdConfigs.tidy buildVariants.tidy;
 
   tasks."webshot:buildCov" =
-    mkBuildTask buildDirs.cov;
+    mkBuildTask buildDirs.cov clangdConfigs.cov buildVariants.cov;
 
   tasks."webshot:buildRelease" =
-    mkBuildTask buildDirs.release;
+    mkBuildTask buildDirs.release clangdConfigs.release buildVariants.release;
 
   tasks."webshot:testSan" = {
     package = webshotTestSan;

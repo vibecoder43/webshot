@@ -11,17 +11,13 @@ cd -- "${root}"
 # Override with DEVENV_REF if you need to bump it deliberately.
 devenv_ref="${DEVENV_REF:-51440964cd26a47e90064f9d59aa230a5cefc88b}"
 
-devenv_args=(--log-format tracing-pretty)
+devenv_args=()
 
 # CI logs often hide the underlying Nix eval error; opt into verbose tracing when requested.
 if [[ "${DEVENV_CI_DEBUG:-}" == "1" ]]; then
+  devenv_args+=(--log-format tracing-pretty)
   devenv_args+=(--verbose)
   devenv_args+=(--nix-option show-trace true)
-fi
-
-# CI runs in a fresh checkout; disable eval-cache to avoid SQLite WAL/locking issues.
-if [[ "${CI:-}" == "1" || "${CI:-}" == "true" ]]; then
-  devenv_args+=(--no-eval-cache)
 fi
 
 exec nix --extra-experimental-features 'nix-command flakes' \

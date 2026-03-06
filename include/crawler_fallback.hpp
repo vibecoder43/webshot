@@ -33,6 +33,7 @@ struct [[nodiscard]] AttemptSummary {
     int exitCode;
     bool waczExists;
     std::optional<SeedPageProbe> seedProbe;
+    std::optional<String> failureDetail;
 };
 
 enum class RunOutcome {
@@ -52,11 +53,19 @@ struct [[nodiscard]] RunResult {
 [[nodiscard]] inline bool
 isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 {
-    if (!probe || !probe->loadState)
+    if (!probe)
+        return false;
+
+    const auto status = probe->status.value_or(0);
+
+    if (status == 502)
+        return true;
+
+    if (!probe->loadState)
         return false;
     if (*probe->loadState != 0)
         return false;
-    const auto status = probe->status.value_or(0);
+
     if (status >= 400)
         return false;
     return status == 0;

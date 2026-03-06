@@ -17,16 +17,15 @@ jobs:
     steps:
       - name: Checkout
         uses: https://data.forgejo.org/actions/checkout@09d2acae674a48949e3602304ab46fd20ae0c42f
-      - name: Configure, build, test
+      - name: Build, test
         run: |
           set -euo pipefail
           bash .forgejo/devenv_ci.sh shell -- podman pull docker.io/webrecorder/browsertrix-crawler:latest@sha256:35f863bdd26154fbcb6c79badc2d2ca7a1385e45df55523ed240b728acbf7582
-          bash .forgejo/devenv_ci.sh tasks run webshot:configureSan
           bash .forgejo/devenv_ci.sh tasks run webshot:buildSan
           bash .forgejo/devenv_ci.sh tasks run webshot:infraDevUp
-          bash .forgejo/devenv_ci.sh tasks run webshot:testSan
+          timeout --signal=TERM --kill-after=30s 30m bash .forgejo/devenv_ci.sh tasks run webshot:testSan
       - name: Cleanup infra
         if: always()
         run: |
           set -euo pipefail
-          bash .forgejo/devenv_ci.sh tasks run webshot:infraDevDown || true
+          timeout --signal=TERM --kill-after=30s 5m bash .forgejo/devenv_ci.sh tasks run webshot:infraDevDown || true

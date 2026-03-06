@@ -61,7 +61,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/webshot handler in milliseconds
+    description: Upper bound for /v1/capture handler in milliseconds
 )");
 }
 
@@ -83,12 +83,12 @@ std::string Handler::HandleRequestThrow(
         engine::current_task::SetDeadline(finalDeadline);
 
         if (request.GetMethod() == kPost) {
-            dto::CreateWebshotRequest req;
+            dto::CreateCaptureRequest req;
             try {
                 auto str = String::fromBytes(request.RequestBody());
                 if (!str)
                     throw std::exception();
-                req = json::FromString(str->view()).As<dto::CreateWebshotRequest>();
+                req = json::FromString(str->view()).As<dto::CreateCaptureRequest>();
             } catch (const std::exception &e) {
                 return httpu::respondError(response, kBadRequest, "invalid request body"_t);
             }
@@ -99,7 +99,7 @@ std::string Handler::HandleRequestThrow(
                 auto prefixKey = prefix::makePrefixKey(parsed);
                 if (!denylist.isAllowedPrefix(prefixKey))
                     return httpu::respondError(response, kForbidden, "host in denylist"_t);
-                auto job = crud.createWebshotJob(std::move(parsed));
+                auto job = crud.createCaptureJob(std::move(parsed));
                 return httpu::respondJson(response, kAccepted, job);
             } catch (const InvalidLinkException &e) {
                 return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));
@@ -125,7 +125,7 @@ std::string Handler::HandleRequestThrow(
                 response, kBadRequest, "page_token"_t, "missing parameter"_t
             );
         try {
-            auto page = crud.findWebshotByLinkPage(link, *token);
+            auto page = crud.findCapturesByLinkPage(link, *token);
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondParamError(

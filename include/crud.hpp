@@ -38,30 +38,30 @@ public:
      * On success returns a single capture descriptor including UUID, creation
      * time and normalized link.
      */
-    [[nodiscard]] dto::UuidWithTimeLink createWebshot(Link link);
+    [[nodiscard]] dto::UuidWithTimeLink createCapture(Link link);
 
     /**
      * @brief Enqueue a crawl job for the given link and return its job descriptor.
      *
      * Assigns a UUID that will also be used as the capture id once the job
      * succeeds. Job execution is scheduled asynchronously; callers should poll
-     * job status via getCrawlJob().
+     * job status via findCaptureJob().
      */
-    [[nodiscard]] dto::WebshotJob createWebshotJob(Link link);
+    [[nodiscard]] dto::CaptureJob createCaptureJob(Link link);
     /** @brief Look up a capture by id. */
-    [[nodiscard]] std::optional<Link> findWebshot(Uuid uuid);
+    [[nodiscard]] std::optional<Link> findCapture(Uuid uuid);
 
-    /** @brief Look up a crawl job by id. */
-    [[nodiscard]] std::optional<dto::WebshotJob> findCrawlJob(Uuid uuid);
+    /** @brief Look up a capture job by id. */
+    [[nodiscard]] std::optional<dto::CaptureJob> findCaptureJob(Uuid uuid);
 
     /** @brief All capture ids for a link (newest first). */
-    [[nodiscard]] std::vector<dto::UuidWithTime> findWebshotByLink(const Link &link);
+    [[nodiscard]] std::vector<dto::UuidWithTime> findCapturesByLink(const Link &link);
     /** @brief Paged variant for capture ids by link. */
-    [[nodiscard]] dto::PagedFindWebshotByUrlResponse
-    findWebshotByLinkPage(const Link &link, String pageToken);
+    [[nodiscard]] dto::PagedFindCapturesByUrlResponse
+    findCapturesByLinkPage(const Link &link, String pageToken);
     /** @brief Paged list of captures grouped by normalized link prefix. */
-    [[nodiscard]] dto::PagedFindWebshotByPrefixResponse
-    findWebshotsByPrefixPage(String normalizedPrefix, String pageToken);
+    [[nodiscard]] dto::PagedFindCapturesByPrefixResponse
+    findCapturesByPrefixPage(String normalizedPrefix, String pageToken);
     /** @brief Disallow a prefix and enqueue purge of its captures. */
     void disallowAndPurgePrefix(String prefixKey);
     /** @brief Static config schema for this component. */

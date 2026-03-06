@@ -17,9 +17,6 @@ Use this when the task involves building, running, or testing.
 - If a command fails due to permissions, try running devenv shell -- command
 
 ## Build, run, test
-- Configure sanitizer build (Debug + ASan/UBSan) via `devenv tasks run webshot:configureSan` (binary dir `build/san`).
 - Build service and tests after configuration via `devenv tasks run webshot:buildSan`.
-- For release builds, use `devenv tasks run webshot:configureRelease` + `devenv tasks run webshot:buildRelease`.
-- For coverage, use `devenv tasks run webshot:configureCov` + `devenv tasks run webshot:buildCov`.
 - When passing config vars on the CLI, use `--config_vars` (underscore); userver does not support a `--config-vars` (dash) flag even if some upstream docs mention it.
-- Run C++ tests in the sanitizer build directory with `ctest --output-on-failure` (usually from `build/san`).
+- Test the project using `devenv tasks run webshot:testSan`. Trying other ways is unlikely to succeed.

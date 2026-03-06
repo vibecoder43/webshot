@@ -46,7 +46,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/webshot/jobs/{uuid} handler in milliseconds
+    description: Upper bound for /v1/capture/jobs/{uuid} handler in milliseconds
 )");
 }
 
@@ -77,7 +77,7 @@ std::string JobHandler::HandleRequestThrow(
         } catch (const std::exception &) {
             return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
         }
-        auto job = crud.findCrawlJob(uuid);
+        auto job = crud.findCaptureJob(uuid);
         if (!job)
             return httpu::respondError(response, kNotFound, "job not found"_t);
         return httpu::respondJson(response, kOk, *job);

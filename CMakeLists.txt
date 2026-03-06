@@ -55,6 +55,7 @@ set(${PROJECT_NAME}_headers
     include/denylist_check_handler.hpp
     include/crud.hpp
     include/config.hpp
+    include/crawler_failure.hpp
     include/error_utils.hpp
     include/http_utils.hpp
     include/denylist.hpp
@@ -73,6 +74,7 @@ add_library(
   src/disallow_and_purge_handler.cpp
   src/denylist_check_handler.cpp
   src/crud.cpp
+  src/crawler_failure.cpp
   src/text_postgres_formatter.cpp
   src/error_utils.cpp
   src/denylist.cpp
@@ -152,7 +154,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_sql)
 
 include(CTest)
 if(BUILD_TESTING)
-  add_subdirectory(tests)
+  add_subdirectory(test)
 endif()
 
 if(USE_SANITIZERS)

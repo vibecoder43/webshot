@@ -3,7 +3,6 @@ services:
   egress_proxy:
     container_name: egress_proxy
     image: localhost/squid:dev
-    restart: on-failure
     command: ["/bin/sh", "/usr/local/bin/squid_start.sh"]
     networks:
       - egress_net
@@ -13,20 +12,20 @@ services:
     volumes:
       - ../squid/squid.conf:/etc/squid/squid.conf:ro
       - ../squid/squid.mode.dev.conf:/etc/squid/squid.mode.conf:ro
-      - ./mitm/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
-      - ./mitm/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
+      - ./pki/squid_ca.pem:/etc/squid/webshot_ca.pem:ro
+      - ./pki/origin_ca.crt:/usr/local/share/ca-certificates/webshot-test-target-origin-ca.crt:ro
       - ../squid/squid_start.sh:/usr/local/bin/squid_start.sh:ro
       - ../squid/webshot_denylist_acl.sh:/usr/local/bin/webshot_denylist_acl.sh:ro
       - ../squid/healthcheck_squid.sh:/usr/local/bin/healthcheck_squid.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_squid.sh"]
       interval: disable
+      start_period: 20s
       timeout: 2s
       retries: 60
   servicedb:
     container_name: servicedb
     image: docker.io/postgres:18.1-trixie@sha256:5ec39c188013123927f30a006987c6b0e20f3ef2b54b140dfa96dac6844d883f
-    restart: on-failure
     command: ["postgres", "-c", "timezone=UTC", "-c", "log_timezone=UTC"]
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust
@@ -38,12 +37,12 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres"]
       interval: disable
+      start_period: 20s
       timeout: 2s
       retries: 60
   seaweedfs:
     container_name: seaweedfs
     image: docker.io/chrislusf/seaweedfs:latest@sha256:fef02554ebd5093d2f99699c44b846fb316b95be5ea8bd82677c2737ad516631
-    restart: on-failure
     command:
       - server
       - -s3
@@ -61,17 +60,17 @@ services:
       - "127.0.0.1:9324:9324"
     volumes:
       - ../../container/seaweed/s3_config.json:/etc/seaweedfs/s3_config.json:ro
-      - ./healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
+      - ../../container/seaweed/healthcheck_seaweedfs.sh:/usr/local/bin/healthcheck_seaweedfs.sh:ro
     healthcheck:
       test: ["CMD", "/bin/sh", "/usr/local/bin/healthcheck_seaweedfs.sh"]
       interval: disable
+      start_period: 40s
       timeout: 5s
       retries: 60
     stop_grace_period: 60s
   scalar:
     container_name: scalar
     image: docker.io/scalarapi/api-reference:latest@sha256:9ae2aa3829488d273de33ebd21a4446a4b0fd19107b355689dca43abfb846ec8
-    restart: on-failure
     networks:
       - crawler_net
     environment:
@@ -82,7 +81,6 @@ services:
   reverse_proxy:
     container_name: reverse_proxy
     image: docker.io/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
-    restart: on-failure
     networks:
       - egress_net
       - crawler_net
@@ -98,7 +96,6 @@ services:
   test_target:
     container_name: test_target
     image: docker.io/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
-    restart: on-failure
     networks:
       crawler_net:
         aliases:
@@ -106,8 +103,8 @@ services:
           - asset.test-target
     volumes:
       - ../../container/nginx_test.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./mitm/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
-      - ./mitm/test_target.key:/etc/nginx/ssl/test_target.key:ro
+      - ./pki/test_target.crt:/etc/nginx/ssl/test_target.crt:ro
+      - ./pki/test_target.key:/etc/nginx/ssl/test_target.key:ro
 networks:
   crawler_net:
     name: crawler_net

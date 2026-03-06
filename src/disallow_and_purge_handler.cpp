@@ -48,7 +48,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/disallow_and_purge handler in milliseconds
+    description: Upper bound for /v1/denylist/disallow_and_purge handler in milliseconds
 )");
 }
 

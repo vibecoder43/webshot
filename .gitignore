@@ -10,3 +10,5 @@ design.md
 .pre-commit-config.yaml
 notes.md
 build/
+__pycache__/
+*.pyc

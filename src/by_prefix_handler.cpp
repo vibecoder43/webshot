@@ -50,7 +50,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/webshot/prefix handler in milliseconds
+    description: Upper bound for /v1/capture/prefix handler in milliseconds
 )");
 }
 
@@ -93,7 +93,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
                 response, kBadRequest, "page_token"_t, "invalid parameter"_t
             );
         try {
-            auto page = crud.findWebshotsByPrefixPage(normalizedPrefix, *token);
+            auto page = crud.findCapturesByPrefixPage(normalizedPrefix, *token);
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondParamError(

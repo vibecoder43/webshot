@@ -62,31 +62,31 @@ components_manager:
       request-timeout-ms: 2000
       max_request_size: &max-data-per-request 65536
     handler:
-      path: /v1/webshot
+      path: /v1/capture
       method: GET,POST
       task_processor: main-task-processor
       request-timeout-ms: 60000
       max_request_size: *max-data-per-request
     by_prefix:
-      path: /v1/webshot/prefix
+      path: /v1/capture/prefix
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
     job_handler:
-      path: /v1/webshot/jobs/{uuid}
+      path: /v1/capture/jobs/{uuid}
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 5000
       max_request_size: *max-data-per-request
     disallow_and_purge:
-      path: /v1/disallow_and_purge
+      path: /v1/denylist/disallow_and_purge
       method: POST
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
     by_id:
-      path: /v1/webshot/{uuid}
+      path: /v1/capture/{uuid}
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 10000

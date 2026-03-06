@@ -48,7 +48,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/webshot/{uuid} handler in milliseconds
+    description: Upper bound for /v1/capture/{uuid} handler in milliseconds
 )");
 }
 
@@ -80,10 +80,10 @@ std::string ById::HandleRequestThrow(
         } catch (std::exception &e) {
             return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
         }
-        auto location = crud.findWebshot(uuid);
+        auto location = crud.findCapture(uuid);
         if (!location) {
-            LOG_INFO() << fmt::format("webshot not found: {}", us::utils::ToString(uuid));
-            return httpu::respondError(response, kNotFound, "webshot not found"_t);
+            LOG_INFO() << fmt::format("capture not found: {}", us::utils::ToString(uuid));
+            return httpu::respondError(response, kNotFound, "capture not found"_t);
         }
         response.SetStatus(kFound);
         response.SetHeader(us::http::headers::kLocation, std::string(location->httpsUrl().view()));
