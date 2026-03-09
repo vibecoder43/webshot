@@ -5,6 +5,8 @@ import os
 import re
 from pathlib import Path
 
+from compose_tools.common import ToolError, die
+
 
 def cpu_limit_is_zero(limit: str) -> bool:
     return re.fullmatch(r"0+([.][0]+)?c", limit) is not None
@@ -111,45 +113,44 @@ def infer_cpu_threads() -> int | None:
     return threads if threads and threads > 0 else None
 
 
-def main() -> int:
+def resolve_cpu_limit() -> str:
     cpu_limit = os.environ.get("CPU_LIMIT", "")
     if cpu_limit:
         if re.fullmatch(r"[0-9]+([.][0-9]+)?c", cpu_limit) is None:
-            print(
-                f"CPU_LIMIT must look like '4c' or '0.5c', got: '{cpu_limit}'", file=os.sys.stderr
-            )
-            return 2
+            die(f"CPU_LIMIT must look like '4c' or '0.5c', got: '{cpu_limit}'", exit_code=2)
         if cpu_limit_is_zero(cpu_limit):
-            print(f"CPU_LIMIT must be > 0, got: '{cpu_limit}'", file=os.sys.stderr)
-            return 2
-        print(cpu_limit)
-        return 0
+            die(f"CPU_LIMIT must be > 0, got: '{cpu_limit}'", exit_code=2)
+        return cpu_limit
 
     deploy_vcpu = os.environ.get("DEPLOY_VCPU_LIMIT", "")
     if deploy_vcpu:
         if re.fullmatch(r"[0-9]+([.][0-9]+)?", deploy_vcpu) is None:
-            print(
+            die(
                 f"DEPLOY_VCPU_LIMIT must be numeric millicores (e.g. '4000'), got: '{deploy_vcpu}'",
-                file=os.sys.stderr,
+                exit_code=2,
             )
-            return 2
         if re.fullmatch(r"0+([.][0]+)?", deploy_vcpu) is not None:
-            print(f"DEPLOY_VCPU_LIMIT must be > 0, got: '{deploy_vcpu}'", file=os.sys.stderr)
-            return 2
-        print("")
-        return 0
+            die(f"DEPLOY_VCPU_LIMIT must be > 0, got: '{deploy_vcpu}'", exit_code=2)
+        return ""
 
     threads = infer_cpu_threads()
     if threads is None:
-        print(
+        die(
             "Failed to infer CPU thread count. Set CPU_LIMIT (e.g. '4c') or "
             "DEPLOY_VCPU_LIMIT (e.g. '4000').",
-            file=os.sys.stderr,
+            exit_code=2,
         )
-        return 2
+    return f"{threads}c"
 
-    print(f"{threads}c")
-    return 0
+
+def main() -> int:
+    try:
+        print(resolve_cpu_limit())
+        return 0
+    except ToolError as e:
+        if e.message:
+            print(e.message, file=os.sys.stderr)
+        return e.exit_code
 
 
 if __name__ == "__main__":

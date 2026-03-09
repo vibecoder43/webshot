@@ -78,7 +78,8 @@ def infra_supervisor_start(*, mode: str, compose_dir: Path, repo_root: Path) -> 
 
     cmd = [
         sys.executable,
-        str(repo_root / "container/compose/infra.py"),
+        "-m",
+        "compose_tools.infra",
         mode,
         "watch",
     ]
@@ -642,3 +643,51 @@ def infra_down(*, mode: str, compose_dir: Path) -> None:
     infra_supervisor_stop(mode=mode)
     print("infra: bringing down containers...", file=sys.stderr, flush=True)
     infra_down_compose(compose_dir=compose_dir, compose_file=compose_file)
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def main() -> int:
+    repo_root = _repo_root()
+    compose_dir = repo_root / "container/compose"
+
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="compose_tools.infra")
+    parser.add_argument("mode", choices=["dev", "prodlike"])
+    parser.add_argument("action", choices=["up", "down", "ready", "status", "watch", "supervise"])
+    parser.add_argument("--verbose", action="store_true", help="Show diagnostics for 'ready'")
+    args = parser.parse_args()
+
+    try:
+        if args.action == "up":
+            infra_up(mode=args.mode, compose_dir=compose_dir, repo_root=repo_root)
+            return 0
+        if args.action == "down":
+            infra_down(mode=args.mode, compose_dir=compose_dir)
+            return 0
+        if args.action == "ready":
+            ok = infra_ready(mode=args.mode, compose_dir=compose_dir, verbose=args.verbose)
+            return 0 if ok else 1
+        if args.action == "status":
+            infra_status(mode=args.mode, compose_dir=compose_dir)
+            return 0
+        if args.action == "watch":
+            infra_watch(mode=args.mode, compose_dir=compose_dir)
+            return 0
+        if args.action == "supervise":
+            infra_supervise(mode=args.mode, compose_dir=compose_dir, repo_root=repo_root)
+            return 0
+        raise AssertionError("unreachable")
+    except ToolError as e:
+        if e.message:
+            print(e.message, file=sys.stderr)
+        return e.exit_code
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
