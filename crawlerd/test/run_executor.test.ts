@@ -62,6 +62,92 @@ test("UpstreamRunExecutor captures through Chromium and returns an in-memory WAC
     assert.match(zipEntries["archive/data.warc"].toString("utf8"), /WARC\/1.1/);
     assert.match(zipEntries["archive/data.warc"].toString("utf8"), /Seed Title|HTTP\/1.1 200/);
     assert.match(zipEntries["pages/pages.jsonl"].toString("utf8"), /"url":"http:\/\/127\.0\.0\.1:/);
+
+    const cdxEntries = parseCdxj(zipEntries["indexes/index.cdxj"].toString("utf8"));
+    assert.equal(cdxEntries.length, 1);
+    assert.equal(cdxEntries[0]!.url, `http://127.0.0.1:${originPort}/seed`);
+    assert.equal(cdxEntries[0]!.data.status, "200");
+    assert.ok(Number.parseInt(cdxEntries[0]!.data.length, 10) > 0);
+
+    const indexedRecord = readIndexedWarcRecord(
+      zipEntries["archive/data.warc"],
+      cdxEntries[0]!,
+    );
+    assert.match(indexedRecord, /WARC-Target-URI: http:\/\/127\.0\.0\.1:\d+\/seed/);
+    assert.match(indexedRecord, /HTTP\/1\.1 200 OK/);
+    assert.match(indexedRecord, /Seed Title/);
+  } finally {
+    await executor.close();
+    await closeServer(proxyServer);
+    await closeServer(originServer);
+  }
+});
+
+test("UpstreamRunExecutor indexes redirect and final document records from the stored WARC", { concurrency: false }, async () => {
+  const originServer = http.createServer((request, response) => {
+    if (request.url === "/seed") {
+      response.writeHead(302, {
+        location: "/final",
+      });
+      response.end();
+      return;
+    }
+    if (request.url === "/favicon.ico") {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    assert.equal(request.url, "/final");
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+    });
+    response.end("<html><head><title>Redirect Final</title></head><body>final</body></html>");
+  });
+  originServer.listen(0, "127.0.0.1");
+  await once(originServer, "listening");
+  const originPort = getListenPort(originServer);
+
+  const proxyServer = createProxyServer();
+  proxyServer.listen(0, "127.0.0.1");
+  await once(proxyServer, "listening");
+  const proxyPort = getListenPort(proxyServer);
+
+  const executor = createExecutor(`http://127.0.0.1:${proxyPort}`);
+
+  try {
+    const result = await executor.executeRun(createRunRequest({
+      url: `http://127.0.0.1:${originPort}/seed`,
+    }));
+
+    assert.equal(result.exitCode, 0);
+
+    const zipEntries = parseStoredZip(Buffer.from(result.artifacts.wacz ?? []));
+    const pages = Buffer.from(result.artifacts.pages ?? []).toString("utf8");
+    assert.match(pages, new RegExp(`"url":"http://127\\.0\\.0\\.1:${originPort}/final"`));
+
+    const cdxEntries = parseCdxj(zipEntries["indexes/index.cdxj"].toString("utf8"));
+    assert.deepEqual(
+      cdxEntries.map((entry) => [entry.url, entry.data.status]),
+      [
+        [`http://127.0.0.1:${originPort}/seed`, "302"],
+        [`http://127.0.0.1:${originPort}/final`, "200"],
+      ],
+    );
+    assert.equal(cdxEntries[0]!.data.offset, "0");
+    assert.ok(Number.parseInt(cdxEntries[0]!.data.length, 10) > 0);
+    assert.ok(Number.parseInt(cdxEntries[1]!.data.offset, 10) > 0);
+    assert.ok(Number.parseInt(cdxEntries[1]!.data.length, 10) > 0);
+
+    const archive = zipEntries["archive/data.warc"];
+    const redirectRecord = readIndexedWarcRecord(archive, cdxEntries[0]!);
+    assert.match(redirectRecord, /WARC-Target-URI: http:\/\/127\.0\.0\.1:\d+\/seed/);
+    assert.match(redirectRecord, /HTTP\/1\.1 302 Found/);
+    assert.match(redirectRecord, /location: \/final/);
+
+    const finalRecord = readIndexedWarcRecord(archive, cdxEntries[1]!);
+    assert.match(finalRecord, /WARC-Target-URI: http:\/\/127\.0\.0\.1:\d+\/final/);
+    assert.match(finalRecord, /HTTP\/1\.1 200 OK/);
+    assert.match(finalRecord, /Redirect Final/);
   } finally {
     await executor.close();
     await closeServer(proxyServer);
@@ -359,4 +445,59 @@ function getBrowserPid(result: { artifacts: { stdoutLog: Uint8Array } }): number
   const match = stdout.match(/browser_pid=(\d+)/);
   assert.ok(match);
   return Number.parseInt(match[1]!, 10);
+}
+
+function parseCdxj(text: string): Array<{
+  url: string;
+  timestamp: string;
+  data: {
+    url: string;
+    status: string;
+    mime: string;
+    filename: string;
+    length: string;
+    offset: string;
+  };
+}> {
+  return text.trim().split("\n").filter(Boolean).map((line) => {
+    const firstSpace = line.indexOf(" ");
+    const secondSpace = line.indexOf(" ", firstSpace + 1);
+    assert.ok(firstSpace > 0);
+    assert.ok(secondSpace > firstSpace);
+    const url = line.slice(0, firstSpace);
+    const timestamp = line.slice(firstSpace + 1, secondSpace);
+    const payload = line.slice(secondSpace + 1);
+    assert.ok(url);
+    assert.ok(timestamp);
+    assert.ok(payload);
+    return {
+      url,
+      timestamp,
+      data: JSON.parse(payload) as {
+        url: string;
+        status: string;
+        mime: string;
+        filename: string;
+        length: string;
+        offset: string;
+      },
+    };
+  });
+}
+
+function readIndexedWarcRecord(
+  archive: Buffer,
+  entry: {
+    data: {
+      offset: string;
+      length: string;
+    };
+  },
+): string {
+  const offset = Number.parseInt(entry.data.offset, 10);
+  const length = Number.parseInt(entry.data.length, 10);
+  assert.ok(Number.isInteger(offset));
+  assert.ok(Number.isInteger(length));
+  assert.ok(length > 0);
+  return archive.subarray(offset, offset + length).toString("utf8");
 }

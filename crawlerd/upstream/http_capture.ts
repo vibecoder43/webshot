@@ -10,9 +10,19 @@ export type CapturedExchange = {
   statusMessage: string;
   headers: Record<string, string>;
   body: Uint8Array;
+  timestamp: string;
   redirectChain: string[];
+  mainDocumentRedirects: CapturedMainDocumentRedirect[];
   resources: CapturedResource[];
   title?: string;
+};
+
+export type CapturedMainDocumentRedirect = {
+  url: string;
+  statusCode: number;
+  statusMessage: string;
+  headers: Record<string, string>;
+  timestamp: string;
 };
 
 export type CapturedResource = {
@@ -237,7 +247,9 @@ async function captureWithBrowser(
         statusMessage: tracker.mainResponse?.statusMessage ?? "",
         headers: tracker.mainResponse?.headers ?? {},
         body,
+        timestamp: tracker.mainResponse?.timestamp ?? new Date().toISOString(),
         redirectChain: tracker.redirectChain.length > 0 ? tracker.redirectChain : [targetUrl],
+        mainDocumentRedirects: tracker.mainDocumentRedirects,
         resources: tracker.getCapturedResources(),
         ...(domState.title === undefined ? {} : { title: domState.title }),
       },
@@ -297,6 +309,7 @@ class PageTracker {
     loaded: boolean;
   }>();
   readonly redirectChain: string[] = [];
+  readonly mainDocumentRedirects: CapturedMainDocumentRedirect[] = [];
   readonly loadWaiters: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
   readonly mainDocumentWaiters: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
   readonly trace: CaptureTrace;
@@ -306,6 +319,7 @@ class PageTracker {
     statusCode: number;
     statusMessage: string;
     headers: Record<string, string>;
+    timestamp: string;
   };
   mainRequestLoaded = false;
   mainRequestFailure?: string;
@@ -456,6 +470,7 @@ class PageTracker {
     if (requestId !== this.mainRequestId) {
       return;
     }
+    this.recordMainDocumentRedirect(recordValue(params.redirectResponse));
     if (this.redirectChain[this.redirectChain.length - 1] !== url) {
       this.redirectChain.push(url);
     }
@@ -483,6 +498,7 @@ class PageTracker {
       statusCode: numberValue(response.status) ?? 0,
       statusMessage: stringValue(response.statusText) ?? "",
       headers,
+      timestamp: new Date().toISOString(),
     };
     this.trace("main_response_received", {
       requestId,
@@ -552,6 +568,32 @@ class PageTracker {
     for (const waiter of waiters.splice(0)) {
       waiter.reject(error);
     }
+  }
+
+  private recordMainDocumentRedirect(redirectResponse: Record<string, unknown>) {
+    if (Object.keys(redirectResponse).length === 0) {
+      return;
+    }
+
+    const url = stringValue(redirectResponse.url);
+    const statusCode = numberValue(redirectResponse.status);
+    if (url === undefined || statusCode === undefined) {
+      return;
+    }
+
+    const redirect: CapturedMainDocumentRedirect = {
+      url,
+      statusCode,
+      statusMessage: stringValue(redirectResponse.statusText) ?? "",
+      headers: normalizeHeaders(recordValue(redirectResponse.headers)),
+      timestamp: new Date().toISOString(),
+    };
+
+    const previous = this.mainDocumentRedirects[this.mainDocumentRedirects.length - 1];
+    if (previous?.url === redirect.url && previous.statusCode === redirect.statusCode) {
+      return;
+    }
+    this.mainDocumentRedirects.push(redirect);
   }
 }
 

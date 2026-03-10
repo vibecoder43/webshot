@@ -51,7 +51,7 @@ export async function runBrowsertrixCapture(
     });
     const stderrLog = new Uint8Array();
     const warc = buildWarc(exchange);
-    const wacz = buildWacz(run, exchange, pages, warc, stdoutLog, stderrLog);
+    const wacz = buildWacz(run, pages, warc, stdoutLog, stderrLog);
     const bounded = applyArtifactMemoryLimit({
       wacz,
       pages,
