@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from compose_tools.common import ToolError, die
+from s6.common import ToolError, die
 
 
 def cpu_limit_is_zero(limit: str) -> bool:

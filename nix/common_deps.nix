@@ -14,8 +14,10 @@
   ];
 
   runtime = with pkgs; [
-    podman
-    podman-compose
     postgresql_18
+    nginx
+    s6
+    seaweedfs
+    squid
   ];
 }

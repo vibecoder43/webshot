@@ -8,7 +8,7 @@ import urllib.request
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: python -m compose_tools.check_webshotd_ready <url>", file=sys.stderr)
+        print("usage: python -m s6.check_webshotd_ready <url>", file=sys.stderr)
         return 2
 
     try:

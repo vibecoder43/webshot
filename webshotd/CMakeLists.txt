@@ -22,6 +22,10 @@ set(WEBSHOT_ENABLE_COVERAGE
     CACHE BOOL
           "Enable LLVM coverage instrumentation for the webshot service binary")
 set(WEBSHOT_COVERAGE_FLAGS "-fprofile-instr-generate" "-fcoverage-mapping")
+set(WEBSHOT_SCALAR_ASSETS_DIR
+    ""
+    CACHE STRING
+          "Absolute path to pinned Scalar assets")
 
 option(WEBSHOT_ENABLE_SQL_COVERAGE "Enable pytest sql_coverage includetest" ON)
 
@@ -55,6 +59,8 @@ set(${PROJECT_NAME}_headers
     include/by_id_handler.hpp
     include/disallow_and_purge_handler.hpp
     include/denylist_check_handler.hpp
+    include/docs_handler.hpp
+    include/docs_static_handler.hpp
     include/crud.hpp
     include/crawlerd_client.hpp
     include/config.hpp
@@ -76,6 +82,8 @@ add_library(
   src/by_id_handler.cpp
   src/disallow_and_purge_handler.cpp
   src/denylist_check_handler.cpp
+  src/docs_handler.cpp
+  src/docs_static_handler.cpp
   src/crud.cpp
   src/crawlerd_client.cpp
   src/crawler_failure.cpp
@@ -83,7 +91,6 @@ add_library(
   src/error_utils.cpp
   src/denylist.cpp
   src/link.cpp
-  src/container_guard.cpp
   src/config.cpp
   src/cursor.cpp
   src/pagination.cpp
@@ -118,6 +125,10 @@ add_executable(${PROJECT_NAME} src/main.cpp
 apply_defaults(${PROJECT_NAME}_objs)
 apply_defaults(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME webshotd)
+
+if(WEBSHOT_SCALAR_ASSETS_DIR STREQUAL "")
+  message(FATAL_ERROR "WEBSHOT_SCALAR_ASSETS_DIR must be configured")
+endif()
 target_precompile_headers(${PROJECT_NAME}_objs PRIVATE include/text.hpp)
 
 if(WEBSHOT_ENABLE_COVERAGE)
@@ -197,6 +208,10 @@ target_link_libraries(
 target_include_directories(
   ${PROJECT_NAME}_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/
                                ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(
+  ${PROJECT_NAME}_objs
+  PRIVATE WEBSHOT_REPO_ROOT="${WEBSHOT_REPO_ROOT}"
+          WEBSHOT_SCALAR_ASSETS_DIR="${WEBSHOT_SCALAR_ASSETS_DIR}")
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/"

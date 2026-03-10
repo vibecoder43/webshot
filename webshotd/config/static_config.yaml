@@ -34,6 +34,8 @@ components_manager:
       s3_timeout_ms: 30000
     dns-client:
       fs-task-processor: fs-task-processor
+      hosts-file-path: $dns-hosts-path
+      hosts-file-path#fallback: config/dns_hosts.empty
     testsuite-support: {}
     server:
       listener:
@@ -92,6 +94,18 @@ components_manager:
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
+    docs:
+      path: /scalar
+      method: GET
+      task_processor: main-task-processor
+    scalar_assets:
+      path: /scalar-assets/*
+      method: GET
+      task_processor: main-task-processor
+    openapi_static:
+      path: /openapi/*
+      method: GET
+      task_processor: main-task-processor
     crud:
       snapshots_page_max: 2
       snapshots_per_link_max: 2

@@ -5,7 +5,6 @@
   ...
 }: let
   common = import ../devenv/lib.nix {inherit pkgs config inputs;};
-  s6 = common.pkgsWithOverlay.s6;
 
   modeConfigs = {
     dev = {
@@ -35,7 +34,7 @@
   mkRuntimeCommand = action: mode: let
     cfg = modeConfigs.${mode};
   in ''
-    python3 -m compose_tools.webshot_runtime ${common.lib.escapeShellArg action} \
+    python3 -m s6.runtime ${common.lib.escapeShellArg action} \
       --mode ${common.lib.escapeShellArg cfg.infraMode} \
       --binary-path ${common.lib.escapeShellArg "${cfg.buildDir}/webshotd"} \
       --config-vars-source ${common.lib.escapeShellArg cfg.configVarsSource} \
@@ -60,10 +59,23 @@
   mkTestTask = mode: let
     cfg = modeConfigs.${mode};
     buildTask = mkBuildTaskForMode mode;
+    checkCmd = mkRuntimeCommand "check" mode;
+    upCmd = mkRuntimeCommand "up" mode;
+    downCmd = mkRuntimeCommand "down" mode;
   in {
     cwd = config.devenv.root;
     exec = ''
+      set -euo pipefail
       ${buildTask.exec}
+      if ${checkCmd} >/dev/null 2>&1; then
+        echo "webshot:devTest cannot run while webshot:devUp owns localhost:8080/8081; run devenv tasks run webshot:devDown first" >&2
+        exit 1
+      fi
+      cleanup() {
+        ${downCmd}
+      }
+      trap cleanup EXIT
+      ${upCmd}
       export LD_LIBRARY_PATH=${common.lib.escapeShellArg runtimeLdLibraryPath}
       cd ${common.lib.escapeShellArg cfg.buildDir}
       ctest --progress --output-on-failure -V
@@ -73,8 +85,6 @@ in {
   outputs.webshot = common.mkWebshotOutput {
     userverPkg = common.userverPkgs.userver-debug-addr-ub;
   };
-  outputs.squidImageDev = common.squidImageDev;
-  outputs.squidImageProdlike = common.squidImageProdlike;
 
   packages =
     common.buildDeps.native
@@ -84,12 +94,9 @@ in {
       common.toolchain.cc
       common.llvm21.llvm
       common.llvm21.clang-tools
-      s6
       common.userverPkgs.userver-debug-addr-ub
       common.uniAlgoPkgs.default
       common.yttsPkgs.default
-      common.squidLoadDev
-      common.squidLoadProdlike
     ]
     ++ common.userverDeps
     ++ [common.webshotTestSan common.webshotTestCov]

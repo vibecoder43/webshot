@@ -21,9 +21,7 @@ function(add_cpp_test target)
   endif()
 
   add_test(NAME ${target} COMMAND ${target})
-  set(test_env "PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{PATH}")
-  set(test_env
-      "${test_env};LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/lsan.supp")
+  set(test_env "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/lsan.supp")
   set_tests_properties(${target} PROPERTIES ENVIRONMENT "${test_env}")
 
   if(WEBSHOT_ENABLE_COVERAGE)
@@ -89,11 +87,6 @@ add_cpp_test(
   ${PROJECT_NAME}-chgen)
 
 add_cpp_test(
-  container_guard_test SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/container_guard.cpp
-  ${CMAKE_SOURCE_DIR}/src/container_guard.cpp LIBS userver::core)
-
-add_cpp_test(
   error_utils_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/error_utils.cpp
   ${CMAKE_SOURCE_DIR}/src/error_utils.cpp LIBS ${PROJECT_NAME}-chgen)
 
@@ -126,13 +119,9 @@ foreach(tgt IN LISTS WEBSHOT_COVERAGE_TARGETS)
   list(APPEND WEBSHOT_COVERAGE_TARGET_FILES $<TARGET_FILE:${tgt}>)
 endforeach()
 
-add_executable(podman_stub ${CMAKE_CURRENT_SOURCE_DIR}/podman_stub_main.cpp)
-apply_defaults(podman_stub)
-set_target_properties(podman_stub PROPERTIES OUTPUT_NAME podman)
-
 if(USERVER_FEATURE_TESTSUITE)
   add_custom_target(testsuite)
-  add_dependencies(testsuite ${PROJECT_NAME} podman_stub)
+  add_dependencies(testsuite ${PROJECT_NAME})
 
   userver_testsuite_add(
     SERVICE_TARGET
@@ -200,5 +189,5 @@ if(USERVER_FEATURE_TESTSUITE)
     DEPENDS coverage
     USES_TERMINAL VERBATIM)
 
-  add_dependencies(coverage ${PROJECT_NAME} podman_stub ${WEBSHOT_CPP_TESTS})
+  add_dependencies(coverage ${PROJECT_NAME} ${WEBSHOT_CPP_TESTS})
 endif()

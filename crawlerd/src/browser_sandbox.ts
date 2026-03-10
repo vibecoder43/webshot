@@ -122,7 +122,8 @@ export function buildChromiumArgs(options: Options): string[] {
   return [
     "--headless=new",
     "--disable-gpu",
-    "--in-process-gpu",
+    "--disable-gpu-compositing",
+    "--disable-gpu-rasterization",
     "--disable-dev-shm-usage",
     "--disable-background-networking",
     "--disable-breakpad",
@@ -135,6 +136,8 @@ export function buildChromiumArgs(options: Options): string[] {
     "--no-sandbox",
     "--no-zygote",
     "--ignore-certificate-errors",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
     `--user-data-dir=${options.userDataDir}`,
     `--log-net-log=${options.netlogPath}`,
     "--net-log-capture-mode=IncludeSensitive",

@@ -1,9 +1,5 @@
-#include <cstdlib>
 #include <fstream>
 #include <string>
-
-#include <limits.h>
-#include <unistd.h>
 
 #include <userver/engine/subprocess/process_starter.hpp>
 #include <userver/engine/task/current_task.hpp>
@@ -16,20 +12,6 @@ namespace {
 namespace engine = userver::engine;
 
 using namespace text::literals;
-
-void prependCurrentDirToPath()
-{
-    char cwd[PATH_MAX] = {};
-    ASSERT_NE(::getcwd(cwd, sizeof(cwd)), nullptr);
-
-    const char *oldPath = std::getenv("PATH");
-    std::string newPath(cwd);
-    if (oldPath && *oldPath) {
-        newPath.push_back(':');
-        newPath.append(oldPath);
-    }
-    ASSERT_EQ(::setenv("PATH", newPath.c_str(), 1), 0);
-}
 
 engine::subprocess::ProcessStarter makeStarter()
 {
@@ -71,28 +53,22 @@ UTEST(CrawlerFailure, SummarizeProcessOutputsReadsBoundedStdoutAndStderr)
     EXPECT_EQ(summary->view(), "stdout=\"hello from stdout\", stderr=\"failure on stderr\"");
 }
 
-UTEST(CrawlerFailure, PodmanStubStartWritesProcessOutputForFormatting)
+UTEST(CrawlerFailure, ProcessOutputFormattingIncludesStdoutAndStderrTails)
 {
-    prependCurrentDirToPath();
     auto starter = makeStarter();
     auto tempDir = userver::fs::blocking::TempDirectory::Create();
     const auto stdoutPath = tempDir.GetPath() + "/stdout.log";
     const auto stderrPath = tempDir.GetPath() + "/stderr.log";
 
     auto proc = starter.Exec(
-        "podman",
+        "/bin/sh",
         std::vector<std::string>{
-            "start",
-            "-a",
-            "stub-container",
-            "emit-stdout=proxy denied",
-            "emit-stderr=tls alert",
-            "exit=21",
+            "-c",
+            "printf '%s\\n' 'proxy denied'; printf '%s\\n' 'tls alert' >&2; exit 21",
         },
         engine::subprocess::ExecOptions{
             .stdout_file = stdoutPath,
             .stderr_file = stderrPath,
-            .use_path = true,
         }
     );
     const auto status = proc.Get();

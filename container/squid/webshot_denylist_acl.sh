@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-webshotHost="host.containers.internal"
-webshotPort="8080"
+[[ $# -eq 2 ]] || { echo "usage: $0 <webshot-host> <webshot-port>" >&2; exit 2; }
+
+webshotHost="$1"
+webshotPort="$2"
 webshotPath="/v1/denylist/check"
 
 while IFS= read -r line; do

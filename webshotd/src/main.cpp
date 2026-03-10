@@ -9,6 +9,8 @@
 #include "denylist.hpp"
 #include "denylist_check_handler.hpp"
 #include "disallow_and_purge_handler.hpp"
+#include "docs_handler.hpp"
+#include "docs_static_handler.hpp"
 #include "handler.hpp"
 #include "job_handler.hpp"
 
@@ -44,6 +46,9 @@ int main(int argc, char *argv[])
                               .Append<v1::DisallowAndPurgeHandler>()
                               .Append<v1::DenylistCheckHandler>()
                               .Append<v1::ById>()
+                              .Append<v1::DocsHandler>()
+                              .Append<v1::ScalarAssetsHandler>()
+                              .Append<v1::OpenApiHandler>()
                               .Append<us::server::handlers::ServerMonitor>();
     return us::utils::DaemonMain(argc, argv, component_list);
 }

@@ -83,6 +83,7 @@
     "-DUSERVER_PYTHON_PATH=${pythonPath}"
     "-DUSERVER_DEBUG_INFO_COMPRESSION=z"
     "-DWEBSHOT_ENABLE_SQL_COVERAGE=OFF"
+    "-DWEBSHOT_SCALAR_ASSETS_DIR=${scalarAssets}"
   ];
 
   cmakeBool = value:
@@ -193,7 +194,7 @@
 
       dontStrip = true;
 
-      nativeBuildInputs = buildDeps.native ++ [toolchain.cc pkgsWithOverlay.makeWrapper];
+      nativeBuildInputs = buildDeps.native ++ [toolchain.cc];
       buildInputs =
         [
           userverPkg
@@ -205,11 +206,6 @@
       cmakeFlags = mkOutputCmakeFlags {
         inherit userverPkg variant;
       };
-
-      postFixup = ''
-        wrapProgram "$out/bin/webshotd" \
-          --prefix PATH : "${lib.makeBinPath [pkgsWithOverlay.podman]}"
-      '';
     };
 
   mkClangdConfig = name: buildDir:
@@ -247,45 +243,26 @@
     '';
   };
 
-  squidImageDev = import ../container/squid/squid.nix {
-    pkgs = pkgsWithOverlay;
-    tag = "dev";
+  scalarAssetsVersion = "1.48.2";
+  scalarAssets = pkgsWithOverlay.stdenvNoCC.mkDerivation {
+    pname = "scalar-assets";
+    version = scalarAssetsVersion;
+    src = pkgsWithOverlay.fetchurl {
+      url = "https://registry.npmjs.org/@scalar/api-reference/-/api-reference-${scalarAssetsVersion}.tgz";
+      hash = "sha512-9u+SXr1aNK0Rfv/hdOWU3ACACn/L472jo5aZGR1NidyIc9eeDlXPGYSfGmOiDDKM1VIs53PjLzojLvo/o4mNfg==";
+    };
+    nativeBuildInputs = with pkgsWithOverlay; [gnutar gzip];
+    dontConfigure = true;
+    dontBuild = true;
+    unpackPhase = ''
+      tar -xzf "$src"
+    '';
+    installPhase = ''
+      mkdir -p "$out"
+      cp package/dist/browser/standalone.js "$out/api-reference.js"
+      cp package/dist/style.css "$out/style.css"
+    '';
   };
-
-  squidImageProdlike = import ../container/squid/squid.nix {
-    pkgs = pkgsWithOverlay;
-    tag = "prodlike";
-  };
-
-  squidLoadPreamble = ''
-    set -euo pipefail
-
-    root="$PWD"
-    while [[ "$root" != "/" && ! -f "$root/devenv.nix" ]]; do
-      root="$(dirname "$root")"
-    done
-    [[ -f "$root/devenv.nix" ]] || { echo "Failed to find repo root (expected devenv.nix in a parent directory)" >&2; exit 2; }
-
-    # shellcheck source=shell/lib.sh
-    . "$root/shell/lib.sh"
-    need devenv
-    need podman
-    cd -- "$root"
-  '';
-
-  squidLoadDev = pkgsWithOverlay.writeShellScriptBin "squid_load_dev" ''
-    ${squidLoadPreamble}
-    img="$(devenv build -q outputs.squidImageDev)"
-    [[ -n "$img" ]] || { echo "Failed to build squidImageDev" >&2; exit 2; }
-    exec podman load --quiet -i "$img"
-  '';
-
-  squidLoadProdlike = pkgsWithOverlay.writeShellScriptBin "squid_load_prodlike" ''
-    ${squidLoadPreamble}
-    img="$(devenv build -q outputs.squidImageProdlike)"
-    [[ -n "$img" ]] || { echo "Failed to build squidImageProdlike" >&2; exit 2; }
-    exec podman load --quiet -i "$img"
-  '';
 in {
   inherit
     buildDeps
@@ -300,10 +277,7 @@ in {
     mkWebshotOutput
     pkgsWithOverlay
     python
-    squidImageDev
-    squidImageProdlike
-    squidLoadDev
-    squidLoadProdlike
+    scalarAssets
     testLibs
     toolchain
     treefmtExcludesFromGitignore

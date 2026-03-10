@@ -8,7 +8,7 @@ from pathlib import Path
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: python -m compose_tools.check_crawlerd_ready <socket-path>", file=sys.stderr)
+        print("usage: python -m s6.check_crawlerd_ready <socket-path>", file=sys.stderr)
         return 2
 
     socket_path = Path(sys.argv[1])

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from compose_tools.common import ToolError, die
+from s6.common import ToolError, die
 
 _s3_http_timeout_sec = 2.0
 
