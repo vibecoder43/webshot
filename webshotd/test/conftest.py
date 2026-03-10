@@ -176,16 +176,6 @@ def patch_crawlerd_config(crawlerd_socket_path: pathlib.Path):
 
 
 @pytest.fixture(scope="session")
-def patch_dns_hosts_config(service_source_dir: pathlib.Path):
-    dns_hosts_path = service_source_dir / "config" / "dns_hosts.dev"
-
-    def _patch(_config_yaml, config_vars):
-        config_vars["dns-hosts-path"] = str(dns_hosts_path)
-
-    return _patch
-
-
-@pytest.fixture(scope="session")
 def service_config_path_temp(service_tmpdir, _service_config_hooked) -> pathlib.Path:
     dst_path = service_tmpdir / "config.yaml"
 
@@ -291,4 +281,4 @@ def extra_client_deps(pg_gate_ready, s3_gate_ready, crawlerd_ready):
     return [pg_gate_ready, s3_gate_ready, crawlerd_ready]
 
 
-USERVER_CONFIG_HOOKS = ["patch_s3_config", "patch_crawlerd_config", "patch_dns_hosts_config"]
+USERVER_CONFIG_HOOKS = ["patch_s3_config", "patch_crawlerd_config"]

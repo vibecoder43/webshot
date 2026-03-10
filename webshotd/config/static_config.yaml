@@ -34,8 +34,6 @@ components_manager:
       s3_timeout_ms: 30000
     dns-client:
       fs-task-processor: fs-task-processor
-      hosts-file-path: $dns-hosts-path
-      hosts-file-path#fallback: config/dns_hosts.empty
     testsuite-support: {}
     server:
       listener:
