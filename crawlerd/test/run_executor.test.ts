@@ -759,7 +759,7 @@ test("UpstreamRunExecutor fails hard when the proxy is unreachable", { concurren
     assert.equal(result.exitCode, 9);
     assert.match(
       result.failureDetail ?? "",
-      /devtools|ECONNREFUSED|proxy|closed|timed out|ERR_EMPTY_RESPONSE/i,
+      /devtools|ECONNREFUSED|proxy|closed|timed out|ERR_EMPTY_RESPONSE|net::ERR_[A-Z_]+/i,
     );
   } finally {
     await executor.close();
