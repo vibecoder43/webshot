@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { accessSync, existsSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -156,6 +156,9 @@ type LaunchOptions = {
 type BrowserPaths = {
   rootDir: string;
   userDataDir: string;
+  xdgConfigHome: string;
+  xdgCacheHome: string;
+  crashpadDir: string;
   proxySocketPath: string;
   cdpSocketPath: string;
   netlogPath: string;
@@ -336,6 +339,9 @@ function spawnBwrapBrowser(options: LaunchOptions, paths: BrowserPaths): ChildPr
     "--bind", paths.devNullPath, "/dev/null",
     "--setenv", "HOME", paths.rootDir,
     "--setenv", "TMPDIR", "/tmp",
+    "--setenv", "XDG_CONFIG_HOME", paths.xdgConfigHome,
+    "--setenv", "XDG_CACHE_HOME", paths.xdgCacheHome,
+    "--setenv", "BREAKPAD_DUMP_LOCATION", paths.crashpadDir,
     "--chdir", paths.rootDir,
     process.execPath,
     ...helperArgs,
@@ -398,11 +404,22 @@ function getHelperExecArgv(helperPath: string): string[] {
 
 async function createBrowserPaths(): Promise<BrowserPaths> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "crawlerd-browser-"));
+  const userDataDir = path.join(rootDir, "profile");
+  const xdgConfigHome = path.join(rootDir, "xdg-config");
+  const xdgCacheHome = path.join(rootDir, "xdg-cache");
+  const crashpadDir = path.join(rootDir, "crashpad");
   const devNullPath = path.join(rootDir, "devnull");
+  await mkdir(userDataDir, { recursive: true });
+  await mkdir(xdgConfigHome, { recursive: true });
+  await mkdir(xdgCacheHome, { recursive: true });
+  await mkdir(crashpadDir, { recursive: true });
   await writeFile(devNullPath, "");
   return {
     rootDir,
-    userDataDir: path.join(rootDir, "profile"),
+    userDataDir,
+    xdgConfigHome,
+    xdgCacheHome,
+    crashpadDir,
     proxySocketPath: path.join(rootDir, "proxy.sock"),
     cdpSocketPath: path.join(rootDir, "cdp.sock"),
     netlogPath: path.join(rootDir, "netlog.json"),
