@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "deadline_utils.hpp"
 #include "denylist.hpp"
+#include "integers.hpp"
 #include "link.hpp"
 #include "prefix_utils.hpp"
 
@@ -35,7 +36,7 @@ DenylistCheckHandler::DenylistCheckHandler(
 )
     : HttpHandlerBase(config, context), config(context.FindComponent<Config>()),
       denylist(context.FindComponent<Denylist>()),
-      requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
 
@@ -67,7 +68,7 @@ std::string DenylistCheckHandler::HandleRequestThrow(
     auto &response = request.GetHttpResponse();
 
     try {
-        const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+        const auto handlerTimeout = toMilliseconds(requestTimeoutMs);
         auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
         engine::current_task::SetDeadline(finalDeadline);
 

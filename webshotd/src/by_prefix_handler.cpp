@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
+#include "integers.hpp"
 #include "link.hpp"
 #include "text.hpp"
 
@@ -36,7 +37,7 @@ ByPrefixHandler::ByPrefixHandler(
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<Crud>()),
       cfg(context.FindComponent<Config>()),
-      requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
 
@@ -65,7 +66,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
     using us::http::content_type::kApplicationJson;
     auto &response = request.GetHttpResponse();
     try {
-        const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+        const auto handlerTimeout = toMilliseconds(requestTimeoutMs);
         auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
         engine::current_task::SetDeadline(finalDeadline);
 

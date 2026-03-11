@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cstdint>
+#include "integers.hpp"
+
 #include <string_view>
 
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -32,6 +33,6 @@ public:
 
 private:
     Crud &crud;
-    const int64_t requestTimeoutMs;
+    const i64 requestTimeoutMs;
 };
 }; // namespace v1

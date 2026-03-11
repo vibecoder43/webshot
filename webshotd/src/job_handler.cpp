@@ -6,6 +6,7 @@
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
+#include "integers.hpp"
 #include "text.hpp"
 
 #include <chrono>
@@ -32,7 +33,7 @@ JobHandler::JobHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<Crud>()),
-      requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
 
@@ -61,7 +62,7 @@ std::string JobHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     try {
-        const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+        const auto handlerTimeout = toMilliseconds(requestTimeoutMs);
         auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
         engine::current_task::SetDeadline(finalDeadline);
 

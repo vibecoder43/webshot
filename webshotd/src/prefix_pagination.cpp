@@ -5,9 +5,9 @@
 
 #include "prefix_pagination.hpp"
 
+#include "integers.hpp"
 #include "schema/webshot.hpp"
 #include "text.hpp"
-#include "utils.hpp"
 
 #include <userver/utils/assert.hpp>
 
@@ -51,8 +51,8 @@ namespace v1::crud {
     UINVARIANT(!s.empty(), "cannot be empty");
     auto view = s.view();
     std::string bytes(view);
-    for (int64_t i = v1::utils::ssize(bytes) - 1; i >= 0; i--) {
-        size_t j = static_cast<size_t>(i);
+    for (i64 i = safeSize(bytes) - 1_i64; i >= 0_i64; i--) {
+        const auto j = toSize(i);
         unsigned char c = static_cast<unsigned char>(bytes[j]);
         if (c < 0xFF) {
             bytes[j] = static_cast<char>(c + 1);

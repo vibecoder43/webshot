@@ -7,6 +7,7 @@
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
+#include "integers.hpp"
 #include "link.hpp"
 #include "prefix_utils.hpp"
 #include "text.hpp"
@@ -34,7 +35,7 @@ DisallowAndPurgeHandler::DisallowAndPurgeHandler(
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<Crud>()),
       config(context.FindComponent<Config>()),
-      requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
 
@@ -62,7 +63,7 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     try {
-        const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+        const auto handlerTimeout = toMilliseconds(requestTimeoutMs);
         auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
         engine::current_task::SetDeadline(finalDeadline);
     } catch (const std::exception &e) {

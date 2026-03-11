@@ -1,6 +1,7 @@
 #include "docs_handler.hpp"
 
 #include "deadline_utils.hpp"
+#include "integers.hpp"
 
 #include <chrono>
 
@@ -16,7 +17,8 @@ namespace engine = userver::engine;
 DocsHandler::DocsHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), requestTimeoutMs(config["request-timeout-ms"].As<int64_t>())
+    : HttpHandlerBase(config, context),
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
 
@@ -38,7 +40,7 @@ std::string DocsHandler::HandleRequestThrow(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
-    const auto handlerTimeout = std::chrono::milliseconds(requestTimeoutMs);
+    const auto handlerTimeout = toMilliseconds(requestTimeoutMs);
     auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
     engine::current_task::SetDeadline(finalDeadline);
 

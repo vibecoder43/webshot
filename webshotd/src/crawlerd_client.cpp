@@ -1,5 +1,6 @@
 #include "crawlerd_client.hpp"
 
+#include "integers.hpp"
 #include "schema/crawlerd.hpp"
 #include "text.hpp"
 
@@ -147,7 +148,7 @@ buildAttemptSummary(const dto::CrawlerRunResult &result, bool waczExists)
 
 CrawlerdClient::CrawlerdClient(
     us::clients::http::Client &httpClientIn, String baseUrlIn, String socketPathIn,
-    int64_t runTimeoutSecIn
+    i64 runTimeoutSecIn
 )
     : httpClient(httpClientIn), baseUrl(std::move(baseUrlIn)), socketPath(std::move(socketPathIn)),
       runTimeoutSec(runTimeoutSecIn)
@@ -156,16 +157,16 @@ CrawlerdClient::CrawlerdClient(
 
 CrawlerRunArtifacts CrawlerdClient::run(const String &seedUrl) const
 {
-    constexpr int64_t kMillisPerSecond = 1000;
+    constexpr auto kMillisPerSecond = 1000_i64;
 
     dto::CrawlerRunRequest requestBody;
     requestBody.url = std::string(seedUrl.view());
     const auto jobTimeoutMs = runTimeoutSec * kMillisPerSecond;
     UINVARIANT(
-        jobTimeoutMs <= std::numeric_limits<int>::max(),
+        jobTimeoutMs <= i64(std::numeric_limits<int>::max()),
         "crawlerd timeout_ms exceeds supported range"
     );
-    requestBody.timeout_ms = static_cast<int>(jobTimeoutMs);
+    requestBody.timeout_ms = toNative(i32(jobTimeoutMs));
 
     auto requestJson = json::ToString(json::ValueBuilder(requestBody).ExtractValue());
     auto url = fmt::format("{}/run", baseUrl);
@@ -180,7 +181,7 @@ CrawlerRunArtifacts CrawlerdClient::run(const String &seedUrl) const
                               .post(std::move(url), std::move(requestJson))
                               .headers(headers)
                               .unix_socket_path(socketPathString.c_str())
-                              .timeout(std::chrono::seconds(runTimeoutSec))
+                              .timeout(toSeconds(runTimeoutSec))
                               .follow_redirects(false)
                               .SetDestinationMetricName("crawlerd.run")
                               .perform();
