@@ -92,7 +92,7 @@
     "-DUSERVER_PYTHON_PATH=${pythonPath}"
     "-DUSERVER_DEBUG_INFO_COMPRESSION=z"
     "-DWEBSHOT_ENABLE_SQL_COVERAGE=OFF"
-    "-DWEBSHOT_SCALAR_ASSETS_DIR=${scalarAssets}"
+    "-DWEBSHOT_RAPIDOC_ASSETS_DIR=${rapidocAssets}"
   ];
 
   cmakeBool = value:
@@ -252,13 +252,13 @@
     '';
   };
 
-  scalarAssetsVersion = "1.48.2";
-  scalarAssets = pkgsWithOverlay.stdenvNoCC.mkDerivation {
-    pname = "scalar-assets";
-    version = scalarAssetsVersion;
+  rapidocAssetsVersion = "9.3.8";
+  rapidocAssets = pkgsWithOverlay.stdenvNoCC.mkDerivation {
+    pname = "rapidoc-assets";
+    version = rapidocAssetsVersion;
     src = pkgsWithOverlay.fetchurl {
-      url = "https://registry.npmjs.org/@scalar/api-reference/-/api-reference-${scalarAssetsVersion}.tgz";
-      hash = "sha512-9u+SXr1aNK0Rfv/hdOWU3ACACn/L472jo5aZGR1NidyIc9eeDlXPGYSfGmOiDDKM1VIs53PjLzojLvo/o4mNfg==";
+      url = "https://registry.npmjs.org/rapidoc/-/rapidoc-${rapidocAssetsVersion}.tgz";
+      hash = "sha512-eCYEbr1Xr8OJZvVCw8SXl9zBCRoLJbhNGuG5IZTHq/RWAOq/O4MafUCuFEyZHsrhLrlUcGZMa64pyhpib8fQKQ==";
     };
     nativeBuildInputs = with pkgsWithOverlay; [gnutar gzip];
     dontConfigure = true;
@@ -268,8 +268,7 @@
     '';
     installPhase = ''
       mkdir -p "$out"
-      cp package/dist/browser/standalone.js "$out/api-reference.js"
-      cp package/dist/style.css "$out/style.css"
+      cp package/dist/rapidoc-min.js "$out/rapidoc-min.js"
     '';
   };
 in {
@@ -289,7 +288,7 @@ in {
     nodejs
     pkgsWithOverlay
     python
-    scalarAssets
+    rapidocAssets
     testLibs
     toolchain
     treefmtExcludesFromGitignore

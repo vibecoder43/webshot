@@ -30,6 +30,24 @@ pytest_plugins = [
 psycopg2.extras.register_uuid()
 
 
+def _require_cmake_cache_string(path: pathlib.Path, key: str) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError as e:
+        raise RuntimeError(f"missing CMake cache: {path}") from e
+
+    prefix = f"{key}:"
+    for line in lines:
+        if not line.startswith(prefix):
+            continue
+        _, value = line.split("=", 1)
+        if value:
+            return value
+        break
+
+    raise RuntimeError(f"missing CMake cache entry {key!r} in {path}")
+
+
 @pytest.fixture(scope="session")
 def service_port() -> int:
     return _SERVICE_PORT
@@ -176,11 +194,20 @@ def patch_crawlerd_config(crawlerd_socket_path: pathlib.Path):
 
 
 @pytest.fixture(scope="session")
-def service_config_path_temp(service_tmpdir, _service_config_hooked) -> pathlib.Path:
+def service_config_path_temp(
+    service_tmpdir,
+    _service_config_hooked,
+    service_binary: pathlib.Path,
+    service_source_dir: pathlib.Path,
+) -> pathlib.Path:
     dst_path = service_tmpdir / "config.yaml"
-
     config_yaml = dict(_service_config_hooked.config_yaml)
     config_vars = dict(_service_config_hooked.config_vars)
+    cmake_cache_path = service_binary.parent / "CMakeCache.txt"
+    config_vars["rapidoc_assets_dir"] = _require_cmake_cache_string(
+        cmake_cache_path, "WEBSHOT_RAPIDOC_ASSETS_DIR"
+    )
+    config_vars["openapi_dir"] = str(service_source_dir.parent / "schema")
 
     components = config_yaml["components_manager"]["components"]
     if "http-client" in components:

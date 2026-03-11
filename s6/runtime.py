@@ -116,6 +116,22 @@ def _read_yaml(path: Path) -> dict[str, object]:
     return raw
 
 
+def _require_cmake_cache_string(path: Path, key: str) -> str:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            prefix = f"{key}:"
+            if not line.startswith(prefix):
+                continue
+            _, value = line.split("=", 1)
+            if value:
+                return value
+            break
+    except FileNotFoundError as e:
+        raise ToolError(message=f"Missing CMake cache: {path}", exit_code=2) from e
+
+    die(f"Missing required CMake cache entry '{key}' in {path}", exit_code=2)
+
+
 def _require_yaml_path(raw: dict[str, object], key: str, *, source: Path) -> Path:
     value = raw.get(key)
     if not isinstance(value, str) or not value:
@@ -505,6 +521,20 @@ def _render_service_tree(ctx: RuntimeContext, *, cpu_limit: str) -> list[Service
     ld_library_path = _shell_quote(ctx.runtime_ld_library_path)
     cpu_limit_quoted = _shell_quote(cpu_limit)
     deploy_vcpu_limit = _shell_quote(ctx.deploy_vcpu_limit)
+    cmake_cache_path = ctx.binary_path.parent / "CMakeCache.txt"
+    rapidoc_assets_dir = _require_cmake_cache_string(cmake_cache_path, "WEBSHOT_RAPIDOC_ASSETS_DIR")
+    config_vars_override_path = ctx.state_dir / "webshotd-config-vars-override.yaml"
+    _write_text(
+        config_vars_override_path,
+        yaml.safe_dump(
+            {
+                "rapidoc_assets_dir": rapidoc_assets_dir,
+                "openapi_dir": str(ctx.repo_root / "schema"),
+            },
+            sort_keys=True,
+        ),
+    )
+    config_vars_override_path_quoted = _shell_quote(config_vars_override_path)
 
     postgres_service = ctx.scan_dir / "postgres"
     _write_executable(
@@ -666,7 +696,8 @@ def _render_service_tree(ctx: RuntimeContext, *, cpu_limit: str) -> list[Service
             f"DEPLOY_VCPU_LIMIT={deploy_vcpu_limit} "
             f"{binary_path} --config "
             f"{_shell_quote(ctx.repo_root / 'webshotd/config/static_config.yaml')} "
-            f"--config_vars {config_vars_path}\n"
+            f"--config_vars {config_vars_path} "
+            f"--config_vars_override {config_vars_override_path_quoted}\n"
         ),
     )
     return _service_specs(ctx)

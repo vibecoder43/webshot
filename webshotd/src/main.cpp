@@ -10,14 +10,15 @@
 #include "denylist_check_handler.hpp"
 #include "disallow_and_purge_handler.hpp"
 #include "docs_handler.hpp"
-#include "docs_static_handler.hpp"
 #include "handler.hpp"
 #include "job_handler.hpp"
 
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component.hpp>
+#include <userver/components/fs_cache.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
 #include <userver/congestion_control/component.hpp>
+#include <userver/server/handlers/http_handler_static.hpp>
 #include <userver/server/handlers/server_monitor.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/storages/secdist/component.hpp>
@@ -47,8 +48,10 @@ int main(int argc, char *argv[])
                               .Append<v1::DenylistCheckHandler>()
                               .Append<v1::ById>()
                               .Append<v1::DocsHandler>()
-                              .Append<v1::ScalarAssetsHandler>()
-                              .Append<v1::OpenApiHandler>()
+                              .Append<us::components::FsCache>("rapidoc_assets_cache")
+                              .Append<us::components::FsCache>("openapi_cache")
+                              .Append<us::server::handlers::HttpHandlerStatic>("rapidoc_assets")
+                              .Append<us::server::handlers::HttpHandlerStatic>("openapi_static")
                               .Append<us::server::handlers::ServerMonitor>();
     return us::utils::DaemonMain(argc, argv, component_list);
 }

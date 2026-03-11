@@ -17,7 +17,7 @@ us::yaml_config::Schema DocsHandler::GetStaticConfigSchema()
 {
     return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
 type: object
-description: Scalar docs handler
+description: RapiDoc docs handler
 additionalProperties: false
 properties: {}
 )");
@@ -36,11 +36,10 @@ std::string DocsHandler::HandleRequestThrow(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Webshot API</title>
-  <link rel="stylesheet" href="/scalar-assets/style.css">
+  <script src="/rapidoc-assets/rapidoc-min.js"></script>
 </head>
 <body>
-  <script id="api-reference" data-url="/openapi/webshot.yaml"></script>
-  <script src="/scalar-assets/api-reference.js"></script>
+  <rapi-doc spec-url="/openapi/webshot.yaml"></rapi-doc>
 </body>
 </html>
 )";
