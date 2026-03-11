@@ -11,7 +11,7 @@ export function buildPagesJsonl(exchange: CapturedExchange): Uint8Array {
       loadState: exchange.statusCode >= 200 && exchange.statusCode < 400 ? 2 : 0,
       mime: exchange.headers["content-type"],
       seed: true,
-      ts: new Date().toISOString(),
+      ts: exchange.timestamp,
       status: exchange.statusCode,
       depth: 0,
     })}\n`,

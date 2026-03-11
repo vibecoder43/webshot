@@ -46,6 +46,28 @@ test("UpstreamRunExecutor captures through Chromium and returns an in-memory WAC
     assert.match(Buffer.from(result.artifacts.stdoutLog).toString("utf8"), /browser_pid=\d+/);
     assert.match(Buffer.from(result.artifacts.stdoutLog).toString("utf8"), /reused_browser=false/);
     assert.equal(Buffer.from(result.artifacts.stderrLog).toString("utf8"), "");
+    const pagesLines = Buffer.from(result.artifacts.pages ?? []).toString("utf8").trim().split("\n");
+    assert.equal(pagesLines.length, 1);
+    const seedPage = JSON.parse(pagesLines[0]!) as {
+      id: string;
+      url: string;
+      title: string;
+      loadState: number;
+      mime: string;
+      seed: boolean;
+      ts: string;
+      status: number;
+      depth: number;
+    };
+    assert.match(seedPage.id, /^[0-9a-f-]{36}$/);
+    assert.equal(seedPage.url, `http://127.0.0.1:${originPort}/seed`);
+    assert.equal(seedPage.title, "Seed Title");
+    assert.equal(seedPage.loadState, 2);
+    assert.equal(seedPage.mime, "text/html; charset=utf-8");
+    assert.equal(seedPage.seed, true);
+    assert.match(seedPage.ts, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(seedPage.status, 200);
+    assert.equal(seedPage.depth, 0);
 
     const zipEntries = parseStoredZip(Buffer.from(result.artifacts.wacz ?? []));
     assert.deepEqual(
@@ -62,10 +84,12 @@ test("UpstreamRunExecutor captures through Chromium and returns an in-memory WAC
     assert.match(zipEntries["archive/data.warc"].toString("utf8"), /WARC\/1.1/);
     assert.match(zipEntries["archive/data.warc"].toString("utf8"), /Seed Title|HTTP\/1.1 200/);
     assert.match(zipEntries["pages/pages.jsonl"].toString("utf8"), /"url":"http:\/\/127\.0\.0\.1:/);
+    assert.match(zipEntries["pages/pages.jsonl"].toString("utf8"), /"format":"json-pages-1.0"/);
 
     const cdxEntries = parseCdxj(zipEntries["indexes/index.cdxj"].toString("utf8"));
     const seedEntry = cdxEntries.find((entry) => entry.url === `http://127.0.0.1:${originPort}/seed`);
     assert.ok(seedEntry);
+    assert.equal(seedEntry.key, `http://127.0.0.1:${originPort}/seed`);
     assert.equal(seedEntry.data.status, "200");
     assert.ok(Number.parseInt(seedEntry.data.length, 10) > 0);
 
@@ -843,6 +867,7 @@ function getBrowserPid(result: { artifacts: { stdoutLog: Uint8Array } }): number
 }
 
 function parseCdxj(text: string): Array<{
+  key: string;
   url: string;
   timestamp: string;
   data: {
@@ -859,23 +884,25 @@ function parseCdxj(text: string): Array<{
     const secondSpace = line.indexOf(" ", firstSpace + 1);
     assert.ok(firstSpace > 0);
     assert.ok(secondSpace > firstSpace);
-    const url = line.slice(0, firstSpace);
+    const key = line.slice(0, firstSpace);
     const timestamp = line.slice(firstSpace + 1, secondSpace);
     const payload = line.slice(secondSpace + 1);
-    assert.ok(url);
+    assert.ok(key);
     assert.ok(timestamp);
     assert.ok(payload);
+    const data = JSON.parse(payload) as {
+      url: string;
+      status: string;
+      mime: string;
+      filename: string;
+      length: string;
+      offset: string;
+    };
     return {
-      url,
+      key,
+      url: data.url,
       timestamp,
-      data: JSON.parse(payload) as {
-        url: string;
-        status: string;
-        mime: string;
-        filename: string;
-        length: string;
-        offset: string;
-      },
+      data,
     };
   });
 }
