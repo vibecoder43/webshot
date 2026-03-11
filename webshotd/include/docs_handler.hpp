@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -25,6 +26,9 @@ public:
     std::string HandleRequestThrow(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
+
+private:
+    const int64_t requestTimeoutMs;
 };
 
 } // namespace v1

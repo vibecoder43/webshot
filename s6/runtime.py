@@ -32,6 +32,7 @@ _start_timeout_sec = 120.0
 _stop_timeout_sec = 15.0
 _cmd_timeout_sec = 30.0
 _poll_interval_sec = 0.2
+_logs_wait_timeout_sec = 5.0
 _webshotd_ready_url = "http://127.0.0.1:8081/service/monitor?format=json"
 
 
@@ -835,9 +836,40 @@ def _show_service_status(spec: ServiceSpec) -> None:
     print(f"{spec.name}: {proc.stdout.strip()}")
 
 
+def _up_task_name(ctx: RuntimeContext) -> str:
+    return f"webshot:{ctx.mode}Up"
+
+
+def _wait_for_log_files(ctx: RuntimeContext) -> list[Path]:
+    deadline = time.monotonic() + _logs_wait_timeout_sec
+    missing = [spec.log_file for spec in _service_specs(ctx) if not spec.log_file.is_file()]
+    while missing and time.monotonic() < deadline:
+        time.sleep(_poll_interval_sec)
+        missing = [path for path in missing if not path.is_file()]
+    return missing
+
+
+def _require_logs_ready(ctx: RuntimeContext) -> list[Path]:
+    if not _supervisor_running(ctx):
+        die(
+            f"s6: not running; run {_up_task_name(ctx)} first before reading logs",
+            exit_code=1,
+        )
+
+    missing = _wait_for_log_files(ctx)
+    if missing:
+        missing_paths = "\n".join(str(path) for path in missing)
+        die(
+            f"s6: missing expected log files while supervised:\n{missing_paths}",
+            exit_code=1,
+        )
+    return [spec.log_file for spec in _service_specs(ctx)]
+
+
 def _spawn_logs(ctx: RuntimeContext) -> list[subprocess.Popen[str]]:
     need_cmd("tail")
-    log_files = [str(spec.log_file) for spec in _service_specs(ctx)]
+    log_files = [str(path) for path in _require_logs_ready(ctx)]
+    print(f"s6: attaching {ctx.mode} logs")
     return [
         subprocess.Popen(
             ["tail", "-n", "+1", "-F", *log_files],

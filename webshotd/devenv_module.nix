@@ -154,9 +154,17 @@ in {
 
   tasks."webshot:devDown" = mkRuntimeTask "down" "dev";
 
-  tasks."webshot:devStatus" = mkRuntimeTask "status" "dev";
+  tasks."webshot:devStatus" =
+    (mkRuntimeTask "status" "dev")
+    // {
+      showOutput = true;
+    };
 
-  tasks."webshot:devLogs" = mkRuntimeTask "logs" "dev";
+  tasks."webshot:devLogs" =
+    (mkRuntimeTask "logs" "dev")
+    // {
+      showOutput = true;
+    };
 
   tasks."webshot:devTest" = mkTestTask "dev";
 
@@ -166,7 +174,15 @@ in {
 
   tasks."webshot:prodlikeDown" = mkRuntimeTask "down" "prodlike";
 
-  tasks."webshot:prodlikeStatus" = mkRuntimeTask "status" "prodlike";
+  tasks."webshot:prodlikeStatus" =
+    (mkRuntimeTask "status" "prodlike")
+    // {
+      showOutput = true;
+    };
 
-  tasks."webshot:prodlikeLogs" = mkRuntimeTask "logs" "prodlike";
+  tasks."webshot:prodlikeLogs" =
+    (mkRuntimeTask "logs" "prodlike")
+    // {
+      showOutput = true;
+    };
 }

@@ -110,6 +110,8 @@ components_manager:
       path: /rapidoc
       method: GET
       task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
     rapidoc_assets_cache:
       dir: $rapidoc_assets_dir
       update-period: 0s
@@ -118,6 +120,7 @@ components_manager:
       path: /rapidoc-assets/*
       method: GET
       task_processor: main-task-processor
+      max_request_size: *max-data-per-request
       fs-cache-component: rapidoc_assets_cache
       directory-file: ""
       not-found-file: ""
@@ -130,6 +133,7 @@ components_manager:
       path: /openapi/*
       method: GET
       task_processor: main-task-processor
+      max_request_size: *max-data-per-request
       fs-cache-component: openapi_cache
       directory-file: ""
       not-found-file: ""
