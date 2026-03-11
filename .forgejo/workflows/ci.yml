@@ -25,11 +25,9 @@ jobs:
           bash .forgejo/devenv_ci.sh tasks run crawlerd:test
           bash .forgejo/devenv_ci.sh tasks run crawlerd:openapi
           git diff --exit-code -- schema/crawlerd.yaml
-          bash .forgejo/devenv_ci.sh tasks run webshot:buildSan
-          bash .forgejo/devenv_ci.sh tasks run webshot:infraDevUp
-          timeout --signal=TERM --kill-after=30s 30m bash .forgejo/devenv_ci.sh tasks run webshot:testSan
+          bash .forgejo/devenv_ci.sh tasks run webshot:devTest
       - name: Cleanup infra
         if: always()
         run: |
           set -euo pipefail
-          timeout --signal=TERM --kill-after=30s 5m bash .forgejo/devenv_ci.sh tasks run webshot:infraDevDown || true
+          bash .forgejo/devenv_ci.sh tasks run webshot:devDown || true
