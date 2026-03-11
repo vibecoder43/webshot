@@ -26,10 +26,31 @@
 
   runtimeLdLibraryPath = common.lib.makeLibraryPath common.testLibs;
 
-  mkBuildTaskForMode = mode: let
+  mkCrawlerdTaskCommand = command: ''
+    cd ${common.lib.escapeShellArg common.crawlerd.root}
+    ${command}
+    cd ${common.lib.escapeShellArg config.devenv.root}
+  '';
+
+  mkWebshotBuildCommandForMode = mode: let
     cfg = modeConfigs.${mode};
-  in
-    common.mkBuildTask cfg.buildDir cfg.clangdConfig cfg.buildVariant;
+  in ''
+    ${common.mkConfigureTaskCommands cfg.buildDir cfg.clangdConfig cfg.buildVariant}
+    cmake --build ${common.lib.escapeShellArg cfg.buildDir}
+  '';
+
+  mkBuildCommandsForMode = mode: ''
+    ${mkCrawlerdTaskCommand common.crawlerd.buildCommand}
+    ${mkWebshotBuildCommandForMode mode}
+  '';
+
+  mkBuildTaskForMode = mode: {
+    cwd = config.devenv.root;
+    exec = ''
+      set -euo pipefail
+      ${mkBuildCommandsForMode mode}
+    '';
+  };
 
   mkRuntimeCommand = action: mode: let
     cfg = modeConfigs.${mode};
@@ -46,26 +67,26 @@
     exec = mkRuntimeCommand action mode;
   };
 
-  mkUpTask = mode: let
-    buildTask = mkBuildTaskForMode mode;
-  in {
+  mkUpTask = mode: {
     cwd = config.devenv.root;
     exec = ''
-      ${buildTask.exec}
+      set -euo pipefail
+      ${mkBuildCommandsForMode mode}
       ${mkRuntimeCommand "up" mode}
     '';
   };
 
   mkTestTask = mode: let
     cfg = modeConfigs.${mode};
-    buildTask = mkBuildTaskForMode mode;
     upCmd = mkRuntimeCommand "up" mode;
     downCmd = mkRuntimeCommand "down" mode;
   in {
     cwd = config.devenv.root;
     exec = ''
       set -euo pipefail
-      ${buildTask.exec}
+      ${mkCrawlerdTaskCommand common.crawlerd.buildCommand}
+      ${mkCrawlerdTaskCommand common.crawlerd.testCommand}
+      ${mkWebshotBuildCommandForMode mode}
       cleanup() {
         ${downCmd}
       }

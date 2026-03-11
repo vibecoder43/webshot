@@ -13,6 +13,7 @@
   system = pkgsWithOverlay.stdenv.system;
 
   python = pkgsWithOverlay.python3;
+  nodejs = pkgsWithOverlay.nodejs_20;
   chaoticPython = python.withPackages (ps: [
     ps.jinja2
     ps.pyyaml
@@ -50,6 +51,14 @@
     tidy = "${config.devenv.root}/build/webshotd/tidy";
     cov = "${config.devenv.root}/build/webshotd/cov";
     release = "${config.devenv.root}/build/webshotd/release";
+  };
+
+  crawlerd = rec {
+    root = "${config.devenv.root}/crawlerd";
+    buildCommand = "npm run build";
+    checkCommand = "npm run check";
+    testCommand = "npm test";
+    openapiCommand = "npm run export-openapi";
   };
 
   nixGitignore = pkgsWithOverlay.nix-gitignore;
@@ -270,11 +279,14 @@ in {
     buildDirs
     chaoticPython
     clangdConfigs
+    crawlerd
     lib
     llvm21
     mkBuildTask
+    mkConfigureTaskCommands
     mkConfigureTask
     mkWebshotOutput
+    nodejs
     pkgsWithOverlay
     python
     scalarAssets

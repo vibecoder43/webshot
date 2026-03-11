@@ -619,6 +619,18 @@ def _render_service_tree(ctx: RuntimeContext, *, cpu_limit: str) -> list[Service
         crawlerd_waits += _wait_script(
             [sys.executable, "-m", "s6.check_http_ready", "http://127.0.0.1:18080/"]
         )
+    # Run crawlerd from the working tree so every mode sees the local build.
+    need_cmd("node")
+    node_path = shutil.which("node")
+    assert node_path is not None
+    crawlerd_run_command = _shell_join(
+        [
+            node_path,
+            ctx.repo_root / "crawlerd" / "dist" / "src" / "server.js",
+            "--socket-path",
+            ctx.crawlerd_socket_path,
+        ]
+    )
     _write_executable(
         ctx.crawlerd_service_dir / "run",
         (
@@ -626,7 +638,7 @@ def _render_service_tree(ctx: RuntimeContext, *, cpu_limit: str) -> list[Service
             f"exec >>{_shell_quote(ctx.crawlerd_log_file)} 2>&1\n"
             f"cd {repo_root}\n" + crawlerd_waits + "exec "
             f"env CPU_LIMIT={cpu_limit_quoted} DEPLOY_VCPU_LIMIT={deploy_vcpu_limit} "
-            f"crawlerd --socket-path {_shell_quote(ctx.crawlerd_socket_path)}\n"
+            f"{crawlerd_run_command}\n"
         ),
     )
 

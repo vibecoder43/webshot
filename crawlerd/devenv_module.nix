@@ -1,9 +1,11 @@
 {
   pkgs,
   config,
+  inputs,
   ...
 }: let
-  nodejs = pkgs.nodejs_20;
+  common = import ../devenv/lib.nix {inherit pkgs config inputs;};
+  nodejs = common.nodejs;
   npmDeps = pkgs.importNpmLock.buildNodeModules {
     npmRoot = ./.;
     inherit nodejs;
@@ -63,22 +65,22 @@ in {
   '';
 
   tasks."crawlerd:check" = {
-    cwd = "${config.devenv.root}/crawlerd";
-    exec = "npm run check";
+    cwd = common.crawlerd.root;
+    exec = common.crawlerd.checkCommand;
   };
 
   tasks."crawlerd:build" = {
-    cwd = "${config.devenv.root}/crawlerd";
-    exec = "npm run build";
+    cwd = common.crawlerd.root;
+    exec = common.crawlerd.buildCommand;
   };
 
   tasks."crawlerd:test" = {
-    cwd = "${config.devenv.root}/crawlerd";
-    exec = "npm test";
+    cwd = common.crawlerd.root;
+    exec = common.crawlerd.testCommand;
   };
 
   tasks."crawlerd:openapi" = {
-    cwd = "${config.devenv.root}/crawlerd";
-    exec = "npm run export-openapi";
+    cwd = common.crawlerd.root;
+    exec = common.crawlerd.openapiCommand;
   };
 }
