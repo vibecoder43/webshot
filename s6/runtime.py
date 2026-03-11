@@ -71,7 +71,6 @@ class RuntimeContext:
     seaweed_data_dir: Path
     seaweed_log_file: Path
     test_target_dir: Path
-    test_target_config_path: Path
     test_target_log_file: Path
     crawlerd_service_dir: Path
     crawlerd_log_file: Path
@@ -215,7 +214,6 @@ def _build_context(
         seaweed_data_dir=state_dir / "seaweed",
         seaweed_log_file=state_dir / "seaweedfs.log",
         test_target_dir=state_dir / "test-target",
-        test_target_config_path=state_dir / "test-target" / "nginx.conf",
         test_target_log_file=state_dir / "test-target.log",
         crawlerd_service_dir=scan_dir / "crawlerd",
         crawlerd_log_file=state_dir / "crawlerd.log",
@@ -454,31 +452,6 @@ def _bootstrap_postgres(ctx: RuntimeContext) -> None:
         )
 
 
-def _render_test_target_config(ctx: RuntimeContext) -> None:
-    raw = (ctx.repo_root / "nginx/nginx_test.conf").read_text(encoding="utf-8")
-    raw = raw.replace("listen 80;", "listen 18080;")
-    raw = raw.replace("listen 443 ssl;", "listen 18443 ssl;")
-    raw = raw.replace(
-        "/etc/nginx/ssl/test_target.crt",
-        str(ctx.repo_root / "test/pki/test_target.crt"),
-    )
-    raw = raw.replace(
-        "/etc/nginx/ssl/test_target.key",
-        str(ctx.repo_root / "test/pki/test_target.key"),
-    )
-    rendered = (
-        "worker_processes 1;\n"
-        "error_log stderr info;\n"
-        f"pid {_shell_quote(ctx.test_target_dir / 'nginx.pid')};\n"
-        "events {}\n"
-        "http {\n"
-        "    access_log /dev/stdout;\n\n"
-        + "\n".join(f"    {line}" if line else "" for line in raw.splitlines())
-        + "\n}\n"
-    )
-    _write_text(ctx.test_target_config_path, rendered)
-
-
 def _render_proxy_runtime(ctx: RuntimeContext) -> None:
     need_cmd("mitmdump")
     ctx.proxy_confdir.mkdir(parents=True, exist_ok=True)
@@ -632,8 +605,21 @@ def _render_service_tree(ctx: RuntimeContext, *, cpu_limit: str) -> list[Service
                 "#!/bin/sh\n"
                 f"exec >>{_shell_quote(ctx.test_target_log_file)} 2>&1\n"
                 f"cd {repo_root}\n"
-                f"exec nginx -c {_shell_quote(ctx.test_target_config_path)} "
-                "-g 'daemon off;'\n"
+                "exec "
+                + _shell_join(
+                    [
+                        "nginx",
+                        "-e",
+                        "stderr",
+                        "-p",
+                        ctx.repo_root,
+                        "-c",
+                        ctx.repo_root / "nginx" / "nginx_test.conf",
+                        "-g",
+                        f"daemon off; pid {ctx.test_target_dir / 'nginx.pid'};",
+                    ]
+                )
+                + "\n"
             ),
         )
 
@@ -921,7 +907,6 @@ def _prepare_runtime(ctx: RuntimeContext, *, cpu_limit: str) -> list[ServiceSpec
     if ctx.mode == "dev":
         ctx.seaweed_data_dir.mkdir(parents=True, exist_ok=True)
         ctx.test_target_dir.mkdir(parents=True, exist_ok=True)
-        _render_test_target_config(ctx)
     ctx.crawlerd_socket_path.parent.mkdir(parents=True, exist_ok=True)
     ctx.crawlerd_socket_path.unlink(missing_ok=True)
     return _render_service_tree(ctx, cpu_limit=cpu_limit)
