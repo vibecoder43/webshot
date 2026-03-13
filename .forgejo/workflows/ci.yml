@@ -25,6 +25,7 @@ jobs:
           bash .forgejo/devenv_ci.sh tasks run crawlerd:test
           bash .forgejo/devenv_ci.sh tasks run crawlerd:openapi
           git diff --exit-code -- schema/crawlerd.yaml
+          bash .forgejo/devenv_ci.sh tasks run webshot:devBuild
           bash .forgejo/devenv_ci.sh tasks run webshot:devTest
       - name: Cleanup infra
         if: always()
