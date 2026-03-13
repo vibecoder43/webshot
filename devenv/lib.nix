@@ -70,6 +70,17 @@
     pkgs = pkgsWithOverlay;
     inherit (inputs) userverSrc;
   };
+  cctzPkgs = {
+    default = import ../nix/cctz/package.nix {
+      pkgs = pkgsWithOverlay;
+    };
+  };
+  pgmigratePkgs = {
+    default = import ../nix/pgmigrate/package.nix {
+      pkgs = pkgsWithOverlay;
+      inherit (inputs) pgmigrateSrc;
+    };
+  };
   uniAlgoPkgs = {
     default = import ../nix/uni-algo/package.nix {
       pkgs = pkgsWithOverlay;
@@ -313,6 +324,7 @@ in
       buildDeps
       buildVariants
       buildDirs
+      cctzPkgs
       clangdConfigs
       crawlerd
       lib
@@ -323,6 +335,7 @@ in
       mkWebshotOutput
       nodejs
       pkgsWithOverlay
+      pgmigratePkgs
       python
       rapidocAssets
       testLibs
