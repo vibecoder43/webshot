@@ -10,7 +10,7 @@
 in
   pyPkgs.buildPythonPackage {
     pname = "yandex-taxi-testsuite";
-    version = "0.3.9";
+    version = "0.4.5";
 
     src = yandexTaxiTestsuiteSrc;
 
@@ -35,7 +35,6 @@ in
         python-dateutil
         cached-property
         psycopg2
-        websockets
       ])
       ++ [pgmigratePkg];
 

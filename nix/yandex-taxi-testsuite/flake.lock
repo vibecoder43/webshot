@@ -75,17 +75,17 @@
     "yandexTaxiTestsuiteSrc": {
       "flake": false,
       "locked": {
-        "lastModified": 1764862763,
-        "narHash": "sha256-lQ6KFtx3HAKgVcci0WkmCPDdygj2z/JKDQmabhwl4OE=",
+        "lastModified": 1771266117,
+        "narHash": "sha256-45c/jxjKu1aDMU9ioEWbaQCUrN9RYO3VL5FTiCxttL8=",
         "owner": "yandex",
         "repo": "yandex-taxi-testsuite",
-        "rev": "901c58e06b62f1438fcd4219f50cfe9b18b5bbf1",
+        "rev": "183bdc16a65cc050e3aee79ee7088f778f6e9666",
         "type": "github"
       },
       "original": {
         "owner": "yandex",
         "repo": "yandex-taxi-testsuite",
-        "rev": "901c58e06b62f1438fcd4219f50cfe9b18b5bbf1",
+        "rev": "183bdc16a65cc050e3aee79ee7088f778f6e9666",
         "type": "github"
       }
     }

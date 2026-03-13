@@ -9,7 +9,7 @@
       flake = false;
     };
     yandexTaxiTestsuiteSrc = {
-      url = "github:yandex/yandex-taxi-testsuite/901c58e06b62f1438fcd4219f50cfe9b18b5bbf1";
+      url = "github:yandex/yandex-taxi-testsuite/183bdc16a65cc050e3aee79ee7088f778f6e9666";
       flake = false;
     };
   };
