@@ -152,9 +152,14 @@ add_custom_target(
     "${CMAKE_INSTALL_PREFIX}/webshotd/webshotd"
   COMMAND
     ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_BINARY_DIR}/CMakeCache.txt"
+    "${CMAKE_INSTALL_PREFIX}/webshotd/CMakeCache.txt"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different
     "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
     "${CMAKE_INSTALL_PREFIX}/webshotd/browser_sandbox.sh"
-  DEPENDS ${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
+  DEPENDS ${PROJECT_NAME} "${CMAKE_BINARY_DIR}/CMakeCache.txt"
+          "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
   VERBATIM)
 
 if(WEBSHOT_RAPIDOC_ASSETS_DIR STREQUAL "")
