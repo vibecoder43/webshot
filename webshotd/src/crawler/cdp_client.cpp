@@ -158,7 +158,7 @@ void CdpClient::handleMessage(const std::string &payload)
         String::fromBytesThrow(eventMessage.method),
         std::move(eventMessage.params),
         eventMessage.sessionId ? std::make_optional(String::fromBytesThrow(*eventMessage.sessionId))
-                               : {},
+                               : std::optional<String>{},
     };
     for (const auto &[id, listener] : listeners) {
         static_cast<void>(id);
