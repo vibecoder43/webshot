@@ -1,4 +1,4 @@
-#include "crawler_failure.hpp"
+#include "crawler/failure.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -7,13 +7,17 @@
 
 #include <userver/fs/blocking/read.hpp>
 
+namespace us = userver;
+
 namespace v1::crawler {
+using namespace text::literals;
+
 namespace {
 
 constexpr size_t kProcessOutputTailBytes = 4096;
 constexpr size_t kProcessOutputCharsMax = 240;
 
-[[nodiscard]] std::string escapeForQuotedValue(std::string_view input)
+[[nodiscard]] String escapeForQuotedValue(std::string_view input)
 {
     std::string escaped;
     escaped.reserve(input.size());
@@ -22,29 +26,40 @@ constexpr size_t kProcessOutputCharsMax = 240;
             escaped.push_back('\\');
         escaped.push_back(ch);
     }
-    return escaped;
+    return String::fromBytesThrow(escaped);
 }
 
-[[nodiscard]] std::string appendAttemptContextPieces(const AttemptSummary &attempt)
+[[nodiscard]] String appendAttemptContextPieces(const AttemptSummary &attempt)
 {
-    std::string msg;
+    String msg;
     if (attempt.seedProbe) {
-        msg = fmt::format(
+        msg = text::format(
             "seedProbe status={} loadState={}", attempt.seedProbe->status.value_or(0),
             attempt.seedProbe->loadState.value_or(-1)
         );
     }
     if (attempt.failureDetail) {
         if (!msg.empty())
-            msg += ", ";
-        msg += std::string(attempt.failureDetail->view());
+            msg += ", "_t;
+        msg += *attempt.failureDetail;
     }
     return msg;
 }
 
+[[nodiscard]] std::optional<String> readSanitizedProcessOutput(const std::string &path)
+{
+    try {
+        auto text = sanitizeProcessOutputTail(us::fs::blocking::ReadFileContents(path));
+        if (!text.empty())
+            return text;
+    } catch (const std::exception &) {
+    }
+    return {};
+}
+
 } // namespace
 
-std::string sanitizeProcessOutputTail(std::string_view bytes)
+String sanitizeProcessOutputTail(std::string_view bytes)
 {
     const bool trimmedFront = bytes.size() > kProcessOutputTailBytes;
     if (trimmedFront)
@@ -88,67 +103,56 @@ std::string sanitizeProcessOutputTail(std::string_view bytes)
     if (sanitized.empty())
         return {};
 
-    sanitized = escapeForQuotedValue(sanitized);
-
+    auto escaped = escapeForQuotedValue(sanitized);
     if (trimmedFront)
-        sanitized.insert(0, "... ");
+        escaped = "... "_t + escaped;
     if (trimmedBack)
-        sanitized.append(" ...");
-    return sanitized;
+        escaped += " ..."_t;
+    return escaped;
 }
 
 std::optional<String>
 summarizeProcessOutputs(const std::string &stdoutPath, const std::string &stderrPath)
 {
-    std::string stdoutText;
-    std::string stderrText;
+    const auto stdoutText = readSanitizedProcessOutput(stdoutPath);
+    const auto stderrText = readSanitizedProcessOutput(stderrPath);
 
-    try {
-        stdoutText = sanitizeProcessOutputTail(userver::fs::blocking::ReadFileContents(stdoutPath));
-    } catch (const std::exception &) {
-    }
-
-    try {
-        stderrText = sanitizeProcessOutputTail(userver::fs::blocking::ReadFileContents(stderrPath));
-    } catch (const std::exception &) {
-    }
-
-    if (stdoutText.empty() && stderrText.empty())
+    if (!stdoutText && !stderrText)
         return {};
 
-    std::string detail;
-    if (!stdoutText.empty())
-        detail = fmt::format("stdout=\"{}\"", stdoutText);
-    if (!stderrText.empty()) {
+    String detail;
+    if (stdoutText)
+        detail = text::format("stdout=\"{}\"", *stdoutText);
+    if (stderrText) {
         if (!detail.empty())
-            detail += ", ";
-        detail += fmt::format("stderr=\"{}\"", stderrText);
+            detail += ", "_t;
+        detail += text::format("stderr=\"{}\"", *stderrText);
     }
-    return String::fromBytesThrow(detail);
+    return detail;
 }
 
 String formatAttemptContext(const AttemptSummary &attempt)
 {
-    return String::fromBytesThrow(appendAttemptContextPieces(attempt));
+    return appendAttemptContextPieces(attempt);
 }
 
 String formatAttemptStatus(std::string_view label, const AttemptSummary &attempt)
 {
-    std::string msg;
+    String msg;
     if (label.empty()) {
-        msg = fmt::format(
+        msg = text::format(
             "exit code {}: {}", attempt.exitCode, crawlerFailureReason(attempt.exitCode)
         );
     } else {
-        msg = fmt::format(
+        msg = text::format(
             "{} exit code {}: {}", label, attempt.exitCode, crawlerFailureReason(attempt.exitCode)
         );
     }
 
     const auto context = appendAttemptContextPieces(attempt);
     if (!context.empty())
-        msg += fmt::format(", {}", context);
-    return String::fromBytesThrow(msg);
+        msg += ", "_t + context;
+    return msg;
 }
 
 } // namespace v1::crawler

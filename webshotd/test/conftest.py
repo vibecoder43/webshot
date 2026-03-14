@@ -1,9 +1,5 @@
 import asyncio
-import os
 import pathlib
-import socket
-import subprocess
-import time
 from urllib.parse import urlparse, urlunparse
 
 import psycopg2
@@ -128,7 +124,7 @@ async def s3_gate_ready(s3_gate, service_source_dir: pathlib.Path):
     await s3_gate.to_client_pass()
     s3_gate.start_accepting()
     secrets_path = service_source_dir / "secret" / "test_secdist.json"
-    ensure_s3_bucket_exists(secrets_path=secrets_path, endpoint="localhost:8333", bucket="webshot")
+    ensure_s3_bucket_exists(secrets_path=secrets_path, s3_url="localhost:8333", bucket="webshot")
     yield s3_gate
 
 
@@ -170,8 +166,8 @@ def service_env(service_source_dir: pathlib.Path):
 
 @pytest.fixture(scope="session")
 def allowed_url_prefixes_extra(s3_gate_port):
-    # Permit S3 uploads to the chaos gate in front of the local SeaweedFS endpoint.
-    return [f"http://{_S3_GATE_HOST}:{s3_gate_port}/", "http://localhost/run"]
+    # Permit S3 uploads to the chaos gate in front of the local SeaweedFS url.
+    return [f"http://{_S3_GATE_HOST}:{s3_gate_port}/"]
 
 
 @pytest.fixture(scope="session")
@@ -181,14 +177,6 @@ def patch_s3_config(s3_gate_port):
         cfg = components["config"]
         cfg["s3_endpoint"] = f"http://{_S3_GATE_HOST}:{s3_gate_port}"
         cfg["s3_timeout_ms"] = 5000
-
-    return _patch
-
-
-@pytest.fixture(scope="session")
-def patch_crawlerd_config(crawlerd_socket_path: pathlib.Path):
-    def _patch(_config_yaml, config_vars):
-        config_vars["crawlerd_socket_path"] = str(crawlerd_socket_path)
 
     return _patch
 
@@ -226,87 +214,9 @@ def service_config_path_temp(
     return dst_path
 
 
-@pytest.fixture(scope="session")
-def crawlerd_runtime_dir() -> pathlib.Path:
-    runtime_dir = pathlib.Path("/tmp") / f"webshotd-tests-{os.getuid()}-{os.getpid()}"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    return runtime_dir
-
-
-@pytest.fixture(scope="session")
-def crawlerd_socket_path(crawlerd_runtime_dir: pathlib.Path):
-    return crawlerd_runtime_dir / "crawlerd.sock"
-
-
-def _crawlerd_ready(socket_path: pathlib.Path) -> bool:
-    if not socket_path.exists():
-        return False
-
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(1.0)
-            sock.connect(str(socket_path))
-            sock.sendall(b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-            return b"200" in sock.recv(4096)
-    except OSError:
-        return False
-
-
-@pytest.fixture(scope="session")
-def crawlerd_process(crawlerd_socket_path: pathlib.Path, service_source_dir: pathlib.Path):
-    repo_root = service_source_dir.parent
-    crawler_root = repo_root / "crawlerd"
-    log_dir = crawlerd_socket_path.parent
-    log_path = log_dir / "crawlerd.log"
-
-    log_dir.mkdir(parents=True, exist_ok=True)
-    crawlerd_socket_path.unlink(missing_ok=True)
-
-    with log_path.open("wb") as log:
-        subprocess.run(
-            ["npm", "run", "build"],
-            cwd=crawler_root,
-            stdout=log,
-            stderr=log,
-            check=True,
-        )
-        process = subprocess.Popen(
-            ["node", "dist/src/server.js", "--socket-path", str(crawlerd_socket_path)],
-            cwd=crawler_root,
-            stdout=log,
-            stderr=log,
-        )
-
-    deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise RuntimeError(f"crawlerd exited early with code {process.returncode}")
-        if _crawlerd_ready(crawlerd_socket_path):
-            break
-        time.sleep(0.2)
-    else:
-        raise RuntimeError(f"crawlerd did not become ready; see {log_path}")
-
-    try:
-        yield process
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10.0)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=10.0)
-
-
 @pytest.fixture
-def crawlerd_ready(crawlerd_process):
-    return crawlerd_process
+def extra_client_deps(pg_gate_ready, s3_gate_ready):
+    return [pg_gate_ready, s3_gate_ready]
 
 
-@pytest.fixture
-def extra_client_deps(pg_gate_ready, s3_gate_ready, crawlerd_ready):
-    # Ensure gates are reset and crawlerd is running before service_client is created.
-    return [pg_gate_ready, s3_gate_ready, crawlerd_ready]
-
-
-USERVER_CONFIG_HOOKS = ["patch_s3_config", "patch_crawlerd_config"]
+USERVER_CONFIG_HOOKS = ["patch_s3_config"]

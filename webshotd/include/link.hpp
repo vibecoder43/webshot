@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string>
+#include "url.hpp"
 
-#include <ada.h>
-#include <ada/url_aggregator.h>
+#include <stdexcept>
+#include <string>
 
 #include "text.hpp"
 
@@ -28,7 +28,7 @@ struct InvalidLinkException : public std::runtime_error {
  * - A scheme-less, trailing-slash-trimmed form is stored for lookups.
  */
 struct [[nodiscard]] Link {
-    ada::url_aggregator url;
+    Url url;
 
     /**
      * @brief Construct a Link from normalized UTF-8 text.

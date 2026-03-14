@@ -6,16 +6,12 @@
  * Contains helpers to sanitize user input, enforce scheme/host rules, and
  * produce a stable scheme-less key for storage and lookups.
  */
+#include "ip_utils.hpp"
 #include "text.hpp"
 
 #include <cctype>
 #include <string>
 #include <string_view>
-
-#include <arpa/inet.h>
-
-#include <ada.h>
-#include <ada/url_aggregator.h>
 
 #include <absl/strings/ascii.h>
 
@@ -34,22 +30,6 @@ static bool isAsciiAlnum(char c) noexcept
 {
     const unsigned char u = static_cast<unsigned char>(c);
     return u < 0x80 && std::isalnum(u) != 0;
-}
-
-static bool isIpLiteralHostname(std::string_view hostname) noexcept
-{
-    if (hostname.empty())
-        return false;
-    // Bracketed IPv6 literal per RFC 3986
-    if (hostname.front() == '[' && hostname.back() == ']') {
-        const std::string inside(hostname.substr(1, hostname.size() - 2));
-        in6_addr addr6{};
-        return inet_pton(AF_INET6, inside.c_str(), &addr6) == 1;
-    }
-    // Plain IPv4 dotted-decimal
-    in_addr addr4{};
-    std::string hostStr(hostname);
-    return inet_pton(AF_INET, hostStr.c_str(), &addr4) == 1;
 }
 
 /** RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) */
@@ -120,9 +100,7 @@ Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort,
     if (auto hostname = url->get_hostname(); !hostname.empty() && hostname.back() == '.')
         url->set_hostname(std::string(begin(hostname), end(hostname) - 1));
 
-    Link out;
-    out.url = std::move(*url);
-    return out;
+    return {Url::fromParsed(std::move(*url))};
 }
 
 Link Link::fromTextStripPort(const String &text, size_t queryPartLengthMax)
@@ -140,25 +118,25 @@ Link Link::fromTextStripPortQuery(const String &text, size_t queryPartLengthMax)
     return fromTextImpl(text, queryPartLengthMax, true, true);
 }
 
-String Link::host() const { return String::fromBytesThrow(url.get_hostname()); }
+String Link::host() const { return url.hostname(); }
 
 String Link::httpUrl() const
 {
-    auto copy = url;
+    auto copy = url.copyParsed();
     copy.set_protocol("http");
     return String::fromBytesThrow(serializeHref(copy));
 }
 
 String Link::httpsUrl() const
 {
-    auto copy = url;
+    auto copy = url.copyParsed();
     copy.set_protocol("https");
     return String::fromBytesThrow(serializeHref(copy));
 }
 
 String Link::normalized() const
 {
-    auto copy = url;
+    auto copy = url.copyParsed();
     copy.set_protocol("http");
     constexpr std::string_view kHttpPrefix = "http://";
     return String::fromBytesThrow(serializeHref(copy).substr(kHttpPrefix.size()));

@@ -17,6 +17,7 @@
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/fs_cache.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
+#include <userver/components/process_starter.hpp>
 #include <userver/congestion_control/component.hpp>
 #include <userver/server/handlers/http_handler_static.hpp>
 #include <userver/server/handlers/server_monitor.hpp>
@@ -35,6 +36,7 @@ int main(int argc, char *argv[])
                               .Append<us::components::TestsuiteSupport>()
                               .Append<us::components::Secdist>()
                               .Append<us::components::DefaultSecdistProvider>()
+                              .Append<us::components::ProcessStarter>()
                               .Append<us::components::Postgres>("capture_meta_db")
                               .Append<us::components::Postgres>("shared_state_db")
                               .Append<us::congestion_control::Component>()

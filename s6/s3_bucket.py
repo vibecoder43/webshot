@@ -8,7 +8,7 @@ from s6.common import ToolError, die
 _s3_http_timeout_sec = 2.0
 
 
-def ensure_s3_bucket_exists(*, secrets_path: Path, endpoint: str, bucket: str) -> None:
+def ensure_s3_bucket_exists(*, secrets_path: Path, s3_url: str, bucket: str) -> None:
     if not bucket:
         die("bucket must not be empty", exit_code=2)
 
@@ -43,7 +43,7 @@ def ensure_s3_bucket_exists(*, secrets_path: Path, endpoint: str, bucket: str) -
         timeout=urllib3.Timeout(connect=_s3_http_timeout_sec, read=_s3_http_timeout_sec)
     )
     client = minio.Minio(
-        endpoint,
+        s3_url,
         access_key=access_key,
         secret_key=secret_key,
         secure=False,

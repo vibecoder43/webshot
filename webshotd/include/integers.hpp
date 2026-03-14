@@ -5,6 +5,8 @@
 
 #include <fmt/format.h>
 
+#include <userver/utils/numeric_cast.hpp>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -42,6 +44,18 @@ template <typename T, typename PromotionPolicy, typename ExceptionPolicy>
 toNative(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value) noexcept
 {
     return static_cast<T>(value);
+}
+
+template <typename To, typename From> [[nodiscard]] constexpr To numericCast(From value)
+{
+    return userver::utils::numeric_cast<To>(value);
+}
+
+template <typename To, typename T, typename PromotionPolicy, typename ExceptionPolicy>
+[[nodiscard]] constexpr To
+numericCast(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value)
+{
+    return userver::utils::numeric_cast<To>(toNative(value));
 }
 
 template <class C> [[nodiscard]] constexpr i64 safeSize(const C &c) noexcept
@@ -91,6 +105,7 @@ namespace integers::literals {
 
 } // namespace integers::literals
 
+using integers::numericCast;
 using integers::safeSize;
 using integers::toMilliseconds;
 using integers::toNative;

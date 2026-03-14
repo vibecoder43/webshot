@@ -68,17 +68,17 @@ StsCredentials detail::fetchStsWithExecutor(
 )
 {
     const auto stsLink = Link::fromText(stsEndpoint, static_cast<size_t>(stsEndpoint.sizeBytes()));
-    UINVARIANT(stsLink.url.type == ada::scheme::type::HTTPS, "STS endpoint must use https scheme");
+    UINVARIANT(stsLink.url.isHttps(), "STS endpoint must use https scheme");
 
-    const auto host = *String::fromBytes(stsLink.url.get_host());
+    const auto host = stsLink.url.host();
 
-    auto path = *String::fromBytes(stsLink.url.get_pathname());
+    auto path = stsLink.url.pathname();
     if (path.empty())
         path = "/"_t;
 
     std::vector<std::pair<String, String>> query;
-    if (stsLink.url.has_search()) {
-        const auto search = *String::fromBytes(stsLink.url.get_search());
+    if (stsLink.url.hasSearch()) {
+        const auto search = stsLink.url.search();
         query = s3v4::decodeQueryString(search);
     }
     String body;

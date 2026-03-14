@@ -42,9 +42,13 @@
   toolchain = import ../nix/toolchain.nix {pkgs = pkgsWithOverlay;};
   llvm21 = pkgsWithOverlay.llvmPackages_21;
   system = pkgsWithOverlay.stdenv.system;
+  crawlerRuntimeBins = with pkgsWithOverlay; [
+    chromium
+    bubblewrap
+    socat
+  ];
 
   python = pkgsWithOverlay.python3;
-  nodejs = pkgsWithOverlay.nodejs_20;
   userverPython = import ../nix/userver/deps.nix {
     pkgs = pkgsWithOverlay;
     inherit python;
@@ -93,14 +97,6 @@
     tidy = "${config.devenv.root}/build/webshotd/tidy";
     cov = "${config.devenv.root}/build/webshotd/cov";
     release = "${config.devenv.root}/build/webshotd/release";
-  };
-
-  crawlerd = rec {
-    root = "${config.devenv.root}/crawlerd";
-    buildCommand = "npm run build";
-    checkCommand = "npm run check";
-    testCommand = "npm test";
-    openapiCommand = "npm run export-openapi";
   };
 
   nixGitignore = pkgsWithOverlay.nix-gitignore;
@@ -182,7 +178,7 @@
     ]
     ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}";
 
-  mkTaskCmakeFlags = variant:
+  mkTaskCmakeFlags = buildDir: variant:
     [
       "-S"
       "./webshotd"
@@ -191,6 +187,7 @@
       "-DCMAKE_CXX_COMPILER=clang++"
       "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
       "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_INSTALL_PREFIX=${buildDir}/runtime_root"
     ]
     ++ mkCmakeCommonFlags {
       userverDir = "${userverPkgs.userver-debug-addr-ub}/lib/cmake/userver";
@@ -245,7 +242,7 @@
 
       dontStrip = true;
 
-      nativeBuildInputs = buildDeps.native ++ [toolchain.cc];
+      nativeBuildInputs = buildDeps.native ++ [toolchain.cc pkgsWithOverlay.makeWrapper];
       buildInputs =
         [
           userverPkg
@@ -257,6 +254,11 @@
       cmakeFlags = mkOutputCmakeFlags {
         inherit userverPkg variant;
       };
+
+      postFixup = ''
+        wrapProgram "$out/webshotd/webshotd" \
+          --prefix PATH : "${lib.makeBinPath crawlerRuntimeBins}"
+      '';
     };
 
   mkClangdConfig = name: buildDir:
@@ -273,7 +275,7 @@
   };
 
   mkConfigureTaskCommands = buildDir: clangdConfig: variant: ''
-    ${lib.escapeShellArgs (["cmake" "-B" buildDir] ++ mkTaskCmakeFlags variant)}
+    ${lib.escapeShellArgs (["cmake" "-B" buildDir] ++ mkTaskCmakeFlags buildDir variant)}
     ln -sf "${clangdConfig}" .clangd
   '';
 
@@ -319,15 +321,14 @@ in
       buildDeps
       buildVariants
       buildDirs
+      crawlerRuntimeBins
       clangdConfigs
-      crawlerd
       lib
       llvm21
       mkBuildTask
       mkConfigureTaskCommands
       mkConfigureTask
       mkWebshotOutput
-      nodejs
       pkgsWithOverlay
       pgmigratePkgs
       python

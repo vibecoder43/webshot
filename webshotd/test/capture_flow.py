@@ -32,10 +32,15 @@ async def _wait_for_purge(db, prefix_key: str, timeout: float = 30.0, delay: flo
         await asyncio.sleep(delay)
 
 
-def _wacz_cdxj_statuses_for_url(wacz: bytes, url: str) -> set[int]:
-    statuses: set[int] = set()
+def _wacz_entries(wacz: bytes) -> dict[str, bytes]:
     with ZipFile(io.BytesIO(wacz)) as zf:
-        cdxj = zf.read("indexes/index.cdxj")
+        return {name: zf.read(name) for name in zf.namelist()}
+
+
+def _wacz_cdxj_records(wacz: bytes) -> list[dict[str, object]]:
+    entries = _wacz_entries(wacz)
+    cdxj = entries["indexes/index.cdxj"]
+    records: list[dict[str, object]] = []
     for line in cdxj.splitlines():
         if not line:
             continue
@@ -46,9 +51,57 @@ def _wacz_cdxj_statuses_for_url(wacz: bytes, url: str) -> set[int]:
             obj = json.loads(line[json_pos:].decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             continue
-        if obj.get("url") != url:
+        prefix = line[:json_pos].decode("utf-8").strip()
+        try:
+            key, timestamp = prefix.split(" ", 1)
+        except ValueError:
             continue
-        status = obj.get("status")
+        record = dict(obj)
+        record["key"] = key
+        record["timestamp"] = timestamp
+        records.append(record)
+    return records
+
+
+def _wacz_archive_text(wacz: bytes) -> str:
+    return _wacz_entries(wacz)["archive/data.warc"].decode("utf-8", "replace")
+
+
+async def _wait_for_job_status(
+    service_client, job_id: str, *, expected_status: str, attempts: int = 120
+) -> dict[str, object]:
+    for _ in range(attempts):
+        status_resp = await service_client.get(f"/v1/capture/jobs/{job_id}")
+        assert status_resp.status == 200
+        job = status_resp.json()
+        if job["status"] == expected_status:
+            return job
+        if job["status"] in {"failed", "succeeded"} and job["status"] != expected_status:
+            pytest.fail(f"job reached unexpected terminal state: {job}")
+        await asyncio.sleep(0.5)
+    pytest.fail(f"job did not reach {expected_status!r} in time")
+
+
+async def _capture_and_wait(
+    service_client, link: str, *, expected_status: str = "succeeded", attempts: int = 120
+) -> tuple[str, dict[str, object]]:
+    resp = await service_client.post("/v1/capture", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+    return job_id, await _wait_for_job_status(
+        service_client,
+        job_id,
+        expected_status=expected_status,
+        attempts=attempts,
+    )
+
+
+def _wacz_cdxj_statuses_for_url(wacz: bytes, url: str) -> set[int]:
+    statuses: set[int] = set()
+    for record in _wacz_cdxj_records(wacz):
+        if record.get("url") != url:
+            continue
+        status = record.get("status")
         try:
             statuses.add(int(status))
         except (TypeError, ValueError):
@@ -80,7 +133,7 @@ async def _download_wacz_from_s3(service_secdist_path, object_name: str) -> byte
 
 
 @pytest.mark.asyncio
-async def test_capture_and_query_roundtrip(service_client, pgsql):
+async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdist_path):
     link = f"https://{TEST_HOST}/webshot-capture-path"
 
     # Create capture
@@ -145,6 +198,40 @@ async def test_capture_and_query_roundtrip(service_client, pgsql):
     location, prefix_key = row
     assert location.endswith(uuid_str)
     assert prefix_key == prefix_key_from_link(normalized_link)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, uuid_str)
+    entries = _wacz_entries(wacz)
+    assert set(entries) == {
+        "archive/data.warc",
+        "datapackage.json",
+        "indexes/index.cdxj",
+        "logs/stderr.log",
+        "logs/stdout.log",
+        "pages/pages.jsonl",
+    }
+
+    datapackage = json.loads(entries["datapackage.json"].decode("utf-8"))
+    assert any(resource["path"] == "archive/data.warc" for resource in datapackage["resources"])
+
+    stdout_log = entries["logs/stdout.log"].decode("utf-8")
+    assert "browsertrix rewrite start" in stdout_log
+    assert "reused_browser=false" in stdout_log
+    assert entries["logs/stderr.log"] == b""
+
+    pages_lines = entries["pages/pages.jsonl"].decode("utf-8").splitlines()
+    assert len(pages_lines) == 2
+    pages_header = json.loads(pages_lines[0])
+    seed_page = json.loads(pages_lines[1])
+    assert pages_header["format"] == "json-pages-1.0"
+    assert seed_page["url"] == link
+    assert seed_page["title"] == "test"
+    assert seed_page["seed"] is True
+    assert seed_page["status"] == 200
+    assert seed_page["depth"] == 0
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: https://test-target/webshot-capture-path" in archive_text
+    assert "HTTP/1.1 200 OK" in archive_text
 
 
 @pytest.mark.asyncio
@@ -242,6 +329,75 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 
     script_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/script.js")
     assert 200 in script_statuses
+
+
+@pytest.mark.asyncio
+async def test_capture_records_main_document_redirect_in_wacz(service_client, service_secdist_path):
+    link = f"https://{TEST_HOST}/redirect-seed"
+    job_id, _job = await _capture_and_wait(service_client, link)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    redirect_statuses = _wacz_cdxj_statuses_for_url(wacz, link)
+    assert 302 in redirect_statuses
+
+    final_url = f"https://{TEST_HOST}/redirect-final"
+    final_statuses = _wacz_cdxj_statuses_for_url(wacz, final_url)
+    assert 200 in final_statuses
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: https://test-target/redirect-seed" in archive_text
+    assert "location: /redirect-final" in archive_text
+    assert "WARC-Target-URI: https://test-target/redirect-final" in archive_text
+    assert "Redirect Final" in archive_text
+
+
+@pytest.mark.asyncio
+async def test_capture_preserves_post_subresource_requests(service_client, service_secdist_path):
+    link = f"https://{TEST_HOST}/with-post-subresource"
+    job_id, _job = await _capture_and_wait(service_client, link)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    submit_url = f"https://{TEST_HOST}/submit?source=page"
+    submit_statuses = _wacz_cdxj_statuses_for_url(wacz, submit_url)
+    assert 200 in submit_statuses
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: https://test-target/submit?source=page" in archive_text
+    assert "POST /submit?source=page HTTP/1.1" in archive_text
+
+
+@pytest.mark.asyncio
+async def test_capture_preserves_head_subresource_requests(service_client, service_secdist_path):
+    link = f"https://{TEST_HOST}/with-head-subresource"
+    job_id, _job = await _capture_and_wait(service_client, link)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    metadata_url = f"https://{TEST_HOST}/metadata?source=page"
+    metadata_statuses = _wacz_cdxj_statuses_for_url(wacz, metadata_url)
+    assert 200 in metadata_statuses
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: https://test-target/metadata?source=page" in archive_text
+    assert "HEAD /metadata?source=page HTTP/1.1" in archive_text
+
+
+@pytest.mark.asyncio
+async def test_capture_preserves_redirected_subresource_hops(service_client, service_secdist_path):
+    link = f"https://{TEST_HOST}/with-redirected-asset"
+    job_id, _job = await _capture_and_wait(service_client, link)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    redirect_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/redirect-script.js")
+    assert 302 in redirect_statuses
+
+    final_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/script-final.js")
+    assert 200 in final_statuses
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: https://test-target/redirect-script.js" in archive_text
+    assert "location: /script-final.js" in archive_text
+    assert "WARC-Target-URI: https://test-target/script-final.js" in archive_text
+    assert "window.__redirectedAssetLoaded = true;" in archive_text
 
 
 @pytest.mark.asyncio
@@ -430,3 +586,23 @@ async def test_https_first_falls_back_to_http_and_fails_when_http_fails(service_
         await asyncio.sleep(0.5)
     else:
         pytest.fail("job did not fail in time")
+
+
+@pytest.mark.asyncio
+async def test_sequential_captures_do_not_reuse_browser_state(service_client, service_secdist_path):
+    first_job_id, _first_job = await _capture_and_wait(
+        service_client, f"https://{TEST_HOST}/state-write"
+    )
+    second_job_id, _second_job = await _capture_and_wait(
+        service_client, f"https://{TEST_HOST}/state-read"
+    )
+
+    assert first_job_id != second_job_id
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, second_job_id)
+    archive_text = _wacz_archive_text(wacz)
+    assert "seen=first" not in archive_text
+    assert '"localStorage":"first"' not in archive_text
+    assert '"sessionStorage":"first"' not in archive_text
+    assert '"localStorage":null' in archive_text
+    assert '"sessionStorage":null' in archive_text

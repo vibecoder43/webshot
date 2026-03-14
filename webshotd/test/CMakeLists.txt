@@ -104,9 +104,24 @@ add_cpp_test(deadline_utils_test SOURCES
                      ${CMAKE_CURRENT_SOURCE_DIR}/deadline_utils.cpp)
 
 add_cpp_test(
+  crawler_browser_sandbox_test SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/crawler_browser_sandbox.cpp
+  ${CMAKE_SOURCE_DIR}/src/crawler/browser_sandbox.cpp)
+
+add_cpp_test(
+  crawler_artifacts_test
+  SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/crawler_artifacts.cpp
+  ${CMAKE_SOURCE_DIR}/src/crawler/artifacts.cpp
+  ${CMAKE_SOURCE_DIR}/src/url.cpp
+  LIBS
+  userver::core
+  ${PROJECT_NAME}-chgen)
+
+add_cpp_test(
   crawler_failure_test SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/crawler_failure.cpp
-  ${CMAKE_SOURCE_DIR}/src/crawler_failure.cpp)
+  ${CMAKE_SOURCE_DIR}/src/crawler/failure.cpp)
 
 add_cpp_test(
   crawler_fallback_test SOURCES
@@ -136,7 +151,7 @@ if(USERVER_FEATURE_TESTSUITE)
     PYTEST_ARGS
     --service-config=${CMAKE_SOURCE_DIR}/config/static_config.yaml
     --service-config-vars=${CMAKE_SOURCE_DIR}/config/config_vars.testsuite.yaml
-    --service-binary=$<TARGET_FILE:${PROJECT_NAME}>
+    --service-binary=${CMAKE_INSTALL_PREFIX}/webshotd/webshotd
     --service-secdist=${CMAKE_SOURCE_DIR}/secret/test_secdist.json
     --service-source-dir=${CMAKE_SOURCE_DIR}
     --postgresql=postgresql://postgres@localhost:5432/postgres)

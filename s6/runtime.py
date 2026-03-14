@@ -57,13 +57,10 @@ class RuntimeStateContext:
 @dataclass(frozen=True)
 class RuntimeInspectContext(RuntimeStateContext):
     service_profile: str
-    crawlerd_socket_path: Path
     postgres_log_file: Path
     proxy_log_file: Path
     seaweed_log_file: Path
     test_target_log_file: Path
-    crawlerd_service_dir: Path
-    crawlerd_log_file: Path
     webshotd_service_dir: Path
     webshotd_log_file: Path
 
@@ -194,13 +191,10 @@ def _build_inspect_context(
         scan_dir=state_ctx.scan_dir,
         svscan_pid_file=state_ctx.svscan_pid_file,
         service_profile=service_profile,
-        crawlerd_socket_path=state_ctx.state_dir / "crawlerd.sock",
         postgres_log_file=state_ctx.state_dir / "postgres.log",
         proxy_log_file=state_ctx.state_dir / "mitmproxy.log",
         seaweed_log_file=state_ctx.state_dir / "seaweedfs.log",
         test_target_log_file=state_ctx.state_dir / "test-target.log",
-        crawlerd_service_dir=state_ctx.scan_dir / "crawlerd",
-        crawlerd_log_file=state_ctx.state_dir / "crawlerd.log",
         webshotd_service_dir=state_ctx.scan_dir / "webshotd",
         webshotd_log_file=state_ctx.state_dir / "webshotd.log",
     )
@@ -217,7 +211,6 @@ def _build_up_context(
     inspect_ctx = _build_inspect_context(mode=mode, service_profile=service_profile)
     config_path = Path(config_vars_source)
     raw_vars = _read_yaml(config_path)
-    crawlerd_socket_path = _require_yaml_path(raw_vars, "crawlerd_socket_path", source=config_path)
     capture_meta_db_name = _database_name_from_dsn(
         _require_yaml_string(raw_vars, "pg_capture_meta_db_dsn", source=config_path),
         key="pg_capture_meta_db_dsn",
@@ -228,14 +221,6 @@ def _build_up_context(
         key="pg_shared_state_db_dsn",
         source=config_path,
     )
-    expected_socket_path = inspect_ctx.state_dir / "crawlerd.sock"
-    if crawlerd_socket_path != expected_socket_path:
-        die(
-            "Expected "
-            f"crawlerd_socket_path={expected_socket_path} in {config_path}, "
-            f"got {crawlerd_socket_path}",
-            exit_code=2,
-        )
     return RuntimeUpContext(
         mode=inspect_ctx.mode,
         repo_root=inspect_ctx.repo_root,
@@ -243,13 +228,10 @@ def _build_up_context(
         scan_dir=inspect_ctx.scan_dir,
         svscan_pid_file=inspect_ctx.svscan_pid_file,
         service_profile=service_profile,
-        crawlerd_socket_path=crawlerd_socket_path,
         postgres_log_file=inspect_ctx.postgres_log_file,
         proxy_log_file=inspect_ctx.proxy_log_file,
         seaweed_log_file=inspect_ctx.seaweed_log_file,
         test_target_log_file=inspect_ctx.test_target_log_file,
-        crawlerd_service_dir=inspect_ctx.crawlerd_service_dir,
-        crawlerd_log_file=inspect_ctx.crawlerd_log_file,
         webshotd_service_dir=inspect_ctx.webshotd_service_dir,
         webshotd_log_file=inspect_ctx.webshotd_log_file,
         binary_path=Path(binary_path),
@@ -310,18 +292,6 @@ def _service_specs(ctx: RuntimeInspectContext) -> list[ServiceSpec]:
     if ctx.service_profile == "full":
         specs.extend(
             [
-                ServiceSpec(
-                    name="crawlerd",
-                    service_dir=ctx.crawlerd_service_dir,
-                    log_file=ctx.crawlerd_log_file,
-                    ready_cmd=[
-                        python_exe,
-                        "-m",
-                        "s6.check_crawlerd_ready",
-                        str(ctx.crawlerd_socket_path),
-                    ],
-                    timeout_sec=30.0,
-                ),
                 ServiceSpec(
                     name="webshotd",
                     service_dir=ctx.webshotd_service_dir,
@@ -648,45 +618,6 @@ def _render_service_tree(ctx: RuntimeUpContext, *, cpu_limit: str) -> list[Servi
             ),
         )
 
-    if "crawlerd" in active_names:
-        _write_executable(
-            ctx.crawlerd_service_dir / "data/check",
-            (
-                "#!/bin/sh\n"
-                f"exec {python_exe} -m s6.check_crawlerd_ready "
-                f"{_shell_quote(ctx.crawlerd_socket_path)}\n"
-            ),
-        )
-        crawlerd_waits = _wait_script(
-            [sys.executable, "-m", "s6.check_tcp_ready", "127.0.0.1", "3128"]
-        )
-        if ctx.mode == "dev":
-            crawlerd_waits += _wait_script(
-                [sys.executable, "-m", "s6.check_http_ready", "http://127.0.0.1:18080/"]
-            )
-        # Run crawlerd from the working tree so every mode sees the local build.
-        need_cmd("node")
-        node_path = shutil.which("node")
-        assert node_path is not None
-        crawlerd_run_command = _shell_join(
-            [
-                node_path,
-                ctx.repo_root / "crawlerd" / "dist" / "src" / "server.js",
-                "--socket-path",
-                ctx.crawlerd_socket_path,
-            ]
-        )
-        _write_executable(
-            ctx.crawlerd_service_dir / "run",
-            (
-                "#!/bin/sh\n"
-                f"exec >>{_shell_quote(ctx.crawlerd_log_file)} 2>&1\n"
-                f"cd {repo_root}\n" + crawlerd_waits + "exec "
-                f"env CPU_LIMIT={cpu_limit_quoted} DEPLOY_VCPU_LIMIT={deploy_vcpu_limit} "
-                f"{crawlerd_run_command}\n"
-            ),
-        )
-
     if "webshotd" in active_names:
         webshot_root = _shell_quote(ctx.repo_root / "webshotd")
         binary_path = _shell_quote(ctx.binary_path)
@@ -783,7 +714,6 @@ def _supervisor_matches_profile(ctx: RuntimeInspectContext) -> bool:
         "proxy": ctx.scan_dir / "proxy",
         "seaweedfs": ctx.scan_dir / "seaweedfs",
         "test_target": ctx.scan_dir / "test_target",
-        "crawlerd": ctx.crawlerd_service_dir,
         "webshotd": ctx.webshotd_service_dir,
     }
     for name, service_dir in known_service_dirs.items():
@@ -971,7 +901,7 @@ def _logs(ctx: RuntimeInspectContext) -> None:
 def _ensure_dev_bucket(ctx: RuntimeStateContext) -> None:
     ensure_s3_bucket_exists(
         secrets_path=ctx.repo_root / "webshotd/secret/test_secdist.json",
-        endpoint="localhost:8333",
+        s3_url="localhost:8333",
         bucket="webshot",
     )
 
@@ -985,8 +915,6 @@ def _prepare_runtime(ctx: RuntimeUpContext, *, cpu_limit: str) -> list[ServiceSp
     if ctx.mode == "dev":
         ctx.seaweed_data_dir.mkdir(parents=True, exist_ok=True)
         ctx.test_target_dir.mkdir(parents=True, exist_ok=True)
-    ctx.crawlerd_socket_path.parent.mkdir(parents=True, exist_ok=True)
-    ctx.crawlerd_socket_path.unlink(missing_ok=True)
     return _render_service_tree(ctx, cpu_limit=cpu_limit)
 
 

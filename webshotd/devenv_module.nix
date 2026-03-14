@@ -24,7 +24,12 @@ in {
     ]
     ++ common.userverDeps
     ++ [common.webshotTestSan common.webshotTestCov]
-    ++ (with common.pkgsWithOverlay; [git gdb nssTools]);
+    ++ (with common.pkgsWithOverlay; [
+      git
+      gdb
+      chromium
+      bubblewrap
+    ]);
 
   env.CMAKE_PREFIX_PATH = common.lib.makeSearchPath "lib/cmake" [
     common.userverPkgs.userver-debug-addr-ub

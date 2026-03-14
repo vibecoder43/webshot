@@ -5,8 +5,7 @@ public_base_url: "http://localhost:8333/webshot"
 s3_use_sts: false
 pg_capture_meta_db_dsn: "postgresql://postgres@localhost:5432/webshot_dev_capture_meta_db"
 pg_shared_state_db_dsn: "postgresql://postgres@localhost:5432/webshot_dev_shared_state_db"
-crawlerd_socket_path: "/tmp/webshot/dev/crawlerd.sock"
-crawlerd_run_timeout_sec: 15
+crawler_run_timeout_sec: 15
 crawler_job_overhead_timeout_sec: 45
 link_cooldown_sec: 0
 secdist_path: secret/test_secdist.json

@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <exception>
+#include <optional>
 #include <string>
 
 #include <fmt/format.h>
@@ -83,7 +84,7 @@ std::string DenylistCheckHandler::HandleRequestThrow(
             return {};
         }
 
-        Link link;
+        std::optional<Link> link;
         try {
             link = Link::fromTextStripPort(*body, config.queryPartLengthMax());
         } catch (const InvalidLinkException &) {
@@ -91,7 +92,7 @@ std::string DenylistCheckHandler::HandleRequestThrow(
             return {};
         }
 
-        auto prefixKey = prefix::makePrefixKey(link);
+        auto prefixKey = prefix::makePrefixKey(*link);
         if (!denylist.isAllowedPrefix(prefixKey)) {
             response.SetStatus(kForbidden);
             return {};

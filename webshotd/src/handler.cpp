@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <exception>
+#include <optional>
 #include <string>
 
 #include <fmt/format.h>
@@ -113,7 +114,7 @@ std::string Handler::HandleRequestThrow(
         auto str = String::fromBytes(arg);
         if (!str)
             return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
-        Link link;
+        std::optional<Link> link;
         try {
             link = Link::fromTextStripPort(*str, config.queryPartLengthMax());
         } catch (const InvalidLinkException &e) {
@@ -126,7 +127,7 @@ std::string Handler::HandleRequestThrow(
                 response, kBadRequest, "page_token"_t, "missing parameter"_t
             );
         try {
-            auto page = crud.findCapturesByLinkPage(link, *token);
+            auto page = crud.findCapturesByLinkPage(*link, *token);
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondParamError(

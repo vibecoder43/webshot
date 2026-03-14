@@ -6,7 +6,7 @@
 #include <userver/fs/blocking/temp_directory.hpp>
 #include <userver/utest/utest.hpp>
 
-#include "crawler_failure.hpp"
+#include "crawler/failure.hpp"
 
 namespace {
 namespace engine = userver::engine;

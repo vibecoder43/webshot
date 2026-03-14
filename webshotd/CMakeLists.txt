@@ -5,6 +5,12 @@ include(GNUInstallDirs)
 
 get_filename_component(WEBSHOT_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX
+      "${CMAKE_BINARY_DIR}/runtime_root"
+      CACHE PATH "Local runtime staging prefix" FORCE)
+endif()
+
 # Ensure userver codegen target is created only once even with multiple
 # generators (SQL, chaotic, testsuite). Pre-initialize the global property that
 # guards userver-codegen creation.
@@ -62,13 +68,19 @@ set(${PROJECT_NAME}_headers
     include/denylist_check_handler.hpp
     include/docs_handler.hpp
     include/crud.hpp
-    include/crawlerd_client.hpp
+    include/crawler/runner.hpp
+    include/crawler/artifacts.hpp
+    include/crawler/browser_sandbox.hpp
+    include/crawler/cdp_client.hpp
     include/config.hpp
-    include/crawler_failure.hpp
+    include/crawler/failure.hpp
+    include/crawler/fallback.hpp
     include/error_utils.hpp
     include/http_utils.hpp
+    include/ip_utils.hpp
     include/denylist.hpp
     include/link.hpp
+    include/url.hpp
     include/cursor.hpp
     include/pagination.hpp
     include/prefix_pagination.hpp
@@ -84,8 +96,12 @@ add_library(
   src/denylist_check_handler.cpp
   src/docs_handler.cpp
   src/crud.cpp
-  src/crawlerd_client.cpp
-  src/crawler_failure.cpp
+  src/url.cpp
+  src/crawler/runner.cpp
+  src/crawler/artifacts.cpp
+  src/crawler/browser_sandbox.cpp
+  src/crawler/cdp_client.cpp
+  src/crawler/failure.cpp
   src/text_postgres_formatter.cpp
   src/error_utils.cpp
   src/denylist.cpp
@@ -124,6 +140,22 @@ add_executable(${PROJECT_NAME} src/main.cpp
 apply_defaults(${PROJECT_NAME}_objs)
 apply_defaults(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME webshotd)
+target_compile_definitions(
+  ${PROJECT_NAME}_objs
+  PRIVATE
+    WEBSHOT_BROWSER_SANDBOX_SCRIPT_PATH="${CMAKE_INSTALL_PREFIX}/webshotd/browser_sandbox.sh")
+add_custom_target(
+  ${PROJECT_NAME}_stage_runtime_layout ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_INSTALL_PREFIX}/webshotd"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${PROJECT_NAME}>
+    "${CMAKE_INSTALL_PREFIX}/webshotd/webshotd"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
+    "${CMAKE_INSTALL_PREFIX}/webshotd/browser_sandbox.sh"
+  DEPENDS ${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
+  VERBATIM)
 
 if(WEBSHOT_RAPIDOC_ASSETS_DIR STREQUAL "")
   message(FATAL_ERROR "WEBSHOT_RAPIDOC_ASSETS_DIR must be configured")
@@ -148,8 +180,7 @@ find_package(absl CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE absl::strings)
 target_link_libraries(${PROJECT_NAME}_objs
                       PUBLIC userver::core userver::postgresql userver::s3api
-                             arkhiv::arkhiv)
-target_link_libraries(${PROJECT_NAME} PRIVATE arkhiv::arkhiv)
+                             )
 target_sources(
   ${PROJECT_NAME}_objs
   PRIVATE src/s3/sigv4_signer.cpp src/s3/s3_v4_client.cpp
@@ -170,7 +201,6 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE ${PROJECT_NAME}_sql)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_sql)
 
 include(CTest)
-add_subdirectory(${WEBSHOT_REPO_ROOT}/arkhiv ${CMAKE_CURRENT_BINARY_DIR}/arkhiv)
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
@@ -181,7 +211,9 @@ if(USE_SANITIZERS)
 endif()
 
 set(SCHEMAS
-    ${WEBSHOT_REPO_ROOT}/schema/crawlerd.yaml
+    ${WEBSHOT_REPO_ROOT}/schema/cdp.yaml
+    ${WEBSHOT_REPO_ROOT}/schema/browsertrix_pages.yaml
+    ${WEBSHOT_REPO_ROOT}/schema/wacz.yaml
     ${WEBSHOT_REPO_ROOT}/schema/webshot.yaml)
 userver_target_generate_chaotic(
   ${PROJECT_NAME}-chgen
@@ -209,8 +241,10 @@ target_include_directories(
   ${PROJECT_NAME}_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/
                                ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION "webshotd")
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
+        DESTINATION "webshotd")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/webshot/config")
+        DESTINATION "webshotd/config")
 install(DIRECTORY "${WEBSHOT_REPO_ROOT}/schema/"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/webshot/schema")
+        DESTINATION "schema")

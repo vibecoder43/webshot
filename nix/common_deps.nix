@@ -19,5 +19,6 @@
     s6
     seaweedfs
     mitmproxy
+    socat
   ];
 }

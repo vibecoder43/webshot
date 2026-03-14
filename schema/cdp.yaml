@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: Internal Chromium DevTools Protocol shapes used by webshotd
+  version: 0.1.0
+paths: {}
+components:
+  schemas:
+    CdpEmptyObject:
+      type: object
+      additionalProperties: false
+    CdpHeaders:
+      type: object
+      additionalProperties:
+        type: string
+    CdpError:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        code:
+          type: integer
+          format: int64
+        message:
+          type: string
+        data:
+          type: string
+    CdpCommandRequest:
+      type: object
+      additionalProperties: false
+      required: [id, method]
+      properties:
+        id:
+          type: integer
+          format: int64
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+          x-usrv-cpp-type: userver::formats::json::Value
+        sessionId:
+          type: string
+    CdpEventMessage:
+      type: object
+      additionalProperties: false
+      required: [method]
+      properties:
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+          x-usrv-cpp-type: userver::formats::json::Value
+        sessionId:
+          type: string
+    DevtoolsVersionResponse:
+      type: object
+      additionalProperties: false
+      required: [webSocketDebuggerUrl]
+      properties:
+        webSocketDebuggerUrl:
+          type: string
+    TargetTargetCrashedEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        targetId:
+          type: string
+    TargetCreateBrowserContextResult:
+      type: object
+      additionalProperties: false
+      required: [browserContextId]
+      properties:
+        browserContextId:
+          type: string
+    TargetCreateTargetParams:
+      type: object
+      additionalProperties: false
+      required: [url, browserContextId]
+      properties:
+        url:
+          type: string
+        browserContextId:
+          type: string
+    TargetCreateTargetResult:
+      type: object
+      additionalProperties: false
+      required: [targetId]
+      properties:
+        targetId:
+          type: string
+    TargetAttachToTargetParams:
+      type: object
+      additionalProperties: false
+      required: [targetId, flatten]
+      properties:
+        targetId:
+          type: string
+        flatten:
+          type: boolean
+    TargetAttachToTargetResult:
+      type: object
+      additionalProperties: false
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+    TargetDetachFromTargetParams:
+      type: object
+      additionalProperties: false
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+    TargetDisposeBrowserContextParams:
+      type: object
+      additionalProperties: false
+      required: [browserContextId]
+      properties:
+        browserContextId:
+          type: string
+    PageSetLifecycleEventsEnabledParams:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    PageFrameTreeFrame:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+    PageFrameTree:
+      type: object
+      additionalProperties: false
+      required: [frame]
+      properties:
+        frame:
+          $ref: "#/components/schemas/PageFrameTreeFrame"
+    PageGetFrameTreeResult:
+      type: object
+      additionalProperties: false
+      required: [frameTree]
+      properties:
+        frameTree:
+          $ref: "#/components/schemas/PageFrameTree"
+    PageNavigateParams:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url:
+          type: string
+    NetworkRequest:
+      type: object
+      additionalProperties: false
+      required: [url, method]
+      properties:
+        url:
+          type: string
+        method:
+          type: string
+    NetworkResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+        status:
+          type: integer
+          format: int64
+        statusText:
+          type: string
+        headers:
+          $ref: "#/components/schemas/CdpHeaders"
+    NetworkRequestWillBeSentEvent:
+      type: object
+      additionalProperties: false
+      required: [requestId, request]
+      properties:
+        requestId:
+          type: string
+        frameId:
+          type: string
+        type:
+          type: string
+        request:
+          $ref: "#/components/schemas/NetworkRequest"
+        redirectResponse:
+          $ref: "#/components/schemas/NetworkResponse"
+    NetworkResponseReceivedEvent:
+      type: object
+      additionalProperties: false
+      required: [requestId, response]
+      properties:
+        requestId:
+          type: string
+        response:
+          $ref: "#/components/schemas/NetworkResponse"
+    NetworkLoadingFinishedEvent:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+    NetworkLoadingFailedEvent:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+        errorText:
+          type: string
+    NetworkSetCacheDisabledParams:
+      type: object
+      additionalProperties: false
+      required: [cacheDisabled]
+      properties:
+        cacheDisabled:
+          type: boolean
+    NetworkSetBypassServiceWorkerParams:
+      type: object
+      additionalProperties: false
+      required: [bypass]
+      properties:
+        bypass:
+          type: boolean
+    NetworkSetExtraHTTPHeadersParams:
+      type: object
+      additionalProperties: false
+      required: [headers]
+      properties:
+        headers:
+          $ref: "#/components/schemas/CdpHeaders"
+    NetworkGetResponseBodyParams:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+    NetworkGetResponseBodyResult:
+      type: object
+      additionalProperties: false
+      required: [body, base64Encoded]
+      properties:
+        body:
+          type: string
+        base64Encoded:
+          type: boolean
+    RuntimeEvaluateParams:
+      type: object
+      additionalProperties: false
+      required: [expression, returnByValue, awaitPromise]
+      properties:
+        expression:
+          type: string
+        returnByValue:
+          type: boolean
+        awaitPromise:
+          type: boolean
+    RuntimeDomStateValue:
+      type: object
+      additionalProperties: false
+      required: [finalUrl, html]
+      properties:
+        finalUrl:
+          type: string
+        title:
+          type: string
+        html:
+          type: string
+    RuntimeRemoteObjectWithDomState:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          $ref: "#/components/schemas/RuntimeDomStateValue"
+    RuntimeEvaluateDomStateResult:
+      type: object
+      additionalProperties: false
+      required: [result]
+      properties:
+        result:
+          $ref: "#/components/schemas/RuntimeRemoteObjectWithDomState"

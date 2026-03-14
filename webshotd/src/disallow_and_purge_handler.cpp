@@ -13,6 +13,7 @@
 #include "text.hpp"
 
 #include <chrono>
+#include <optional>
 #include <string>
 
 #include <fmt/format.h>
@@ -77,21 +78,21 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
     const auto host = String::fromBytes(arg);
     if (!host)
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
-    Link link;
+    std::optional<Link> link;
     try {
         link = Link::fromTextStripPortQuery(*host, config.queryPartLengthMax());
     } catch (const InvalidLinkException &e) {
         LOG_INFO() << fmt::format("invalid host: {}", e.what());
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     }
-    LOG_INFO() << fmt::format("invoked for: {}", link.host());
+    LOG_INFO() << fmt::format("invoked for: {}", link->host());
     try {
-        auto prefixKey = prefix::makePrefixKey(link);
+        auto prefixKey = prefix::makePrefixKey(*link);
         crud.disallowAndPurgePrefix(prefixKey);
         response.SetStatus(kAccepted);
         return {};
     } catch (const std::exception &e) {
-        LOG_CRITICAL() << fmt::format("failed for {}: {}", link.host(), e.what());
+        LOG_CRITICAL() << fmt::format("failed for {}: {}", link->host(), e.what());
         us::utils::AbortWithStacktrace("disallowing host failed");
     }
 }

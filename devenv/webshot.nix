@@ -26,12 +26,6 @@
 
   runtimeLdLibraryPath = common.lib.makeLibraryPath common.testLibs;
 
-  mkCrawlerdTaskCommand = command: ''
-    cd ${common.lib.escapeShellArg common.crawlerd.root}
-    ${command}
-    cd ${common.lib.escapeShellArg config.devenv.root}
-  '';
-
   mkWebshotBuildCommandForMode = mode: let
     cfg = modeConfigs.${mode};
   in ''
@@ -39,10 +33,7 @@
     cmake --build ${common.lib.escapeShellArg cfg.buildDir}
   '';
 
-  mkBuildCommandsForMode = mode: ''
-    ${mkCrawlerdTaskCommand common.crawlerd.buildCommand}
-    ${mkWebshotBuildCommandForMode mode}
-  '';
+  mkBuildCommandsForMode = mode: mkWebshotBuildCommandForMode mode;
 
   mkBuildTaskForMode = mode: {
     cwd = config.devenv.root;
@@ -63,7 +54,7 @@
     then ''
       python3 -m s6.runtime up \
         --mode ${common.lib.escapeShellArg cfg.infraMode}${serviceProfileArg} \
-        --binary-path ${common.lib.escapeShellArg "${cfg.buildDir}/webshotd"} \
+        --binary-path ${common.lib.escapeShellArg "${cfg.buildDir}/runtime_root/webshotd/webshotd"} \
         --config-vars-source ${common.lib.escapeShellArg cfg.configVarsSource} \
         --runtime-ld-library-path ${common.lib.escapeShellArg runtimeLdLibraryPath}
     ''
@@ -99,8 +90,6 @@
     cwd = config.devenv.root;
     exec = ''
       set -euo pipefail
-      ${mkCrawlerdTaskCommand common.crawlerd.buildCommand}
-      ${mkCrawlerdTaskCommand common.crawlerd.testCommand}
       ${mkWebshotBuildCommandForMode mode}
       cleanup() {
         ${downCmd}

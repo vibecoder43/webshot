@@ -130,3 +130,10 @@ template <> struct fmt::formatter<String> : fmt::formatter<std::string_view> {
         return fmt::formatter<std::string_view>::format(text.view(), ctx);
     }
 };
+
+template <> struct std::hash<String> {
+    size_t operator()(const String &text) const noexcept
+    {
+        return std::hash<std::string_view>{}(text.view());
+    }
+};

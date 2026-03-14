@@ -23,6 +23,7 @@ components_manager:
       config: $secdist_path
       missing-ok: true
       format: json
+    process-starter: {}
     dynamic-config:
       defaults:
         USERVER_RPS_CCONTROL_ENABLED: true
@@ -143,8 +144,7 @@ components_manager:
       snapshots_page_max: 2
       snapshots_per_link_max: 2
       snapshots_links_per_page_max: 10
-      crawlerd_socket_path: $crawlerd_socket_path
-      crawlerd_run_timeout_sec: $crawlerd_run_timeout_sec
+      crawler_run_timeout_sec: $crawler_run_timeout_sec
       crawler_job_overhead_timeout_sec: $crawler_job_overhead_timeout_sec
       link_cooldown_sec: $link_cooldown_sec
       crawl_job_retention_sec: 604800

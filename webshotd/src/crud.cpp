@@ -7,8 +7,8 @@
  * metadata writes, and various paged queries.
  */
 #include "config.hpp"
-#include "crawler_failure.hpp"
-#include "crawlerd_client.hpp"
+#include "crawler/failure.hpp"
+#include "crawler/runner.hpp"
 #include "denylist.hpp"
 #include "integers.hpp"
 #include "link.hpp"
@@ -43,6 +43,7 @@
 #include <userver/clients/http/component.hpp>
 #include <userver/components/component.hpp>
 #include <userver/components/component_base.hpp>
+#include <userver/components/process_starter.hpp>
 #include <userver/concurrent/background_task_storage.hpp>
 #include <userver/crypto/base64.hpp>
 #include <userver/engine/semaphore.hpp>
@@ -81,7 +82,6 @@ using Uuid = boost::uuids::uuid;
 using chrono::system_clock;
 namespace {
 constexpr i64 kCrawlerSeedAttemptsMax = 2_i64;
-constexpr std::string_view kCrawlerdBaseUrl = "http://localhost";
 } // namespace
 
 us::yaml_config::Schema Crud::GetStaticConfigSchema()
@@ -103,20 +103,17 @@ properties:
         type: integer
         minimum: 1
         description: 'Max distinct links in a prefix page'
-    crawlerd_socket_path:
-        type: string
-        description: 'Absolute AF_UNIX path used to talk to crawlerd'
-    crawlerd_run_timeout_sec:
+    crawler_run_timeout_sec:
         type: integer
         minimum: 1
-        description: 'Timeout sent to a single blocking crawlerd /run request in seconds'
+        description: 'Timeout sent to a single blocking crawler run in seconds'
     crawler_job_overhead_timeout_sec:
         type: integer
         minimum: 1
-        description: 'Extra timeout budget added around crawlerd requests for upload and metadata persistence'
+        description: 'Extra timeout budget added around crawler runs for upload and metadata persistence'
     s3_credentials_endpoint:
         type: string
-        description: 'STS endpoint used to obtain temporary S3 credentials; S3 data endpoint s3_endpoint (in config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
+        description: 'STS url used to obtain temporary S3 credentials; S3 data url s3_endpoint (in config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
     s3_use_sts:
         type: boolean
         description: 'Whether to fetch temporary S3 credentials from STS (true) or use static credentials from secdist (false)'
@@ -173,7 +170,7 @@ public:
     const i64 pageMax;
     const i64 perLinkMax;
     const i64 linksPerPageMax;
-    const i64 crawlerdRunTimeoutSec;
+    const i64 crawlerRunTimeoutSec;
     const i64 crawlerJobOverheadTimeoutSec;
     const i64 linkCooldownSec;
     const i64 crawlJobRetentionSec;
@@ -189,7 +186,8 @@ public:
     pg::ClusterPtr cluster;
     pg::ClusterPtr sharedCluster;
     us::clients::http::Client &httpClient;
-    CrawlerdClient crawlerClient;
+    us::engine::subprocess::ProcessStarter &processStarter;
+    CrawlerRunner crawlerRunner;
     struct [[nodiscard]] S3ClientState {
         s3v4::S3Credentials creds;
         system_clock::time_point expiresAt;
@@ -233,7 +231,7 @@ public:
         : pageMax(cfg["snapshots_page_max"].As<int64_t>()),
           perLinkMax(cfg["snapshots_per_link_max"].As<int64_t>()),
           linksPerPageMax(cfg["snapshots_links_per_page_max"].As<int64_t>()),
-          crawlerdRunTimeoutSec(cfg["crawlerd_run_timeout_sec"].As<int64_t>()),
+          crawlerRunTimeoutSec(cfg["crawler_run_timeout_sec"].As<int64_t>()),
           crawlerJobOverheadTimeoutSec(cfg["crawler_job_overhead_timeout_sec"].As<int64_t>()),
           linkCooldownSec(cfg["link_cooldown_sec"].As<int64_t>()),
           crawlJobRetentionSec(cfg["crawl_job_retention_sec"].As<int64_t>()),
@@ -253,11 +251,8 @@ public:
               ctx.FindComponent<us::components::Postgres>("shared_state_db").GetCluster()
           ),
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
-          crawlerClient(
-              httpClient, String::fromBytesThrow(kCrawlerdBaseUrl),
-              String::fromBytesThrow(cfg["crawlerd_socket_path"].As<std::string>()),
-              crawlerdRunTimeoutSec
-          ),
+          processStarter(ctx.FindComponent<us::components::ProcessStarter>().Get()),
+          crawlerRunner(httpClient, processStarter, crawlerRunTimeoutSec),
           denylist(ctx.FindComponent<Denylist>()),
           mainTaskProcessor(ctx.GetTaskProcessor("main-task-processor")),
           crawlSlots(engine::GetWorkerCount(mainTaskProcessor)),
@@ -344,7 +339,7 @@ struct [[nodiscard]] CrawlContext {
 [[nodiscard]] dto::UuidWithTimeLink Crud::Impl::runCrawlJob(Uuid id, Link link)
 {
     const auto totalCrawlTimeLimitSec = crawlerJobOverheadTimeoutSec +
-                                        crawlerdRunTimeoutSec * kCrawlerSeedAttemptsMax;
+                                        crawlerRunTimeoutSec * kCrawlerSeedAttemptsMax;
     engine::current_task::SetDeadline(
         engine::Deadline::FromDuration(toSeconds(totalCrawlTimeLimitSec))
     );
@@ -560,11 +555,11 @@ void Crud::Impl::cleanupOldJobs()
 crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(CrawlContext &ctx, const String &seedUrl)
 {
     LOG_INFO() << fmt::format(
-        "Submitting crawl for {} to crawlerd with timeout={}s", seedUrl,
-        toNative(crawlerdRunTimeoutSec)
+        "Submitting crawl for {} to embedded crawler with timeout={}s", seedUrl,
+        toNative(crawlerRunTimeoutSec)
     );
 
-    const auto run = crawlerClient.run(seedUrl);
+    const auto run = crawlerRunner.run(seedUrl);
     if (!run.attempt.waczExists) {
         const auto attemptContext = crawler::formatAttemptContext(run.attempt);
         LOG_INFO() << fmt::format(

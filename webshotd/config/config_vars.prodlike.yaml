@@ -9,8 +9,7 @@ s3_credentials_refresh_margin_sec: 300
 s3_credentials_refresh_retry_sec: 60
 pg_capture_meta_db_dsn: "postgresql://postgres@localhost:5432/webshot_prodlike_capture_meta_db"
 pg_shared_state_db_dsn: "postgresql://postgres@localhost:5432/webshot_prodlike_shared_state_db"
-crawlerd_socket_path: "/tmp/webshot/prodlike/crawlerd.sock"
-crawlerd_run_timeout_sec: 15
+crawler_run_timeout_sec: 15
 crawler_job_overhead_timeout_sec: 45
 link_cooldown_sec: 0
 secdist_path: secdist.json

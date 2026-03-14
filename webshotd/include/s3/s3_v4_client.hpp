@@ -2,15 +2,13 @@
 
 #include "s3_credentials_types.hpp"
 #include "text.hpp"
+#include "url.hpp"
 
 #include <chrono>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <ada.h>
-#include <ada/url_aggregator.h>
 
 #include <userver/clients/http/client.hpp>
 #include <userver/s3api/clients/s3api.hpp>
@@ -22,7 +20,7 @@ struct SigV4Params;
 
 namespace detail {
 struct EndpointParts {
-    ada::url_aggregator url;
+    Url url;
     String host;     // host header, may include port
     String hostname; // host without port
     String port;     // optional, empty if not set

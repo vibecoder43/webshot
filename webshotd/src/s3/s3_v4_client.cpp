@@ -40,24 +40,15 @@ EndpointParts parseEndpoint(const String &ep)
     const auto link = Link::fromText(ep, ep.sizeBytes());
     const auto &url = link.url;
 
-    UINVARIANT(
-        url.type == ada::scheme::type::HTTP || url.type == ada::scheme::type::HTTPS,
-        "S3 endpoint must be http or https"
-    );
+    UINVARIANT(url.isHttp() || url.isHttps(), "S3 endpoint must be http or https");
 
-    UINVARIANT(!url.has_search(), "S3 endpoint must not include query");
-    std::string path = std::string(url.get_pathname());
+    UINVARIANT(!url.hasSearch(), "S3 endpoint must not include query");
+    std::string path = std::string(url.pathname().view());
     if (path.empty())
         path = "/";
     UINVARIANT(path == "/", "S3 endpoint path must be root");
 
-    EndpointParts out;
-    out.url = url;
-    out.host = *String::fromBytes(out.url.get_host());
-    out.hostname = *String::fromBytes(out.url.get_hostname());
-    out.port = out.url.has_port() ? *String::fromBytes(out.url.get_port()) : String{};
-    out.basePath = "/"_t;
-    return out;
+    return {url, url.host(), url.hostname(), url.hasPort() ? url.port() : String{}, "/"_t};
 }
 } // namespace detail
 
@@ -385,7 +376,7 @@ S3V4Client::makePathStyleUrl(String path, std::optional<String> protocolOverride
     detail::BuiltUrl out;
     out.rawPath = buildRawPath(std::move(path), /*includeBucket*/ true);
 
-    auto url = endpoint.url;
+    auto url = endpoint.url.copyParsed();
     if (protocolOverride) {
         const auto proto = std::string(protocolOverride->view());
         UINVARIANT(url.set_protocol(proto), "invalid protocol override");
@@ -404,7 +395,7 @@ detail::BuiltUrl S3V4Client::makeVirtualHostUrl(String path, String protocol) co
     detail::BuiltUrl out;
     out.rawPath = buildRawPath(std::move(path), /*includeBucket*/ false);
 
-    auto url = endpoint.url;
+    auto url = endpoint.url.copyParsed();
     const auto proto = std::string(protocol.view());
     UINVARIANT(url.set_protocol(proto), "invalid protocol for S3 presign");
     UINVARIANT(

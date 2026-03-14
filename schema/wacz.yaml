@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: WACZ internal artifact formats
+  version: 0.1.0
+paths: {}
+components:
+  schemas:
+    WaczIndexEntry:
+      type: object
+      additionalProperties: false
+      required: [url, status, mime, filename, length, offset]
+      properties:
+        url:
+          type: string
+        status:
+          type: string
+        mime:
+          type: string
+        filename:
+          type: string
+        length:
+          type: string
+        offset:
+          type: string
+    WaczPagesHeader:
+      type: object
+      additionalProperties: false
+      required: [format, id, title, hasText]
+      properties:
+        format:
+          type: string
+        id:
+          type: string
+        title:
+          type: string
+        hasText:
+          type: boolean
+    WaczResource:
+      type: object
+      additionalProperties: false
+      required: [name, path, bytes]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        bytes:
+          type: integer
+          format: int64
+    WaczDataPackage:
+      type: object
+      additionalProperties: false
+      required: [profile, created, wacz_version, software, title, resources]
+      properties:
+        profile:
+          type: string
+        created:
+          type: string
+          format: date-time
+        wacz_version:
+          type: string
+        software:
+          type: string
+        title:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/WaczResource"

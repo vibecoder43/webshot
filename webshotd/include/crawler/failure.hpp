@@ -1,6 +1,6 @@
 #pragma once
 
-#include "crawler_fallback.hpp"
+#include "crawler/fallback.hpp"
 #include "text.hpp"
 
 #include <optional>
@@ -9,7 +9,7 @@
 
 namespace v1::crawler {
 
-[[nodiscard]] std::string sanitizeProcessOutputTail(std::string_view bytes);
+[[nodiscard]] String sanitizeProcessOutputTail(std::string_view bytes);
 
 [[nodiscard]] std::optional<String>
 summarizeProcessOutputs(const std::string &stdoutPath, const std::string &stderrPath);
