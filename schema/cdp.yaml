@@ -37,7 +37,6 @@ components:
         params:
           type: object
           additionalProperties: true
-          x-usrv-cpp-type: userver::formats::json::Value
         sessionId:
           type: string
     CdpEventMessage:
@@ -50,7 +49,6 @@ components:
         params:
           type: object
           additionalProperties: true
-          x-usrv-cpp-type: userver::formats::json::Value
         sessionId:
           type: string
     DevtoolsVersionResponse:

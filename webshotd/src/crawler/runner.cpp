@@ -144,7 +144,7 @@ void sleepWithinBudget(
         throw std::runtime_error(std::string(timeoutMessage));
 }
 
-[[nodiscard]] const json::Value &requireEventParams(const crawler::CdpEvent &event)
+[[nodiscard]] const dto::CdpEventMessage::Params &requireEventParams(const crawler::CdpEvent &event)
 {
     if (!event.params)
         throw std::runtime_error(fmt::format("{} missing params", event.method.view()));
@@ -492,7 +492,7 @@ public:
     {
         if (event.method.view() == "Target.targetCrashed") {
             if (event.params) {
-                const auto crashed = event.params->As<dto::TargetTargetCrashedEvent>();
+                const auto crashed = event.params->extra.As<dto::TargetTargetCrashedEvent>();
                 if (crashed.targetId && targetId.view() == *crashed.targetId)
                     mainRequestFailure = "page target crashed"_t;
             }
@@ -684,9 +684,9 @@ private:
         String timestamp;
     };
 
-    void handleRequestWillBeSent(const json::Value &params)
+    void handleRequestWillBeSent(const dto::CdpEventMessage::Params &params)
     {
-        const auto requestWillBeSent = params.As<dto::NetworkRequestWillBeSentEvent>();
+        const auto requestWillBeSent = params.extra.As<dto::NetworkRequestWillBeSentEvent>();
         if (requestWillBeSent.request.url.starts_with("data:"))
             return;
 
@@ -722,9 +722,9 @@ private:
         );
     }
 
-    void handleResponseReceived(const json::Value &params)
+    void handleResponseReceived(const dto::CdpEventMessage::Params &params)
     {
-        const auto responseReceived = params.As<dto::NetworkResponseReceivedEvent>();
+        const auto responseReceived = params.extra.As<dto::NetworkResponseReceivedEvent>();
         const auto requestIdText = String::fromBytesThrow(responseReceived.requestId);
         const auto headers = normalizeHeadersOrEmpty(responseReceived.response.headers);
         auto resourceIt = resourcesByRequestId.find(requestIdText);
@@ -754,9 +754,9 @@ private:
         };
     }
 
-    void handleLoadingFinished(const json::Value &params)
+    void handleLoadingFinished(const dto::CdpEventMessage::Params &params)
     {
-        const auto loadingFinished = params.As<dto::NetworkLoadingFinishedEvent>();
+        const auto loadingFinished = params.extra.As<dto::NetworkLoadingFinishedEvent>();
         const auto requestIdText = String::fromBytesThrow(loadingFinished.requestId);
         inflight.erase(requestIdText);
         lastNetworkAt = us::utils::datetime::SteadyNow();
@@ -766,9 +766,9 @@ private:
             mainRequestLoaded = true;
     }
 
-    void handleLoadingFailed(const json::Value &params)
+    void handleLoadingFailed(const dto::CdpEventMessage::Params &params)
     {
-        const auto loadingFailed = params.As<dto::NetworkLoadingFailedEvent>();
+        const auto loadingFailed = params.extra.As<dto::NetworkLoadingFailedEvent>();
         const auto requestIdText = String::fromBytesThrow(loadingFailed.requestId);
         inflight.erase(requestIdText);
         lastNetworkAt = us::utils::datetime::SteadyNow();

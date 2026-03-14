@@ -64,7 +64,7 @@ json::Value CdpClient::sendRaw(
     request.id = id;
     request.method = std::string(method);
     if (!params.IsMissing())
-        request.params = params;
+        request.params = dto::CdpCommandRequest::Params{params};
     if (sessionId)
         request.sessionId = std::string(sessionId->view());
     connection->SendText(json::ToString(json::ValueBuilder(request).ExtractValue()));

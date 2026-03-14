@@ -1,6 +1,7 @@
 #pragma once
 
 #include "integers.hpp"
+#include "schema/cdp.hpp"
 #include "text.hpp"
 
 #include <chrono>
@@ -22,7 +23,7 @@ namespace v1::crawler {
 
 struct [[nodiscard]] CdpEvent {
     String method;
-    std::optional<us::formats::json::Value> params;
+    std::optional<dto::CdpEventMessage::Params> params;
     std::optional<String> sessionId;
 };
 
