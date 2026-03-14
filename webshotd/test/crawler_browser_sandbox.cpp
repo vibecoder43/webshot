@@ -18,9 +18,9 @@ UTEST(CrawlerBrowserSandbox, ParseGeometryAcceptsValidWidthAndHeight)
 
 UTEST(CrawlerBrowserSandbox, ParseGeometryRejectsMalformedInput)
 {
-    EXPECT_THROW(parseGeometry("bad-input"_t), std::runtime_error);
-    EXPECT_THROW(parseGeometry(""_t), std::runtime_error);
-    EXPECT_THROW(parseGeometry("0x900"_t), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(parseGeometry("bad-input"_t)), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(parseGeometry(""_t)), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(parseGeometry("0x900"_t)), std::runtime_error);
 }
 
 UTEST(CrawlerBrowserSandbox, BuildChromiumArgsUsesDefaultGeometryWhenUnset)

@@ -35,7 +35,7 @@ UTEST(CrawlerFailure, SanitizeProcessOutputTailNormalizesWhitespaceAndEscapesQuo
         "line1\nline\t2\x01 \"quoted\" \\ path"
     );
 
-    EXPECT_EQ(sanitized, "line1 line 2? \\\"quoted\\\" \\\\ path");
+    EXPECT_EQ(sanitized, "line1 line 2? \\\"quoted\\\" \\\\ path"_t);
 }
 
 UTEST(CrawlerFailure, SummarizeProcessOutputsReadsBoundedStdoutAndStderr)

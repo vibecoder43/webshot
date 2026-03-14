@@ -34,7 +34,7 @@ endfunction()
 
 add_cpp_test(
   link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
-  ${CMAKE_SOURCE_DIR}/src/link.cpp)
+  ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/url.cpp)
 
 add_cpp_test(
   s3_v4_client_test
@@ -43,6 +43,7 @@ add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/s3_v4_client.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
+  ${CMAKE_SOURCE_DIR}/src/url.cpp
   LIBS
   userver::core
   INCLUDE_DIRS
@@ -60,6 +61,7 @@ add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/s3_url_utils.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
+  ${CMAKE_SOURCE_DIR}/src/url.cpp
   LIBS
   userver::core
   INCLUDE_DIRS
