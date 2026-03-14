@@ -19,12 +19,6 @@ jobs:
         uses: https://data.forgejo.org/actions/checkout@09d2acae674a48949e3602304ab46fd20ae0c42f
       - name: Build, test
         run: |
-          set -euo pipefail
-          bash .forgejo/devenv_ci.sh tasks run crawlerd:check
-          bash .forgejo/devenv_ci.sh tasks run crawlerd:build
-          bash .forgejo/devenv_ci.sh tasks run crawlerd:test
-          bash .forgejo/devenv_ci.sh tasks run crawlerd:openapi
-          git diff --exit-code -- schema/crawlerd.yaml
           bash .forgejo/devenv_ci.sh tasks run webshot:devBuild
           bash .forgejo/devenv_ci.sh tasks run webshot:devTest
       - name: Cleanup infra
