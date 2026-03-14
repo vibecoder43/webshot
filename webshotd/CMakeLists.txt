@@ -186,6 +186,8 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE absl::strings)
 target_link_libraries(${PROJECT_NAME}_objs
                       PUBLIC userver::core userver::postgresql userver::s3api
                              )
+add_subdirectory("${WEBSHOT_REPO_ROOT}/arkhiv" "${CMAKE_CURRENT_BINARY_DIR}/arkhiv")
+target_link_libraries(${PROJECT_NAME}_objs PRIVATE arkhiv::arkhiv)
 target_sources(
   ${PROJECT_NAME}_objs
   PRIVATE src/s3/sigv4_signer.cpp src/s3/s3_v4_client.cpp
@@ -236,6 +238,7 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE ${PROJECT_NAME}-chgen)
 target_link_libraries(
   ${PROJECT_NAME}
   PRIVATE ${PROJECT_NAME}-chgen
+          arkhiv::arkhiv
           fmt::fmt
           ada::ada
           userver::core

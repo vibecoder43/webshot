@@ -117,6 +117,7 @@ add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/crawler/artifacts.cpp
   ${CMAKE_SOURCE_DIR}/src/url.cpp
   LIBS
+  arkhiv::arkhiv
   userver::core
   ${PROJECT_NAME}-chgen)
 

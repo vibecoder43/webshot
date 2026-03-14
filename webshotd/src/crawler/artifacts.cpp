@@ -2,13 +2,14 @@
 #include "ip_utils.hpp"
 #include "url.hpp"
 
+#include <arkhiv/zip_archive.hpp>
+
 #include "schema/browsertrix_pages.hpp"
 #include "schema/wacz.hpp"
 
 #include <algorithm>
 #include <array>
 #include <boost/uuid/uuid_io.hpp>
-#include <initializer_list>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -32,6 +33,7 @@ using namespace text::literals;
 namespace {
 
 constexpr std::string_view kUserAgent = "webshotd/0.1.0";
+
 [[nodiscard]] std::string extractHtmlTitle(std::string_view body)
 {
     const auto openPos = body.find("<title");
@@ -44,55 +46,6 @@ constexpr std::string_view kUserAgent = "webshotd/0.1.0";
     if (end == std::string_view::npos)
         return {};
     return std::string(body.substr(start + 1, end - start - 1));
-}
-
-[[nodiscard]] u32 computeCrc32(std::string_view bytes)
-{
-    static const auto table = [] {
-        std::array<u32, 256> values{};
-        for (size_t index = 0; index < values.size(); index++) {
-            auto value = u32(index);
-            for (size_t bit = 0; bit < 8; bit++) {
-                value = (value & 1_u32) == 1_u32 ? 0xedb88320_u32 ^ (value >> 1_u32)
-                                                 : value >> 1_u32;
-            }
-            values[index] = value;
-        }
-        return values;
-    }();
-
-    auto crc = 0xffffffff_u32;
-    for (const auto ch : bytes) {
-        const auto byte = u32(static_cast<uint8_t>(ch));
-        crc = (crc >> 8_u32) ^ table[toNative((crc ^ byte) & 0xff_u32)];
-    }
-    return crc ^ 0xffffffff_u32;
-}
-
-void appendU16Le(std::string &out, uint16_t value)
-{
-    for (size_t index = 0; index < sizeof(value); index++) {
-        out.push_back(static_cast<char>((static_cast<uint64_t>(value) >> (index * 8U)) & 0xffU));
-    }
-}
-
-void appendU32Le(std::string &out, uint32_t value)
-{
-    for (size_t index = 0; index < sizeof(value); index++) {
-        out.push_back(static_cast<char>((static_cast<uint64_t>(value) >> (index * 8U)) & 0xffU));
-    }
-}
-
-void appendU16Fields(std::string &out, std::initializer_list<uint16_t> values)
-{
-    for (const auto value : values)
-        appendU16Le(out, value);
-}
-
-void appendU32Fields(std::string &out, std::initializer_list<uint32_t> values)
-{
-    for (const auto value : values)
-        appendU32Le(out, value);
 }
 
 template <typename T> [[nodiscard]] std::string toJsonString(const T &value)
@@ -130,103 +83,6 @@ struct [[nodiscard]] SerializableResponse {
     std::unordered_map<std::string, std::string> headers;
     std::string body;
     String timestamp;
-};
-
-class [[nodiscard]] StoredZipBuilder final {
-public:
-    void addFile(std::string_view name, std::string_view body)
-    {
-        const auto crc32 = computeCrc32(body);
-        const auto localHeaderOffset = numericCast<uint32_t>(archiveBytes.size());
-        appendLocalFile(name, body, crc32);
-        appendCentralDirectoryEntry(name, body, crc32, localHeaderOffset);
-        entryCount++;
-    }
-
-    [[nodiscard]] std::string finish() &&
-    {
-        const auto centralDirectoryOffset = numericCast<uint32_t>(archiveBytes.size());
-        archiveBytes += centralDirectoryBytes;
-
-        appendU32Fields(archiveBytes, {kEndOfCentralDirectorySignature});
-        appendU16Fields(
-            archiveBytes, {
-                              0U,
-                              0U,
-                              numericCast<uint16_t>(entryCount),
-                              numericCast<uint16_t>(entryCount),
-                          }
-        );
-        appendU32Fields(
-            archiveBytes, {
-                              numericCast<uint32_t>(centralDirectoryBytes.size()),
-                              centralDirectoryOffset,
-                          }
-        );
-        appendU16Fields(archiveBytes, {0U});
-        return std::move(archiveBytes);
-    }
-
-private:
-    static constexpr uint32_t kLocalFileHeaderSignature = 0x04034b50U;
-    static constexpr uint32_t kCentralDirectoryHeaderSignature = 0x02014b50U;
-    static constexpr uint32_t kEndOfCentralDirectorySignature = 0x06054b50U;
-    static constexpr uint16_t kVersion20 = 20U;
-
-    void appendLocalFile(std::string_view name, std::string_view body, u32 crc32)
-    {
-        appendU32Fields(archiveBytes, {kLocalFileHeaderSignature});
-        appendU16Fields(archiveBytes, {kVersion20, 0U, 0U, 0U, 0U});
-        appendU32Fields(
-            archiveBytes, {
-                              toNative(crc32),
-                              numericCast<uint32_t>(body.size()),
-                              numericCast<uint32_t>(body.size()),
-                          }
-        );
-        appendU16Fields(archiveBytes, {numericCast<uint16_t>(name.size()), 0U});
-        archiveBytes += name;
-        archiveBytes += body;
-    }
-
-    void appendCentralDirectoryEntry(
-        std::string_view name, std::string_view body, u32 crc32, uint32_t localHeaderOffset
-    )
-    {
-        appendU32Fields(centralDirectoryBytes, {kCentralDirectoryHeaderSignature});
-        appendU16Fields(
-            centralDirectoryBytes, {
-                                       kVersion20,
-                                       kVersion20,
-                                       0U,
-                                       0U,
-                                       0U,
-                                       0U,
-                                   }
-        );
-        appendU32Fields(
-            centralDirectoryBytes, {
-                                       toNative(crc32),
-                                       numericCast<uint32_t>(body.size()),
-                                       numericCast<uint32_t>(body.size()),
-                                   }
-        );
-        appendU16Fields(
-            centralDirectoryBytes, {
-                                       numericCast<uint16_t>(name.size()),
-                                       0U,
-                                       0U,
-                                       0U,
-                                       0U,
-                                   }
-        );
-        appendU32Fields(centralDirectoryBytes, {0U, localHeaderOffset});
-        centralDirectoryBytes += name;
-    }
-
-    std::string archiveBytes;
-    std::string centralDirectoryBytes;
-    size_t entryCount{0};
 };
 
 [[nodiscard]] SerializableResponse
@@ -559,30 +415,31 @@ std::string buildWacz(
     const std::string &stdoutLog, const std::string &stderrLog
 )
 {
-    struct ZipFileSpec {
-        std::string_view path;
-        std::string_view body;
-    };
-
     const auto cdxj = buildCdxj(warc.cdxRecords);
     const auto waczPages = buildWaczPages(pagesJsonl);
     auto resources = buildWaczResources(
         warc.bytes.size(), waczPages.size(), stdoutLog.size(), stderrLog.size(), cdxj.size()
     );
     const auto datapackageJson = toJsonString(buildWaczDataPackage(run, std::move(resources)));
-    const auto files = std::array<ZipFileSpec, 6>{{
-        {"datapackage.json", datapackageJson},
-        {"archive/data.warc", warc.bytes},
-        {"pages/pages.jsonl", waczPages},
-        {"logs/stdout.log", stdoutLog},
-        {"logs/stderr.log", stderrLog},
-        {"indexes/index.cdxj", cdxj},
-    }};
 
-    StoredZipBuilder zip;
-    for (const auto &file : files)
-        zip.addFile(file.path, file.body);
-    return std::move(zip).finish();
+    arkhiv::ZipArchiveBuilder zip;
+    arkhiv::ZipArchiveError error;
+    const auto addFileOrThrow = [&error, &zip](std::string_view path, std::string_view body) {
+        if (!zip.addStoredFile(path, body, error))
+            throw std::runtime_error(error.detail);
+    };
+
+    addFileOrThrow("datapackage.json", datapackageJson);
+    addFileOrThrow("archive/data.warc", warc.bytes);
+    addFileOrThrow("pages/pages.jsonl", waczPages);
+    addFileOrThrow("logs/stdout.log", stdoutLog);
+    addFileOrThrow("logs/stderr.log", stderrLog);
+    addFileOrThrow("indexes/index.cdxj", cdxj);
+
+    const auto zipBytes = zip.finish(error);
+    if (!zipBytes)
+        throw std::runtime_error(error.detail);
+    return *zipBytes;
 }
 
 } // namespace v1::crawler

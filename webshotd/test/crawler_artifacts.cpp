@@ -1,11 +1,10 @@
 #include <algorithm>
-#include <bit>
-#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
+
+#include <arkhiv/zip_archive.hpp>
 
 #include <userver/utest/utest.hpp>
 
@@ -16,66 +15,20 @@ using namespace text::literals;
 
 namespace {
 
-[[nodiscard]] uint16_t readU16Le(std::string_view bytes, size_t offset)
+[[nodiscard]] std::vector<std::string> sortedEntryNames(const arkhiv::ZipArchive &archive)
 {
-    if (offset + 2 > bytes.size())
-        throw std::runtime_error("stored zip entry truncated");
-
-    const auto low = numericCast<uint16_t>(std::bit_cast<uint8_t>(bytes[offset]));
-    const auto high = numericCast<uint16_t>(std::bit_cast<uint8_t>(bytes[offset + 1]));
-    return low | numericCast<uint16_t>(high << 8U);
-}
-
-[[nodiscard]] uint32_t readU32Le(std::string_view bytes, size_t offset)
-{
-    if (offset + 4 > bytes.size())
-        throw std::runtime_error("stored zip entry truncated");
-
-    const auto byte0 = numericCast<uint32_t>(std::bit_cast<uint8_t>(bytes[offset]));
-    const auto byte1 = numericCast<uint32_t>(std::bit_cast<uint8_t>(bytes[offset + 1]));
-    const auto byte2 = numericCast<uint32_t>(std::bit_cast<uint8_t>(bytes[offset + 2]));
-    const auto byte3 = numericCast<uint32_t>(std::bit_cast<uint8_t>(bytes[offset + 3]));
-    return byte0 | (byte1 << 8U) | (byte2 << 16U) | (byte3 << 24U);
-}
-
-[[nodiscard]] std::unordered_map<std::string, std::string> parseStoredZip(std::string_view bytes)
-{
-    std::unordered_map<std::string, std::string> entries;
-    size_t offset = 0;
-
-    while (offset + 4 <= bytes.size()) {
-        const auto signature = readU32Le(bytes, offset);
-        if (signature == 0x02014b50U || signature == 0x06054b50U)
-            break;
-        if (signature != 0x04034b50U)
-            throw std::runtime_error("unexpected zip local header signature");
-
-        const auto compressedSize = readU32Le(bytes, offset + 18);
-        const auto fileNameLength = readU16Le(bytes, offset + 26);
-        const auto extraLength = readU16Le(bytes, offset + 28);
-        const auto nameStart = offset + 30;
-        const auto bodyStart = nameStart + fileNameLength + extraLength;
-        const auto bodyEnd = bodyStart + compressedSize;
-        if (bodyEnd > bytes.size())
-            throw std::runtime_error("stored zip body truncated");
-
-        const auto name = std::string(bytes.substr(nameStart, fileNameLength));
-        entries.emplace(name, std::string(bytes.substr(bodyStart, compressedSize)));
-        offset = bodyEnd;
-    }
-
-    return entries;
-}
-
-[[nodiscard]] std::vector<std::string>
-sortedEntryNames(const std::unordered_map<std::string, std::string> &entries)
-{
-    std::vector<std::string> names;
-    names.reserve(entries.size());
-    for (const auto &[name, _] : entries)
-        names.push_back(name);
+    auto names = archive.entryPathsInOrder();
     std::sort(std::begin(names), std::end(names));
     return names;
+}
+
+[[nodiscard]] arkhiv::ZipArchive parseZipOrThrow(std::string_view bytes)
+{
+    arkhiv::ZipArchiveError error;
+    const auto archive = arkhiv::ZipArchive::fromBytes(bytes, error);
+    if (!archive)
+        throw std::runtime_error(error.detail);
+    return *archive;
 }
 
 [[nodiscard]] RunRequest makeRun(std::string_view seedUrl)
@@ -154,10 +107,10 @@ UTEST(CrawlerArtifacts, BuildWaczIncludesExpectedFilesAndSurtIndexKeys)
         makeRun("https://seed.test/"), buildPagesJsonl(exchange), buildWarc(exchange), "stdout\n",
         ""
     );
-    const auto entries = parseStoredZip(wacz);
+    const auto archive = parseZipOrThrow(wacz);
 
     EXPECT_EQ(
-        sortedEntryNames(entries), (std::vector<std::string>{
+        sortedEntryNames(archive), (std::vector<std::string>{
                                        "archive/data.warc",
                                        "datapackage.json",
                                        "indexes/index.cdxj",
@@ -166,25 +119,47 @@ UTEST(CrawlerArtifacts, BuildWaczIncludesExpectedFilesAndSurtIndexKeys)
                                        "pages/pages.jsonl",
                                    })
     );
-    ASSERT_TRUE(entries.count("datapackage.json") == 1);
-    ASSERT_TRUE(entries.count("indexes/index.cdxj") == 1);
+    const auto datapackage = archive.findFile("datapackage.json");
+    ASSERT_TRUE(datapackage);
+    const auto cdxj = archive.findFile("indexes/index.cdxj");
+    ASSERT_TRUE(cdxj);
+    const auto pages = archive.findFile("pages/pages.jsonl");
+    ASSERT_TRUE(pages);
+    const auto stderrLog = archive.findFile("logs/stderr.log");
+    ASSERT_TRUE(stderrLog);
+    EXPECT_NE(datapackage->find("\"path\":\"archive/data.warc\""), std::string_view::npos);
+    EXPECT_NE(pages->find("\"format\":\"json-pages-1.0\""), std::string_view::npos);
     EXPECT_NE(
-        entries.at("datapackage.json").find("\"path\":\"archive/data.warc\""), std::string::npos
+        cdxj->find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test/\""),
+        std::string_view::npos
     );
     EXPECT_NE(
-        entries.at("pages/pages.jsonl").find("\"format\":\"json-pages-1.0\""), std::string::npos
+        cdxj->find("test,seed,www)/ 20260311044121 {\"url\":\"https://www.seed.test/\""),
+        std::string_view::npos
     );
-    EXPECT_NE(
-        entries.at("indexes/index.cdxj")
-            .find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test/\""),
-        std::string::npos
+    EXPECT_TRUE(stderrLog->empty());
+}
+
+UTEST(CrawlerArtifacts, BuildWaczStoresFilesInExpectedZipOrder)
+{
+    auto exchange = makeBaseExchange("https://www.seed.test/");
+
+    const auto wacz = buildWacz(
+        makeRun("https://seed.test/"), buildPagesJsonl(exchange), buildWarc(exchange), "stdout\n",
+        "stderr\n"
     );
-    EXPECT_NE(
-        entries.at("indexes/index.cdxj")
-            .find("test,seed,www)/ 20260311044121 {\"url\":\"https://www.seed.test/\""),
-        std::string::npos
+    const auto archive = parseZipOrThrow(wacz);
+
+    EXPECT_EQ(
+        archive.entryPathsInOrder(), (std::vector<std::string>{
+                                         "datapackage.json",
+                                         "archive/data.warc",
+                                         "pages/pages.jsonl",
+                                         "logs/stdout.log",
+                                         "logs/stderr.log",
+                                         "indexes/index.cdxj",
+                                     })
     );
-    EXPECT_EQ(entries.at("logs/stderr.log"), std::string{});
 }
 
 UTEST(CrawlerArtifacts, BuildWaczKeepsIpLiteralAndNonHttpKeysRaw)
@@ -207,20 +182,18 @@ UTEST(CrawlerArtifacts, BuildWaczKeepsIpLiteralAndNonHttpKeysRaw)
         },
         "", ""
     );
-    const auto ipEntries = parseStoredZip(ipWacz);
+    const auto ipArchive = parseZipOrThrow(ipWacz);
 
-    ASSERT_TRUE(ipEntries.count("indexes/index.cdxj") == 1);
+    const auto ipCdxj = ipArchive.findFile("indexes/index.cdxj");
+    ASSERT_TRUE(ipCdxj);
     EXPECT_NE(
-        ipEntries.at("indexes/index.cdxj")
-            .find(
-                "http://127.0.0.1:8080/seed 20260311044121 {\"url\":\"http://127.0.0.1:8080/seed\""
-            ),
-        std::string::npos
+        ipCdxj->find(
+            "http://127.0.0.1:8080/seed 20260311044121 "
+            "{\"url\":\"http://127.0.0.1:8080/seed\""
+        ),
+        std::string_view::npos
     );
-    EXPECT_EQ(
-        ipEntries.at("indexes/index.cdxj").find("127.0.0.1:8080)/seed 20260311044121 {"),
-        std::string::npos
-    );
+    EXPECT_EQ(ipCdxj->find("127.0.0.1:8080)/seed 20260311044121 {"), std::string_view::npos);
 
     const auto blobWacz = buildWacz(
         makeRun("https://seed.test/"), std::string{"{\"id\":\"pages\"}\n"},
@@ -240,16 +213,16 @@ UTEST(CrawlerArtifacts, BuildWaczKeepsIpLiteralAndNonHttpKeysRaw)
         },
         "", ""
     );
-    const auto blobEntries = parseStoredZip(blobWacz);
+    const auto blobArchive = parseZipOrThrow(blobWacz);
 
-    ASSERT_TRUE(blobEntries.count("indexes/index.cdxj") == 1);
+    const auto blobCdxj = blobArchive.findFile("indexes/index.cdxj");
+    ASSERT_TRUE(blobCdxj);
     EXPECT_NE(
-        blobEntries.at("indexes/index.cdxj")
-            .find(
-                "blob:https://seed.test/01234567-89ab-cdef-0123-456789abcdef 20260311044121 "
-                "{\"url\":\"blob:https://seed.test/01234567-89ab-cdef-0123-456789abcdef\""
-            ),
-        std::string::npos
+        blobCdxj->find(
+            "blob:https://seed.test/01234567-89ab-cdef-0123-456789abcdef 20260311044121 "
+            "{\"url\":\"blob:https://seed.test/01234567-89ab-cdef-0123-456789abcdef\""
+        ),
+        std::string_view::npos
     );
 }
 
@@ -260,15 +233,13 @@ UTEST(CrawlerArtifacts, BuildWaczStripsTrailingDotBeforeGeneratingSurtKeys)
     const auto wacz = buildWacz(
         makeRun("https://seed.test./"), buildPagesJsonl(exchange), buildWarc(exchange), "", ""
     );
-    const auto entries = parseStoredZip(wacz);
+    const auto archive = parseZipOrThrow(wacz);
 
-    ASSERT_TRUE(entries.count("indexes/index.cdxj") == 1);
+    const auto cdxj = archive.findFile("indexes/index.cdxj");
+    ASSERT_TRUE(cdxj);
     EXPECT_NE(
-        entries.at("indexes/index.cdxj")
-            .find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test./\""),
-        std::string::npos
+        cdxj->find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test./\""),
+        std::string_view::npos
     );
-    EXPECT_EQ(
-        entries.at("indexes/index.cdxj").find(",test,seed)/ 20260311044121 {"), std::string::npos
-    );
+    EXPECT_EQ(cdxj->find(",test,seed)/ 20260311044121 {"), std::string_view::npos);
 }
