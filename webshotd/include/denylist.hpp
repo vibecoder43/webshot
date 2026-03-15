@@ -23,7 +23,7 @@ public:
         const userver::components::ComponentContext &context
     );
 
-    ~Denylist();
+    ~Denylist() override;
 
     /** @brief Returns true if the normalized prefix key is not deny-listed. */
     [[nodiscard]] bool isAllowedPrefix(const String &prefixKey) noexcept;

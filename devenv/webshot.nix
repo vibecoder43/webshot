@@ -104,6 +104,18 @@
 in {
   tasks."webshot:devBuild" = mkBuildTaskForMode "dev";
 
+  tasks."webshot:tidyBuild" = {
+    cwd = config.devenv.root;
+    exec = ''
+      set -euo pipefail
+      ${common.mkConfigureTaskCommands
+        common.buildDirs.tidy
+        common.clangdConfigs.tidy
+        common.buildVariants.tidy}
+      cmake --build ${common.lib.escapeShellArg common.buildDirs.tidy} -- -k 0
+    '';
+  };
+
   tasks."webshot:devUp" = mkUpTask "dev";
 
   tasks."webshot:devDown" = mkRuntimeTask "down" "dev";

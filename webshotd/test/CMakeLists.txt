@@ -106,11 +106,6 @@ add_cpp_test(deadline_utils_test SOURCES
                      ${CMAKE_CURRENT_SOURCE_DIR}/deadline_utils.cpp)
 
 add_cpp_test(
-  crawler_browser_sandbox_test SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/crawler_browser_sandbox.cpp
-  ${CMAKE_SOURCE_DIR}/src/crawler/browser_sandbox.cpp)
-
-add_cpp_test(
   crawler_artifacts_test
   SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/crawler_artifacts.cpp

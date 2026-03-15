@@ -11,6 +11,24 @@ defaults:
   run:
     shell: bash
 jobs:
+  tidy:
+    name: clang-tidy
+    runs-on: nixos-nix
+    steps:
+      - name: Checkout
+        uses: https://data.forgejo.org/actions/checkout@09d2acae674a48949e3602304ab46fd20ae0c42f
+      - name: Build with clang-tidy
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          bash .forgejo/devenv_ci.sh tasks run webshot:tidyBuild 2>&1 | tee ci-artifacts/tidyBuild.log
+      - name: Upload clang-tidy artifacts
+        if: failure()
+        uses: https://data.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: tidy-${{ forgejo.run_number }}-${{ forgejo.sha }}
+          path: ci-artifacts/tidyBuild.log
+          retention-days: 7
   test-san:
     name: build, test
     runs-on: nixos-nix
@@ -19,8 +37,55 @@ jobs:
         uses: https://data.forgejo.org/actions/checkout@09d2acae674a48949e3602304ab46fd20ae0c42f
       - name: Build, test
         run: |
-          bash .forgejo/devenv_ci.sh tasks run webshot:devBuild
-          bash .forgejo/devenv_ci.sh tasks run webshot:devTest
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          bash .forgejo/devenv_ci.sh tasks run webshot:devBuild 2>&1 | tee ci-artifacts/devBuild.log
+          ulimit -c unlimited || true
+          bash .forgejo/devenv_ci.sh tasks run webshot:devTest 2>&1 | tee ci-artifacts/devTest.log
+      - name: Collect failure artifacts
+        if: failure()
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts/collect
+          cp -a build/webshotd/san/Testing/Temporary ci-artifacts/collect/ctest || true
+          cp -a build/webshotd/san/test ci-artifacts/collect/test-dir || true
+          cp -a build/webshotd/san/runtime_root/webshotd ci-artifacts/collect/runtime-root || true
+          mkdir -p ci-artifacts/collect/browser-runs
+          while IFS= read -r -d '' source_path; do
+            run_name="$(basename "$(dirname "$source_path")")"
+            target_dir="ci-artifacts/collect/browser-runs/${run_name}"
+            mkdir -p "$target_dir"
+            cp -a "$source_path" "$target_dir/" || true
+          done < <(
+            find /tmp/webshot/browser-runs -maxdepth 2 -type f \
+              \( -name 'cdp-trace.jsonl' -o -name 'phase.txt' \) \
+              -print0 2>/dev/null
+          )
+          tar -C / -czf ci-artifacts/collect/tmp-webshot.tgz tmp/webshot || true
+          mkdir -p ci-artifacts/collect/core-dumps ci-artifacts/collect/backtraces
+          binary_path=build/webshotd/san/runtime_root/webshotd
+          while IFS= read -r -d '' core_path; do
+            safe_name="$(printf '%s' "$core_path" | sed 's#^/##; s#[^A-Za-z0-9._-]#_#g')"
+            cp -a "$core_path" "ci-artifacts/collect/core-dumps/${safe_name}" || true
+            if [[ -x "$binary_path" ]]; then
+              bash .forgejo/devenv_ci.sh shell -- \
+                gdb -batch -q "$binary_path" "$core_path" \
+                -ex 'set pagination off' \
+                -ex 'thread apply all bt full' \
+                > "ci-artifacts/collect/backtraces/${safe_name}.bt.txt" 2>&1 || true
+            fi
+          done < <(
+            find build/webshotd/san /tmp/webshot -type f \
+              \( -name 'core' -o -name 'core.*' -o -name '*.core' \) \
+              -print0 2>/dev/null
+          )
+      - name: Upload failure artifacts
+        if: failure()
+        uses: https://data.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: test-san-${{ forgejo.run_number }}-${{ forgejo.sha }}
+          path: ci-artifacts
+          retention-days: 7
       - name: Cleanup infra
         if: always()
         run: |

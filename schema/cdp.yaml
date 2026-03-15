@@ -60,7 +60,7 @@ components:
           type: string
     TargetTargetCrashedEvent:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       properties:
         targetId:
           type: string
@@ -126,14 +126,14 @@ components:
           type: boolean
     PageFrameTreeFrame:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [id]
       properties:
         id:
           type: string
     PageFrameTree:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [frame]
       properties:
         frame:
@@ -152,9 +152,22 @@ components:
       properties:
         url:
           type: string
-    NetworkRequest:
+    PageNavigateResult:
       type: object
       additionalProperties: false
+      required: [frameId]
+      properties:
+        frameId:
+          type: string
+        loaderId:
+          type: string
+        errorText:
+          type: string
+        isDownload:
+          type: boolean
+    NetworkRequest:
+      type: object
+      additionalProperties: true
       required: [url, method]
       properties:
         url:
@@ -163,7 +176,7 @@ components:
           type: string
     NetworkResponse:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       properties:
         url:
           type: string
@@ -176,10 +189,12 @@ components:
           $ref: "#/components/schemas/CdpHeaders"
     NetworkRequestWillBeSentEvent:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [requestId, request]
       properties:
         requestId:
+          type: string
+        loaderId:
           type: string
         frameId:
           type: string
@@ -191,28 +206,38 @@ components:
           $ref: "#/components/schemas/NetworkResponse"
     NetworkResponseReceivedEvent:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [requestId, response]
       properties:
         requestId:
+          type: string
+        loaderId:
+          type: string
+        type:
           type: string
         response:
           $ref: "#/components/schemas/NetworkResponse"
     NetworkLoadingFinishedEvent:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [requestId]
       properties:
         requestId:
           type: string
     NetworkLoadingFailedEvent:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [requestId]
       properties:
         requestId:
           type: string
+        type:
+          type: string
         errorText:
+          type: string
+        canceled:
+          type: boolean
+        blockedReason:
           type: string
     NetworkSetCacheDisabledParams:
       type: object
@@ -275,7 +300,7 @@ components:
           type: string
     RuntimeRemoteObjectWithDomState:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [value]
       properties:
         value:

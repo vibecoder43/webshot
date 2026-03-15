@@ -37,8 +37,8 @@ struct [[nodiscard]] SigV4Params {
 
     SigV4Params() = default;
     SigV4Params(
-        std::string region_, std::string service_, const AccessKeyId &accessKeyId_,
-        const SecretAccessKey &secretAccessKey_, std::optional<SessionToken> sessionToken_,
+        std::string region, std::string service, const AccessKeyId &accessKeyId,
+        const SecretAccessKey &secretAccessKey, std::optional<SessionToken> sessionToken,
         const std::chrono::system_clock::time_point &now
     );
 };
@@ -46,7 +46,7 @@ struct [[nodiscard]] SigV4Params {
 // Utilities
 [[nodiscard]] std::string buildScope(const SigV4Params &params);
 [[nodiscard]] std::string
-computeSignature(const SigV4Params &params, std::string_view string_to_sign);
+computeSignature(const SigV4Params &params, std::string_view stringToSign);
 /** @return AMZ date stamp for the given time point (UTC). */
 [[nodiscard]] std::string toAmzDateUtc(std::chrono::system_clock::time_point tp);
 /** @return Date stamp (YYYYMMDD) for the given time point (UTC). */

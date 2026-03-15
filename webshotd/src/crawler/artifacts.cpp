@@ -1,4 +1,5 @@
 #include "crawler/artifacts.hpp"
+#include "crawler/launch_policy.hpp"
 #include "ip_utils.hpp"
 #include "url.hpp"
 
@@ -78,6 +79,8 @@ normalizeResponseHeaders(const std::unordered_map<std::string, std::string> &hea
 struct [[nodiscard]] SerializableResponse {
     String responseUrl;
     String method;
+    String pageId;
+    std::optional<String> resourceType;
     i64 statusCode;
     String statusMessage;
     std::unordered_map<std::string, std::string> headers;
@@ -89,25 +92,44 @@ struct [[nodiscard]] SerializableResponse {
 makeRedirectResponse(const CapturedMainDocumentRedirect &redirect)
 {
     return {
-        redirect.redirectUrl, "GET"_t, redirect.statusCode, redirect.statusMessage,
-        redirect.headers,     {},      redirect.timestamp,
+        redirect.redirectUrl,   "GET"_t,          {}, "Document"_t,       redirect.statusCode,
+        redirect.statusMessage, redirect.headers, {}, redirect.timestamp,
     };
 }
 
 [[nodiscard]] SerializableResponse makeMainDocumentResponse(const CapturedExchange &exchange)
 {
     return {
-        exchange.finalUrl, "GET"_t,       exchange.statusCode, exchange.statusMessage,
-        exchange.headers,  exchange.body, exchange.timestamp,
+        exchange.finalUrl,   "GET"_t,
+        exchange.pageId,     "Document"_t,
+        exchange.statusCode, exchange.statusMessage,
+        exchange.headers,    exchange.body,
+        exchange.timestamp,
     };
 }
 
 [[nodiscard]] SerializableResponse makeResourceResponse(const CapturedResource &resource)
 {
     return {
-        resource.resourceUrl, resource.method, resource.statusCode, resource.statusMessage,
-        resource.headers,     resource.body,   resource.timestamp,
+        resource.resourceUrl,  resource.method,     {},
+        resource.resourceType, resource.statusCode, resource.statusMessage,
+        resource.headers,      resource.body,       resource.timestamp,
     };
+}
+
+[[nodiscard]] std::string
+contentTypeForHeaders(const std::unordered_map<std::string, std::string> &headers)
+{
+    if (const auto it = headers.find("content-type"); it != std::end(headers))
+        return it->second;
+    return "application/octet-stream";
+}
+
+[[nodiscard]] String pageTimestamp(const CapturedExchange &exchange)
+{
+    if (!exchange.mainDocumentRedirects.empty())
+        return exchange.mainDocumentRedirects.front().timestamp;
+    return exchange.timestamp;
 }
 
 [[nodiscard]] std::vector<SerializableResponse>
@@ -116,11 +138,17 @@ collectSerializableResponses(const CapturedExchange &exchange)
     std::vector<SerializableResponse> responses;
     responses.reserve(exchange.mainDocumentRedirects.size() + exchange.resources.size() + 1);
 
-    for (const auto &redirect : exchange.mainDocumentRedirects)
-        responses.push_back(makeRedirectResponse(redirect));
+    for (const auto &redirect : exchange.mainDocumentRedirects) {
+        auto response = makeRedirectResponse(redirect);
+        response.pageId = exchange.pageId;
+        responses.push_back(std::move(response));
+    }
     responses.push_back(makeMainDocumentResponse(exchange));
-    for (const auto &resource : exchange.resources)
-        responses.push_back(makeResourceResponse(resource));
+    for (const auto &resource : exchange.resources) {
+        auto response = makeResourceResponse(resource);
+        response.pageId = exchange.pageId;
+        responses.push_back(std::move(response));
+    }
 
     std::sort(std::begin(responses), std::end(responses), [](const auto &left, const auto &right) {
         return left.timestamp < right.timestamp;
@@ -171,11 +199,16 @@ serializeRecordPair(const SerializableResponse &response)
         "WARC-Target-URI: {}\r\n"
         "WARC-Date: {}\r\n"
         "WARC-Record-ID: <{}>\r\n"
+        "{}"
+        "{}"
         "Content-Type: application/http; msgtype=response\r\n"
         "Content-Length: {}\r\n"
         "\r\n"
         "{}",
         response.responseUrl, recordDate, responseRecordId,
+        response.pageId.empty() ? "" : fmt::format("WARC-Page-ID: {}\r\n", response.pageId),
+        response.resourceType ? fmt::format("WARC-Resource-Type: {}\r\n", *response.resourceType)
+                              : std::string{},
         httpResponseHead.size() + response.body.size(), httpResponseHead
     );
 
@@ -191,17 +224,87 @@ serializeRecordPair(const SerializableResponse &response)
         "WARC-Date: {}\r\n"
         "WARC-Record-ID: <{}>\r\n"
         "WARC-Concurrent-To: <{}>\r\n"
+        "{}"
+        "{}"
         "Content-Type: application/http; msgtype=request\r\n"
         "Content-Length: {}\r\n"
         "\r\n"
         "{}\r\n",
-        response.responseUrl, recordDate, requestRecordId, responseRecordId, requestPayload.size(),
-        requestPayload
+        response.responseUrl, recordDate, requestRecordId, responseRecordId,
+        response.pageId.empty() ? "" : fmt::format("WARC-Page-ID: {}\r\n", response.pageId),
+        response.resourceType ? fmt::format("WARC-Resource-Type: {}\r\n", *response.resourceType)
+                              : std::string{},
+        requestPayload.size(), requestPayload
     );
 
     responseHeader += response.body;
     responseHeader += "\r\n\r\n";
     return {std::move(responseHeader), std::move(requestHeader)};
+}
+
+[[nodiscard]] std::string buildPageInfoJson(const CapturedExchange &exchange)
+{
+    json::ValueBuilder pageInfo(json::Type::kObject);
+    pageInfo["pageid"] = std::string(exchange.pageId.view());
+    pageInfo["url"] = std::string(
+        (exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view()
+    );
+    pageInfo["ts"] = std::string(pageTimestamp(exchange).view());
+
+    json::ValueBuilder urls(json::Type::kObject);
+    const auto appendUrl = [&urls](
+                               const String &url, i64 statusCode,
+                               const std::unordered_map<std::string, std::string> &headers,
+                               std::optional<String> resourceType
+                           ) {
+        json::ValueBuilder value(json::Type::kObject);
+        value["status"] = toNative(statusCode);
+        const auto mime = contentTypeForHeaders(headers);
+        if (!mime.empty())
+            value["mime"] = mime;
+        if (resourceType && !resourceType->empty())
+            value["type"] = std::string(resourceType->view());
+        urls[std::string(url.view())] = value.ExtractValue();
+    };
+
+    for (const auto &redirect : exchange.mainDocumentRedirects)
+        appendUrl(redirect.redirectUrl, redirect.statusCode, redirect.headers, "Document"_t);
+    appendUrl(exchange.finalUrl, exchange.statusCode, exchange.headers, "Document"_t);
+    for (const auto &resource : exchange.resources) {
+        appendUrl(
+            resource.resourceUrl, resource.statusCode, resource.headers,
+            resource.resourceType ? resource.resourceType : std::optional<String>{}
+        );
+    }
+    pageInfo["urls"] = urls.ExtractValue();
+
+    json::ValueBuilder counts(json::Type::kObject);
+    counts["jsErrors"] = 0;
+    pageInfo["counts"] = counts.ExtractValue();
+    return json::ToString(pageInfo.ExtractValue());
+}
+
+[[nodiscard]] std::string serializePageInfoRecord(const CapturedExchange &exchange)
+{
+    const auto pageUrl = exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl;
+    const auto pageInfoUrl = fmt::format("urn:pageinfo:{}", pageUrl);
+    const auto recordId = fmt::format("urn:uuid:{}", us::utils::generators::GenerateBoostUuid());
+    const auto payload = buildPageInfoJson(exchange);
+
+    return fmt::format(
+        "WARC/1.1\r\n"
+        "WARC-Type: resource\r\n"
+        "WARC-Target-URI: {}\r\n"
+        "WARC-Date: {}\r\n"
+        "WARC-Record-ID: <{}>\r\n"
+        "WARC-Page-ID: {}\r\n"
+        "WARC-Resource-Type: pageinfo\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: {}\r\n"
+        "\r\n"
+        "{}\r\n\r\n",
+        pageInfoUrl, pageTimestamp(exchange), recordId, exchange.pageId, payload.size(), payload
+    );
 }
 
 [[nodiscard]] bool shouldIncludePort(const Url &url)
@@ -263,9 +366,8 @@ serializeRecordPair(const SerializableResponse &response)
     dto::WaczIndexEntry recordEntry;
     recordEntry.url = std::string(record.recordUrl.view());
     recordEntry.status = std::to_string(toNative(record.statusCode));
-    recordEntry.mime = record.headers.count("content-type") ? record.headers.at("content-type")
-                                                            : "application/octet-stream";
-    recordEntry.filename = "data.warc";
+    recordEntry.mime = contentTypeForHeaders(record.headers);
+    recordEntry.filename = "archive/data.warc";
     recordEntry.length = std::to_string(toNative(record.length));
     recordEntry.offset = std::to_string(toNative(record.offset));
     return recordEntry;
@@ -287,12 +389,12 @@ serializeRecordPair(const SerializableResponse &response)
 
 [[nodiscard]] std::string buildWaczPages(std::string_view pagesJsonl)
 {
-    dto::WaczPagesHeader pagesHeader;
-    pagesHeader.format = "json-pages-1.0";
-    pagesHeader.id = "pages";
-    pagesHeader.title = "Seed Pages";
-    pagesHeader.hasText = false;
-    return toJsonString(pagesHeader) + "\n" + std::string(pagesJsonl);
+    json::ValueBuilder pagesHeader(json::Type::kObject);
+    pagesHeader["format"] = "json-pages-1.0";
+    pagesHeader["id"] = "pages";
+    pagesHeader["title"] = "All Pages";
+    pagesHeader["hasText"] = false;
+    return json::ToString(pagesHeader.ExtractValue()) + "\n" + std::string(pagesJsonl);
 }
 
 [[nodiscard]] dto::WaczResource
@@ -316,7 +418,6 @@ makeWaczResource(std::string_view name, std::string_view path, size_t bytes)
     };
 
     std::vector<dto::WaczResource> resources;
-    resources.reserve(5);
     const auto specs = std::array<ResourceSpec, 5>{{
         {"archive", "archive/data.warc", warcBytes},
         {"pages", "pages/pages.jsonl", pagesBytes},
@@ -347,17 +448,19 @@ buildWaczDataPackage(const RunRequest &run, std::vector<dto::WaczResource> resou
 std::string buildPagesJsonl(const CapturedExchange &exchange)
 {
     dto::BrowsertrixPageEntry entry;
-    entry.id = boost::uuids::to_string(us::utils::generators::GenerateBoostUuid());
-    entry.url = std::string(exchange.finalUrl.view());
+    entry.id = std::string(exchange.pageId.view());
+    entry.url = std::string(
+        (exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view()
+    );
     entry.title = exchange.title ? std::string(exchange.title->view())
                                  : extractHtmlTitle(exchange.body);
     entry.loadState = toNative(
         exchange.statusCode >= 200_i64 && exchange.statusCode < 400_i64 ? 2_i64 : 0_i64
     );
-    entry.mime = exchange.headers.count("content-type") ? exchange.headers.at("content-type") : "";
+    entry.mime = contentTypeForHeaders(exchange.headers);
     entry.seed = true;
     entry.ts = datetime::TimePointTz(
-        datetime::FromRfc3339StringSaturating(std::string(exchange.timestamp.view()))
+        datetime::FromRfc3339StringSaturating(std::string(pageTimestamp(exchange).view()))
     );
     entry.status = toNative(exchange.statusCode);
     entry.depth = 0;
@@ -365,8 +468,7 @@ std::string buildPagesJsonl(const CapturedExchange &exchange)
 }
 
 std::string buildSuccessStdoutLog(
-    const RunRequest &run, const CapturedExchange &exchange, const std::string &browserBin,
-    const std::optional<String> &geometry, i64 browserPid, bool reusedBrowser
+    const RunRequest &run, const CapturedExchange &exchange, i64 browserPid, bool reusedBrowser
 )
 {
     return fmt::format(
@@ -378,12 +480,10 @@ std::string buildSuccessStdoutLog(
         "browser_bin={}\n"
         "browser_pid={}\n"
         "reused_browser={}\n"
-        "{}"
         "browsertrix rewrite done\n\n",
         run.seedUrl, exchange.finalUrl, toNative(exchange.statusCode),
-        exchange.redirectChain.empty() ? 0 : exchange.redirectChain.size() - 1, browserBin,
-        toNative(browserPid), reusedBrowser ? "true" : "false",
-        geometry ? fmt::format("geometry={}\n", *geometry) : ""
+        exchange.redirectChain.empty() ? 0 : exchange.redirectChain.size() - 1, kBrowserBin,
+        toNative(browserPid), reusedBrowser ? "true" : "false"
     );
 }
 
@@ -407,6 +507,26 @@ WarcBuildOutput buildWarc(const CapturedExchange &exchange)
         out.bytes += requestBytes;
         offset += i64(responseBytes.size() + requestBytes.size());
     }
+
+    const auto pageInfoUrl = String::fromBytesThrow(
+        fmt::format(
+            "urn:pageinfo:{}",
+            std::string((exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view())
+        )
+    );
+    auto pageInfoHeaders = std::unordered_map<std::string, std::string>{
+        {"content-type", "application/json"},
+    };
+    const auto pageInfoBytes = serializePageInfoRecord(exchange);
+    out.cdxRecords.push_back({
+        pageInfoUrl,
+        toCdxTimestamp(pageTimestamp(exchange)),
+        200_i64,
+        pageInfoHeaders,
+        offset,
+        i64(pageInfoBytes.size()),
+    });
+    out.bytes += pageInfoBytes;
     return out;
 }
 
@@ -425,7 +545,7 @@ std::string buildWacz(
     arkhiv::ZipArchiveBuilder zip;
     arkhiv::ZipArchiveError error;
     const auto addFileOrThrow = [&error, &zip](std::string_view path, std::string_view body) {
-        if (!zip.addStoredFile(path, body, error))
+        if (!zip.addStoredFile(path, error, body))
             throw std::runtime_error(error.detail);
     };
 

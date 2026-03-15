@@ -14,7 +14,7 @@ namespace v1::crawler {
 
 struct [[nodiscard]] CapturedMainDocumentRedirect {
     String redirectUrl;
-    i64 statusCode;
+    i64 statusCode{0};
     String statusMessage;
     std::unordered_map<std::string, std::string> headers;
     String timestamp;
@@ -23,7 +23,8 @@ struct [[nodiscard]] CapturedMainDocumentRedirect {
 struct [[nodiscard]] CapturedResource {
     String resourceUrl;
     String method;
-    i64 statusCode;
+    std::optional<String> resourceType;
+    i64 statusCode{0};
     String statusMessage;
     std::unordered_map<std::string, std::string> headers;
     std::string body;
@@ -31,8 +32,10 @@ struct [[nodiscard]] CapturedResource {
 };
 
 struct [[nodiscard]] CapturedExchange {
+    String seedUrl;
+    String pageId;
     String finalUrl;
-    i64 statusCode;
+    i64 statusCode{0};
     String statusMessage;
     std::unordered_map<std::string, std::string> headers;
     std::string body;
@@ -51,10 +54,10 @@ struct [[nodiscard]] RunRequest {
 struct [[nodiscard]] WarcCdxRecord {
     String recordUrl;
     String timestamp;
-    i64 statusCode;
+    i64 statusCode{0};
     std::unordered_map<std::string, std::string> headers;
-    i64 offset;
-    i64 length;
+    i64 offset{0};
+    i64 length{0};
 };
 
 struct [[nodiscard]] WarcBuildOutput {
@@ -65,8 +68,7 @@ struct [[nodiscard]] WarcBuildOutput {
 [[nodiscard]] std::string buildPagesJsonl(const CapturedExchange &exchange);
 
 [[nodiscard]] std::string buildSuccessStdoutLog(
-    const RunRequest &run, const CapturedExchange &exchange, const std::string &browserBin,
-    const std::optional<String> &geometry, i64 browserPid, bool reusedBrowser
+    const RunRequest &run, const CapturedExchange &exchange, i64 browserPid, bool reusedBrowser
 );
 
 [[nodiscard]] WarcBuildOutput buildWarc(const CapturedExchange &exchange);

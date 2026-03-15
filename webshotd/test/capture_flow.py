@@ -223,6 +223,8 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
     pages_header = json.loads(pages_lines[0])
     seed_page = json.loads(pages_lines[1])
     assert pages_header["format"] == "json-pages-1.0"
+    assert pages_header["title"] == "All Pages"
+    assert pages_header["hasText"] is False
     assert seed_page["url"] == link
     assert seed_page["title"] == "test"
     assert seed_page["seed"] is True
@@ -230,6 +232,8 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
     assert seed_page["depth"] == 0
 
     archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Page-ID:" in archive_text
+    assert f"WARC-Target-URI: urn:pageinfo:{link}" in archive_text
     assert "WARC-Target-URI: https://test-target/webshot-capture-path" in archive_text
     assert "HTTP/1.1 200 OK" in archive_text
 
@@ -345,6 +349,8 @@ async def test_capture_records_main_document_redirect_in_wacz(service_client, se
     assert 200 in final_statuses
 
     archive_text = _wacz_archive_text(wacz)
+    assert f"WARC-Target-URI: urn:pageinfo:{link}" in archive_text
+    assert "WARC-Page-ID:" in archive_text
     assert "WARC-Target-URI: https://test-target/redirect-seed" in archive_text
     assert "location: /redirect-final" in archive_text
     assert "WARC-Target-URI: https://test-target/redirect-final" in archive_text

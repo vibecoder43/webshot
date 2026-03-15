@@ -68,10 +68,11 @@ set(${PROJECT_NAME}_headers
     include/denylist_check_handler.hpp
     include/docs_handler.hpp
     include/crud.hpp
-    include/crawler/runner.hpp
-    include/crawler/artifacts.hpp
-    include/crawler/browser_sandbox.hpp
-    include/crawler/cdp_client.hpp
+	    include/crawler/runner.hpp
+	    include/crawler/artifacts.hpp
+	    include/crawler/browser_sandbox.hpp
+	    include/crawler/launch_policy.hpp
+	    include/crawler/cdp_client.hpp
     include/config.hpp
     include/crawler/failure.hpp
     include/crawler/fallback.hpp

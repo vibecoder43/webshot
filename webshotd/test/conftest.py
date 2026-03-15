@@ -44,6 +44,13 @@ def _require_cmake_cache_string(path: pathlib.Path, key: str) -> str:
     raise RuntimeError(f"missing CMake cache entry {key!r} in {path}")
 
 
+def _require_service_binary_path(pytestconfig) -> pathlib.Path:
+    binary = getattr(pytestconfig.option, "service_binary", None)
+    if not binary:
+        raise RuntimeError("--service-binary must be set for testsuite runs")
+    return pathlib.Path(binary).resolve()
+
+
 @pytest.fixture(scope="session")
 def service_port() -> int:
     return _SERVICE_PORT
@@ -52,6 +59,11 @@ def service_port() -> int:
 @pytest.fixture(scope="session")
 def monitor_port() -> int:
     return _MONITOR_PORT
+
+
+@pytest.fixture(scope="session")
+def service_binary(pytestconfig) -> pathlib.Path:
+    return _require_service_binary_path(pytestconfig)
 
 
 @pytest.fixture(scope="session")

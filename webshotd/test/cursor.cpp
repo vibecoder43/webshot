@@ -34,6 +34,8 @@ UTEST(Cursor, EncodeDecodePaginationCursor)
 
     const auto decoded = decodeToken<dto::PaginationCursor>(token);
     ASSERT_TRUE(decoded);
+    if (!decoded)
+        return;
     EXPECT_EQ(decoded->t, micros);
     EXPECT_EQ(decoded->i, id);
 }

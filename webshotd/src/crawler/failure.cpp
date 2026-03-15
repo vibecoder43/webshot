@@ -14,8 +14,8 @@ using namespace text::literals;
 
 namespace {
 
-constexpr size_t kProcessOutputTailBytes = 4096;
-constexpr size_t kProcessOutputCharsMax = 240;
+constexpr size_t kProcessOutputTailBytes = 4096UL;
+constexpr size_t kProcessOutputCharsMax = 240UL;
 
 [[nodiscard]] String escapeForQuotedValue(std::string_view input)
 {
@@ -53,6 +53,7 @@ constexpr size_t kProcessOutputCharsMax = 240;
         if (!text.empty())
             return text;
     } catch (const std::exception &) {
+        // Best-effort diagnostics: ignore unreadable or missing process-output files.
     }
     return {};
 }

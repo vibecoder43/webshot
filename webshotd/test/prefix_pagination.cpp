@@ -10,7 +10,6 @@
 using v1::crud::Clock;
 using v1::crud::decodePrefixCursor;
 using v1::crud::encodePrefixCursor;
-using v1::crud::PrefixCursor;
 using v1::crud::timePointToMicros;
 using v1::crud::upperExclusiveBound;
 using namespace text::literals;
@@ -18,9 +17,8 @@ using namespace text::literals;
 UTEST(PrefixPagination, UpperExclusiveBoundNormal)
 {
     const std::string input = "abc";
-    const auto inputText = String::fromBytes(input);
-    ASSERT_TRUE(inputText);
-    const auto upper = upperExclusiveBound(*inputText);
+    const auto inputText = String::fromBytesThrow(input);
+    const auto upper = upperExclusiveBound(inputText);
     EXPECT_EQ(upper, std::string{"abd"});
 }
 
@@ -29,15 +27,15 @@ UTEST(PrefixPagination, EncodeDecodeWithoutTimeOrId)
     const std::string prefix = "example.com/a";
     const std::string link = "example.com/a/b";
 
-    const auto prefixText = String::fromBytes(prefix);
-    const auto linkText = String::fromBytes(link);
-    ASSERT_TRUE(prefixText);
-    ASSERT_TRUE(linkText);
+    const auto prefixText = String::fromBytesThrow(prefix);
+    const auto linkText = String::fromBytesThrow(link);
 
-    const auto token = encodePrefixCursor(*prefixText, *linkText);
+    const auto token = encodePrefixCursor(prefixText, linkText);
     const auto decoded = decodePrefixCursor(token);
 
     ASSERT_TRUE(decoded);
+    if (!decoded)
+        return;
     EXPECT_EQ(std::string(decoded->prefix.view()), prefix);
     EXPECT_EQ(std::string(decoded->link.view()), link);
     EXPECT_FALSE(decoded->createdAt);
@@ -50,19 +48,21 @@ UTEST(PrefixPagination, EncodeDecodeWithTimeAndIdRoundTrip)
     const std::string link = "example.com/p/resource";
     const auto tp = Clock::time_point(std::chrono::microseconds(4242424242));
     const auto id = userver::utils::generators::GenerateBoostUuid();
-    const auto prefixText = String::fromBytes(prefix);
-    const auto linkText = String::fromBytes(link);
-    ASSERT_TRUE(prefixText);
-    ASSERT_TRUE(linkText);
+    const auto prefixText = String::fromBytesThrow(prefix);
+    const auto linkText = String::fromBytesThrow(link);
 
-    const auto token = encodePrefixCursor(*prefixText, *linkText, tp, id);
+    const auto token = encodePrefixCursor(prefixText, linkText, tp, id);
     const auto decoded = decodePrefixCursor(token);
 
     ASSERT_TRUE(decoded);
+    if (!decoded)
+        return;
     EXPECT_EQ(std::string(decoded->prefix.view()), prefix);
     EXPECT_EQ(std::string(decoded->link.view()), link);
     ASSERT_TRUE(decoded->createdAt);
     ASSERT_TRUE(decoded->id);
+    if (!decoded->createdAt || !decoded->id)
+        return;
     EXPECT_EQ(timePointToMicros(*decoded->createdAt), timePointToMicros(tp));
     EXPECT_EQ(*decoded->id, id);
 }

@@ -348,11 +348,25 @@ struct [[nodiscard]] CrawlContext {
 
     CrawlContext ctx(id, std::move(link), svcCfg);
 
+    LOG_INFO() << fmt::format(
+        "runCrawlJob starting crawler for job {} ({})", us::utils::ToString(id),
+        ctx.link.normalized()
+    );
     runCrawlerForContext(ctx);
+    LOG_INFO() << fmt::format(
+        "runCrawlJob finished crawler for job {} ({})", us::utils::ToString(id),
+        ctx.link.normalized()
+    );
 
+    LOG_INFO() << fmt::format(
+        "Persisting metadata for job {} ({})", us::utils::ToString(id), ctx.link.normalized()
+    );
     auto createdAt = persistMetadataForContext(ctx);
     if (!createdAt)
         throw errors::CrawlerFailedException("failed to persist metadata");
+    LOG_INFO() << fmt::format(
+        "Persisted metadata for job {} ({})", us::utils::ToString(id), ctx.link.normalized()
+    );
     return {ctx.id, *createdAt, std::string(ctx.link.normalized().view())};
 }
 
@@ -436,7 +450,7 @@ std::optional<dto::CaptureJob> Crud::Impl::loadJob(Uuid id)
 
 Crud::Impl::S3ClientState Crud::Impl::fetchS3ClientStateFromSts() const
 {
-    const auto sessionUuid = *String::fromBytes(
+    const auto sessionUuid = String::fromBytesThrow(
         us::utils::ToString(us::utils::generators::GenerateBoostUuid())
     );
     const auto sessionName = text::format("{}", sessionUuid);
@@ -560,6 +574,10 @@ crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(CrawlContext &ctx, const S
     );
 
     const auto run = crawlerRunner.run(seedUrl);
+    LOG_INFO() << fmt::format(
+        "Embedded crawler returned for {} (exit_code={}, wacz_exists={})", seedUrl,
+        run.attempt.exitCode, run.attempt.waczExists ? "true" : "false"
+    );
     if (!run.attempt.waczExists) {
         const auto attemptContext = crawler::formatAttemptContext(run.attempt);
         LOG_INFO() << fmt::format(
@@ -570,8 +588,11 @@ crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(CrawlContext &ctx, const S
     }
 
     try {
+        LOG_INFO() << fmt::format("Uploading WACZ for {} to {}", seedUrl, ctx.s3Key);
+        UINVARIANT(run.wacz, "embedded crawler reported missing WACZ payload");
         auto snapshot = s3State.Read();
         snapshot->client->PutObject(ctx.s3Key.view(), *run.wacz, {}, "application/zip", {}, {});
+        LOG_INFO() << fmt::format("Uploaded WACZ for {} to {}", seedUrl, ctx.s3Key);
     } catch (const std::exception &e) {
         const auto msg = fmt::format("S3 upload failed for {}: {}", ctx.s3Key, e.what());
         LOG_ERROR() << msg;

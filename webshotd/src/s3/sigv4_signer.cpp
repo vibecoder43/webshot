@@ -21,35 +21,35 @@ namespace v1::s3v4 {
 namespace {
 
 /** Characters that do not require percent-encoding. */
-inline bool IsUnreserved(char c)
+inline bool isUnreserved(char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
            c == '_' || c == '.' || c == '~';
 }
 
 /** Collapse runs of spaces and trim at both ends. */
-std::string TrimSpaces(const std::string &s)
+std::string trimSpaces(const std::string &s)
 {
     absl::string_view trimmed = absl::StripAsciiWhitespace(absl::string_view{s});
     std::string out;
     out.reserve(trimmed.size());
-    bool in_space = false;
+    bool inSpace = false;
     for (char c : trimmed) {
         if (std::isspace(static_cast<unsigned char>(c))) {
-            if (!in_space) {
+            if (!inSpace) {
                 out.push_back(' ');
-                in_space = true;
+                inSpace = true;
             }
         } else {
             out.push_back(c);
-            in_space = false;
+            inSpace = false;
         }
     }
     return out;
 }
 
 /** Join header names with semicolons in order. */
-std::string JoinSignedHeaders(const std::vector<std::pair<std::string, std::string>> &headers)
+std::string joinSignedHeaders(const std::vector<std::pair<std::string, std::string>> &headers)
 {
     std::ostringstream oss;
     for (std::size_t i = 0; i < headers.size(); i++) {
@@ -65,7 +65,7 @@ std::string percentEncodeBytes(std::string_view s, bool encodeSlash)
     std::string out;
     out.reserve(s.size() * 3);
     for (char c : s) {
-        if (IsUnreserved(c) || (!encodeSlash && c == '/')) {
+        if (isUnreserved(c) || (!encodeSlash && c == '/')) {
             out.push_back(c);
         } else {
             unsigned char uc = static_cast<unsigned char>(c);
@@ -90,13 +90,13 @@ std::string canonicalizeQueryImpl(const std::vector<std::pair<std::string, std::
             return a.second < b.second;
         return a.first < b.first;
     });
-    std::ostringstream canon_query;
+    std::ostringstream canonQuery;
     for (size_t i = 0; i < q.size(); i++) {
         if (i)
-            canon_query << '&';
-        canon_query << q[i].first << '=' << q[i].second;
+            canonQuery << '&';
+        canonQuery << q[i].first << '=' << q[i].second;
     }
-    return canon_query.str();
+    return canonQuery.str();
 }
 
 std::vector<std::pair<std::string, std::string>>
@@ -113,12 +113,12 @@ toUtf8Pairs(const std::vector<std::pair<String, String>> &in)
 } // namespace
 
 SigV4Params::SigV4Params(
-    std::string region_, std::string service_, const AccessKeyId &accessKeyId_,
-    const SecretAccessKey &secretAccessKey_, std::optional<SessionToken> sessionToken_,
+    std::string region, std::string service, const AccessKeyId &accessKeyId,
+    const SecretAccessKey &secretAccessKey, std::optional<SessionToken> sessionToken,
     const std::chrono::system_clock::time_point &now
 )
-    : region(std::move(region_)), service(std::move(service_)), accessKeyId(accessKeyId_),
-      secretAccessKey(secretAccessKey_), sessionToken(std::move(sessionToken_)),
+    : region(std::move(region)), service(std::move(service)), accessKeyId(accessKeyId),
+      secretAccessKey(secretAccessKey), sessionToken(std::move(sessionToken)),
       amzDate(toAmzDateUtc(now)), date(toDateStampUtc(now))
 {
 }
@@ -128,7 +128,7 @@ std::string buildScope(const SigV4Params &params)
     return fmt::format("{}/{}/{}/aws4_request", params.date, params.region, params.service);
 }
 
-std::string computeSignature(const SigV4Params &params, std::string_view string_to_sign)
+std::string computeSignature(const SigV4Params &params, std::string_view stringToSign)
 {
     using userver::crypto::hash::HmacSha256;
     using userver::crypto::hash::OutputEncoding;
@@ -137,7 +137,7 @@ std::string computeSignature(const SigV4Params &params, std::string_view string_
     auto kRegion = HmacSha256(kDate, params.region, OutputEncoding::kBinary);
     auto kService = HmacSha256(kRegion, params.service, OutputEncoding::kBinary);
     auto kSigning = HmacSha256(kService, "aws4_request", OutputEncoding::kBinary);
-    return HmacSha256(kSigning, string_to_sign, OutputEncoding::kHex);
+    return HmacSha256(kSigning, stringToSign, OutputEncoding::kHex);
 }
 
 std::string toAmzDateUtc(std::chrono::system_clock::time_point tp)
@@ -170,24 +170,24 @@ CanonicalRequestParts buildCanonicalRequest(
 )
 {
     // Canonical URI must be URI-encoded with slash preserved
-    const std::string canon_uri = percentEncodeBytes(canonicalUri, /*encodeSlash*/ false);
+    const std::string canonicalUriEncoded = percentEncodeBytes(canonicalUri, /*encodeSlash*/ false);
 
-    const std::string canon_query = canonicalizeQueryImpl(query);
+    const std::string canonicalQuery = canonicalizeQueryImpl(query);
 
-    std::ostringstream canon_headers;
+    std::ostringstream canonicalHeaders;
     for (const auto &kv : headersLowercaseTrimmedSorted)
-        canon_headers << kv.first << ':' << TrimSpaces(kv.second) << "\n";
-    std::string signed_headers = JoinSignedHeaders(headersLowercaseTrimmedSorted);
+        canonicalHeaders << kv.first << ':' << trimSpaces(kv.second) << "\n";
+    std::string signedHeaders = joinSignedHeaders(headersLowercaseTrimmedSorted);
 
     std::ostringstream oss;
     oss << method << "\n"
-        << canon_uri << "\n"
-        << canon_query << "\n"
-        << canon_headers.str() << "\n"
-        << signed_headers << "\n"
+        << canonicalUriEncoded << "\n"
+        << canonicalQuery << "\n"
+        << canonicalHeaders.str() << "\n"
+        << signedHeaders << "\n"
         << payloadSha256Hex;
 
-    return {oss.str(), signed_headers};
+    return {oss.str(), signedHeaders};
 }
 
 std::string canonicalizeQuery(const std::vector<std::pair<std::string, std::string>> &decoded)
@@ -218,7 +218,7 @@ std::string buildSignedHeaders(
     const std::vector<std::pair<std::string, std::string>> &headersLowercaseTrimmedSorted
 )
 {
-    return JoinSignedHeaders(headersLowercaseTrimmedSorted);
+    return joinSignedHeaders(headersLowercaseTrimmedSorted);
 }
 
 std::unordered_map<std::string, std::string> signHeaders(
@@ -249,11 +249,11 @@ std::unordered_map<std::string, std::string> signHeaders(
     );
 
     auto scope = buildScope(p);
-    auto string_to_sign = fmt::format(
+    auto stringToSign = fmt::format(
         "AWS4-HMAC-SHA256\n{}\n{}\n{}", p.amzDate, scope, sha256Hex(cr.canonicalRequest)
     );
 
-    auto signature = computeSignature(p, string_to_sign);
+    auto signature = computeSignature(p, stringToSign);
 
     auto credential = fmt::format("{}/{}", p.accessKeyId.GetUnderlying(), scope);
     auto authorization = fmt::format(

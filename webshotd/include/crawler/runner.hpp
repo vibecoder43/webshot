@@ -29,21 +29,12 @@ public:
         us::engine::subprocess::ProcessStarter &processStarter, i64 runTimeoutSec
     );
 
-    CrawlerRunner(
-        us::clients::http::Client &httpClient,
-        us::engine::subprocess::ProcessStarter &processStarter, i64 runTimeoutSec,
-        String proxyServer, std::string browserBin, String geometry
-    );
-
     [[nodiscard]] CrawlerRunArtifacts run(const String &seedUrl) const;
 
 private:
     us::clients::http::Client &httpClient;
     us::engine::subprocess::ProcessStarter &processStarter;
     i64 runTimeoutSec;
-    String proxyServer;
-    std::string browserBin;
-    String geometry;
 };
 
 } // namespace v1

@@ -1,61 +1,12 @@
 #include "crawler/browser_sandbox.hpp"
-
-#include <stdexcept>
+#include "crawler/launch_policy.hpp"
 
 namespace v1::crawler {
-namespace {
 
-constexpr std::string_view kBrowserGeometry = "1600x900";
-constexpr char kInvalidGeometryFormatMessage[] = "invalid geometry: must be in WIDTHxHEIGHT format";
-constexpr char kInvalidGeometryRangeMessage[] =
-    "invalid geometry: width and height must be positive integers";
-constexpr bool kChromiumVerboseLogging = false;
-constexpr std::string_view kChromiumVmodule = "";
-constexpr auto kProxyPort = 3128_i64;
-constexpr auto kDevtoolsPort = 9222_i64;
-
-[[noreturn]] void throwInvalidGeometryFormat()
+std::vector<std::string>
+buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
 {
-    throw std::runtime_error(kInvalidGeometryFormatMessage);
-}
-
-[[nodiscard]] String getGeometryValue(const BrowserSandboxOptions &options)
-{
-    if (options.geometry)
-        return *options.geometry;
-    return String::fromBytesThrow(kBrowserGeometry);
-}
-
-} // namespace
-
-Geometry parseGeometry(const String &value)
-{
-    if (value.empty())
-        throwInvalidGeometryFormat();
-
-    const auto bytes = value.view();
-    const auto delimiter = bytes.find('x');
-    if (delimiter == std::string_view::npos)
-        throwInvalidGeometryFormat();
-
-    const auto widthText = bytes.substr(0, delimiter);
-    const auto heightText = bytes.substr(delimiter + 1);
-    if (widthText.empty() || heightText.empty())
-        throwInvalidGeometryFormat();
-
-    auto width = i64(std::stoll(std::string(widthText)));
-    auto height = i64(std::stoll(std::string(heightText)));
-    if (width < 1_i64 || height < 1_i64)
-        throw std::runtime_error(kInvalidGeometryRangeMessage);
-
-    return {width, height};
-}
-
-std::vector<std::string> buildChromiumArgs(const BrowserSandboxOptions &options)
-{
-    const auto parsedGeometry = parseGeometry(getGeometryValue(options));
-
-    std::vector<std::string> args{
+    std::vector<std::string> args = {
         "--headless=new",
         "--disable-gpu",
         "--disable-gpu-compositing",
@@ -74,24 +25,19 @@ std::vector<std::string> buildChromiumArgs(const BrowserSandboxOptions &options)
         "--ignore-certificate-errors",
         "--use-gl=angle",
         "--use-angle=swiftshader",
-        "--user-data-dir=" + options.userDataDir,
-        "--log-net-log=" + options.netlogPath,
+        "--user-data-dir=" + userDataDir,
+        "--log-net-log=" + netlogPath,
         "--net-log-capture-mode=IncludeSensitive",
-        "--proxy-server=http://127.0.0.1:" + std::to_string(toNative(kProxyPort)),
+        std::string{"--proxy-server=http://127.0.0.1:"} +
+            std::to_string(toNative(kProxyListenPort)),
         "--proxy-bypass-list=<-loopback>",
+        "--remote-debugging-address=127.0.0.1",
         "--remote-debugging-port=" + std::to_string(toNative(kDevtoolsPort)),
-        "--window-size=" + std::to_string(toNative(parsedGeometry.width)) + "," +
-            std::to_string(toNative(parsedGeometry.height)),
+        std::string{"--window-size="} + std::to_string(toNative(kBrowserWindowWidth)) + "," +
+            std::to_string(toNative(kBrowserWindowHeight))
     };
-
-    if (kChromiumVerboseLogging) {
-        args.emplace_back("--enable-logging=stderr");
-        args.emplace_back("--log-level=0");
-        args.emplace_back("--v=1");
-    }
-    if (!kChromiumVmodule.empty())
-        args.emplace_back("--vmodule=" + std::string(kChromiumVmodule));
-
+    args.emplace_back("--enable-logging=stderr");
+    args.emplace_back("--log-level=0");
     args.emplace_back("about:blank");
     return args;
 }

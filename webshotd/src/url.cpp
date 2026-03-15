@@ -10,7 +10,7 @@ Url::Url(ada::url_aggregator url) : adaUrl(std::move(url)) {}
 
 std::optional<Url> Url::fromText(const String &text)
 {
-    const auto parsed = ada::parse<ada::url_aggregator>(text.view());
+    auto parsed = ada::parse<ada::url_aggregator>(text.view());
     if (!parsed)
         return {};
     return Url(std::move(*parsed));

@@ -81,7 +81,7 @@ fail(ZipArchiveError &errorOut, ZipArchiveErrorCode code, std::string detail)
 }
 
 [[nodiscard]] ArchiveEntryPtr
-makeRegularFileEntry(std::string_view path, std::string_view body, ZipArchiveError &errorOut)
+makeRegularFileEntry(std::string_view path, ZipArchiveError &errorOut, std::string_view body)
 {
     auto entry = ArchiveEntryPtr(archive_entry_new(), &archive_entry_free);
     if (!entry) {
@@ -100,6 +100,8 @@ makeRegularFileEntry(std::string_view path, std::string_view body, ZipArchiveErr
 
 int openStringArchive(archive *, void *) { return ARCHIVE_OK; }
 
+// libarchive requires this callback signature.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 la_ssize_t appendArchiveBytes(archive *, void *ctx, const void *buffer, size_t nbytes)
 {
     auto &out = *static_cast<std::string *>(ctx);
@@ -197,7 +199,7 @@ readEntryBytes(archive *reader, archive_entry *entry, ZipArchiveError &errorOut)
 } // namespace
 
 bool ZipArchiveBuilder::addStoredFile(
-    std::string_view path, std::string_view body, ZipArchiveError &errorOut
+    std::string_view path, ZipArchiveError &errorOut, std::string_view body
 )
 {
     errorOut = {};
@@ -240,7 +242,7 @@ std::optional<std::string> ZipArchiveBuilder::finish(ZipArchiveError &errorOut) 
     }
 
     for (const auto &entrySpec : entries) {
-        auto entry = makeRegularFileEntry(entrySpec.path, entrySpec.body, errorOut);
+        auto entry = makeRegularFileEntry(entrySpec.path, errorOut, entrySpec.body);
         if (!entry)
             return {};
 

@@ -172,7 +172,9 @@ UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "examplebucket"_t);
 
-    const std::time_t farFuture = std::time(nullptr) + 14 * 24 * 60 * 60;
+    constexpr std::time_t kTwoWeeksSeconds = std::time_t{14} * std::time_t{24} * std::time_t{60} *
+                                             std::time_t{60};
+    const std::time_t farFuture = std::time(nullptr) + kTwoWeeksSeconds;
     const std::string url = client->GenerateDownloadUrl("test.txt", farFuture, true);
 
     const auto params = parseQuery(url);

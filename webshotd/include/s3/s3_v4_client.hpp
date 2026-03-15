@@ -69,7 +69,7 @@ public:
 
     std::string PutObject(
         std::string_view path, std::string data, const std::optional<Meta> &meta,
-        std::string_view content_type, const std::optional<std::string> &content_disposition,
+        std::string_view contentType, const std::optional<std::string> &contentDisposition,
         const std::optional<std::vector<Tag>> &tags
     ) const override;
 
@@ -127,43 +127,43 @@ public:
     ) const override;
 
     std::string
-    GenerateDownloadUrl(std::string_view path, time_t expires_epoch, bool use_ssl) const override;
+    GenerateDownloadUrl(std::string_view path, time_t expiresEpoch, bool useSsl) const override;
     std::string GenerateDownloadUrlVirtualHostAddressing(
-        std::string_view path, const std::chrono::system_clock::time_point &expires_at,
+        std::string_view path, const std::chrono::system_clock::time_point &expiresAt,
         std::string_view protocol
     ) const override;
     std::string GenerateUploadUrlVirtualHostAddressing(
-        std::string_view data, std::string_view content_type, std::string_view path,
-        const std::chrono::system_clock::time_point &expires_at, std::string_view protocol
+        std::string_view data, std::string_view contentType, std::string_view path,
+        const std::chrono::system_clock::time_point &expiresAt, std::string_view protocol
     ) const override;
 
 private:
     static std::chrono::seconds computePresignTtl(
         const std::chrono::system_clock::time_point &now,
-        const std::chrono::system_clock::time_point &expires_at
+        const std::chrono::system_clock::time_point &expiresAt
     );
     [[nodiscard]] SigV4Params
     makeSigV4Params(const std::chrono::system_clock::time_point &now) const;
     void signRequest(
         String method, String canonicalUri, String host, userver::clients::http::Headers &headers,
-        const String &payload_hash
+        const String &payloadHash
     ) const;
     [[nodiscard]] detail::BuiltUrl
     makePathStyleUrl(String path, std::optional<String> protocolOverride) const;
     [[nodiscard]] detail::BuiltUrl makeVirtualHostUrl(String path, String protocol) const;
     [[nodiscard]] String buildRawPath(String path, bool includeBucket) const;
     String presignVirtualHost(
-        String method, String path, const std::chrono::system_clock::time_point &expires_at,
-        String protocol, std::optional<userver::clients::http::Headers> extra_headers
+        String method, String path, const std::chrono::system_clock::time_point &expiresAt,
+        String protocol, std::optional<userver::clients::http::Headers> extraHeaders
     ) const;
     String presignPathStyle(
-        String method, String path, const std::chrono::system_clock::time_point &expires_at,
+        String method, String path, const std::chrono::system_clock::time_point &expiresAt,
         String protocol
     ) const;
     String buildPresignedUrl(
         String method, const detail::BuiltUrl &built,
         const std::chrono::system_clock::time_point &now,
-        const std::chrono::system_clock::time_point &expires_at, const SigV4Params &params,
+        const std::chrono::system_clock::time_point &expiresAt, const SigV4Params &params,
         const std::vector<std::pair<String, String>> &headers
     ) const;
 

@@ -3,7 +3,8 @@
 Detailed repository rules live in local Codex skills under `.codex/skills/`.
 
 Reminder:
-- Use `webshot-core` for any code changes.
+- Use `webshot-general` for any code changes.
+- Use `webshot-cpp` for C++ code changes (service code in `webshotd/`).
 - Use `webshot-workflows` for configure/build/run/test tasks, especially `devenv tasks run webshot:*`.
 - Use `webshot-contracts` for `schema/*.yaml`, SQL/API contract changes, and commits/PRs.
 - Use `webshot-docs` for repo-pinned dependency docs and upstream research.

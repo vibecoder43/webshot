@@ -12,5 +12,3 @@ Use this when searching docs, APIs, or upstream behavior.
 - Repo code and schemas are authoritative for local behavior: use `webshotd/config/`, `webshotd/sql/`, `webshotd/test/`, and `schema/*.yaml` before assuming upstream defaults.
 - MCP docs: prefer `docs-mcp-server` for libraries used here, especially `userver`, `userver-doxygen`, `ada`, `abseil`, and `browsertrix-crawler`.
 - When searching in userver docs via MCP, prefer broad topic queries (for example, "http client", "synchronization") over exact symbol names, avoid punctuation in search terms, and then narrow down within retrieved pages.
-- When querying userver, first use the narrative userver docs; use `userver-doxygen` afterward for exact signatures/templates if needed.
-- If docs aren't in `docs-mcp-server`, use other MCP docs servers.

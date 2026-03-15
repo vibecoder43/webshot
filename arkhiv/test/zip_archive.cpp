@@ -30,6 +30,8 @@ struct ZipEntrySpec {
 
 int openStringArchive(archive *, void *) { return ARCHIVE_OK; }
 
+// libarchive requires this callback signature.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 la_ssize_t appendArchiveBytes(archive *, void *ctx, const void *buffer, size_t nbytes)
 {
     auto &out = *static_cast<std::string *>(ctx);
@@ -102,16 +104,20 @@ TEST(ZipArchive, WritesAndReadsStoredFilesByPath)
     ZipArchiveBuilder builder;
     ZipArchiveError error;
 
-    ASSERT_TRUE(builder.addStoredFile("datapackage.json", R"({"profile":"data-package"})", error));
-    ASSERT_TRUE(builder.addStoredFile("archive/data.warc", "warc bytes", error));
-    ASSERT_TRUE(builder.addStoredFile("pages/pages.jsonl", "{\"id\":\"pages\"}\n", error));
+    ASSERT_TRUE(builder.addStoredFile("datapackage.json", error, R"({"profile":"data-package"})"));
+    ASSERT_TRUE(builder.addStoredFile("archive/data.warc", error, "warc bytes"));
+    ASSERT_TRUE(builder.addStoredFile("pages/pages.jsonl", error, "{\"id\":\"pages\"}\n"));
 
     const auto zipBytes = builder.finish(error);
     ASSERT_TRUE(zipBytes);
+    if (!zipBytes)
+        return;
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kNone);
 
     const auto archive = ZipArchive::fromBytes(*zipBytes, error);
     ASSERT_TRUE(archive);
+    if (!archive)
+        return;
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kNone);
 
     EXPECT_EQ(
@@ -124,10 +130,14 @@ TEST(ZipArchive, WritesAndReadsStoredFilesByPath)
 
     const auto datapackage = archive->findFile("datapackage.json");
     ASSERT_TRUE(datapackage);
+    if (!datapackage)
+        return;
     EXPECT_EQ(*datapackage, std::string_view{R"({"profile":"data-package"})"});
 
     const auto warc = archive->findFile("archive/data.warc");
     ASSERT_TRUE(warc);
+    if (!warc)
+        return;
     EXPECT_EQ(*warc, std::string_view{"warc bytes"});
 }
 
@@ -136,8 +146,8 @@ TEST(ZipArchive, BuilderRejectsDuplicateEntryNames)
     ZipArchiveBuilder builder;
     ZipArchiveError error;
 
-    ASSERT_TRUE(builder.addStoredFile("logs/stdout.log", "first", error));
-    EXPECT_FALSE(builder.addStoredFile("logs/stdout.log", "second", error));
+    ASSERT_TRUE(builder.addStoredFile("logs/stdout.log", error, "first"));
+    EXPECT_FALSE(builder.addStoredFile("logs/stdout.log", error, "second"));
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kDuplicateEntry);
 }
 
@@ -146,16 +156,16 @@ TEST(ZipArchive, BuilderRejectsInvalidPaths)
     ZipArchiveBuilder builder;
     ZipArchiveError error;
 
-    EXPECT_FALSE(builder.addStoredFile("/absolute.txt", "", error));
+    EXPECT_FALSE(builder.addStoredFile("/absolute.txt", error, ""));
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kInvalidPath);
 
-    EXPECT_FALSE(builder.addStoredFile("logs\\stderr.log", "", error));
+    EXPECT_FALSE(builder.addStoredFile("logs\\stderr.log", error, ""));
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kInvalidPath);
 
-    EXPECT_FALSE(builder.addStoredFile("logs/../stderr.log", "", error));
+    EXPECT_FALSE(builder.addStoredFile("logs/../stderr.log", error, ""));
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kInvalidPath);
 
-    EXPECT_FALSE(builder.addStoredFile("logs//stderr.log", "", error));
+    EXPECT_FALSE(builder.addStoredFile("logs//stderr.log", error, ""));
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kInvalidPath);
 }
 

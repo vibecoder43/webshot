@@ -27,7 +27,7 @@ in {
     ++ (with common.pkgsWithOverlay; [
       git
       gdb
-      chromium
+      ungoogled-chromium
       bubblewrap
     ]);
 

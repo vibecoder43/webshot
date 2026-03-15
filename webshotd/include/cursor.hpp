@@ -62,7 +62,7 @@ template <typename Dto> [[nodiscard]] std::optional<Dto> decodeToken(const Strin
  */
 template <typename Dto> [[nodiscard]] String encodeToken(const Dto &dto)
 {
-    return *String::fromBytes(
+    return String::fromBytesThrow(
         us::crypto::base64::Base64UrlEncode(
             us::formats::json::ToString(us::formats::json::ValueBuilder(dto).ExtractValue()),
             us::crypto::base64::Pad::kWithout

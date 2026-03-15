@@ -19,9 +19,15 @@ namespace v1::crud {
     if (!dtoOpt)
         return {};
     const auto &cur = *dtoOpt;
+    const auto prefix = String::fromBytes(cur.p);
+    if (!prefix)
+        return {};
+    const auto link = String::fromBytes(cur.l);
+    if (!link)
+        return {};
     PrefixCursor out;
-    out.prefix = *String::fromBytes(cur.p);
-    out.link = *String::fromBytes(cur.l);
+    out.prefix = *prefix;
+    out.link = *link;
     if (cur.t && cur.i) {
         out.createdAt = microsToTimePoint(*cur.t);
         out.id = *cur.i;

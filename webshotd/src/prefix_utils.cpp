@@ -13,7 +13,7 @@ namespace {
 
 void appendEncodedSegment(std::string &out, std::string_view bytes)
 {
-    constexpr size_t kMaxBytesPerLabel = 127;
+    constexpr size_t kMaxBytesPerLabel = 127UL;
     if (bytes.empty()) {
         out.append(".x");
         return;

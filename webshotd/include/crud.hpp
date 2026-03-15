@@ -30,7 +30,7 @@ public:
         const us::components::ComponentContext &context
     );
 
-    ~Crud();
+    ~Crud() override;
 
     /**
      * @brief Run a crawl for the given link and persist metadata.

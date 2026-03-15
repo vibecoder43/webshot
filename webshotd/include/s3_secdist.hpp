@@ -24,9 +24,9 @@ struct S3CredentialsSecdist {
     std::optional<s3v4::SecretAccessKey> secretAccessKey;
     std::optional<s3v4::SessionToken> sessionToken;
 
-    explicit S3CredentialsSecdist(const userver::formats::json::Value &secdist_doc)
+    explicit S3CredentialsSecdist(const userver::formats::json::Value &secdistDoc)
     {
-        const auto creds = secdist_doc["s3_credentials"];
+        const auto creds = secdistDoc["s3_credentials"];
         if (!creds.IsMissing()) {
             if (auto v = creds["access_key_id"]; !v.IsMissing())
                 accessKeyId = s3v4::AccessKeyId(String::fromBytesThrow(v.As<std::string>()));

@@ -9,6 +9,7 @@
 #include <userver/utest/utest.hpp>
 
 #include "crawler/artifacts.hpp"
+#include "crawler/launch_policy.hpp"
 
 using namespace v1::crawler;
 using namespace text::literals;
@@ -42,6 +43,8 @@ namespace {
 [[nodiscard]] CapturedExchange makeBaseExchange(std::string_view finalUrl)
 {
     return {
+        .seedUrl = String::fromBytesThrow(finalUrl),
+        .pageId = "page-123"_t,
         .finalUrl = String::fromBytesThrow(finalUrl),
         .statusCode = 200_i64,
         .statusMessage = "OK"_t,
@@ -66,6 +69,7 @@ UTEST(CrawlerArtifacts, BuildWarcPreservesCapturedSubresourceMethods)
     exchange.resources.push_back({
         .resourceUrl = "https://example.test/submit?source=page"_t,
         .method = "POST"_t,
+        .resourceType = "Fetch"_t,
         .statusCode = 201_i64,
         .statusMessage = "Created"_t,
         .headers =
@@ -79,17 +83,29 @@ UTEST(CrawlerArtifacts, BuildWarcPreservesCapturedSubresourceMethods)
     const auto warc = buildWarc(exchange);
     const auto warcText = std::string_view(warc.bytes);
 
-    ASSERT_EQ(warc.cdxRecords.size(), numericCast<size_t>(2));
+    ASSERT_EQ(warc.cdxRecords.size(), numericCast<size_t>(3));
     EXPECT_NE(
         warcText.find("WARC-Target-URI: https://example.test/submit?source=page"),
         std::string_view::npos
     );
+    EXPECT_NE(warcText.find("WARC-Page-ID: page-123"), std::string_view::npos);
     EXPECT_NE(warcText.find("POST /submit?source=page HTTP/1.1"), std::string_view::npos);
+}
+
+UTEST(CrawlerArtifacts, BuildSuccessStdoutLogUsesFixedBrowserPolicy)
+{
+    const auto stdoutLog = buildSuccessStdoutLog(
+        makeRun("https://seed.test/"), makeBaseExchange("https://seed.test/"), 0_i64, false
+    );
+
+    EXPECT_NE(stdoutLog.find("browser_bin=" + std::string(kBrowserBin) + "\n"), std::string::npos);
+    EXPECT_EQ(stdoutLog.find("geometry="), std::string::npos);
 }
 
 UTEST(CrawlerArtifacts, BuildWaczIncludesExpectedFilesAndSurtIndexKeys)
 {
     auto exchange = makeBaseExchange("https://www.seed.test/");
+    exchange.seedUrl = "https://seed.test/"_t;
     exchange.redirectChain = {"https://seed.test/"_t, "https://www.seed.test/"_t};
     exchange.mainDocumentRedirects.push_back({
         .redirectUrl = "https://seed.test/"_t,
@@ -127,17 +143,82 @@ UTEST(CrawlerArtifacts, BuildWaczIncludesExpectedFilesAndSurtIndexKeys)
     ASSERT_TRUE(pages);
     const auto stderrLog = archive.findFile("logs/stderr.log");
     ASSERT_TRUE(stderrLog);
+    if (!datapackage || !cdxj || !pages || !stderrLog)
+        return;
     EXPECT_NE(datapackage->find("\"path\":\"archive/data.warc\""), std::string_view::npos);
     EXPECT_NE(pages->find("\"format\":\"json-pages-1.0\""), std::string_view::npos);
+    EXPECT_NE(pages->find("\"title\":\"All Pages\""), std::string_view::npos);
+    EXPECT_NE(pages->find("\"hasText\":\"false\""), std::string_view::npos);
     EXPECT_NE(
-        cdxj->find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test/\""),
+        cdxj->find(
+            "test,seed)/ 20260311044121 "
+            "{\"url\":\"https://seed.test/\",\"status\":\"301\""
+        ),
         std::string_view::npos
     );
     EXPECT_NE(
         cdxj->find("test,seed,www)/ 20260311044121 {\"url\":\"https://www.seed.test/\""),
         std::string_view::npos
     );
+    EXPECT_NE(
+        cdxj->find(
+            "urn:pageinfo:https://seed.test/ 20260311044121 "
+            "{\"url\":\"urn:pageinfo:https://seed.test/\",\"status\":\"200\","
+            "\"mime\":\"application/json\",\"filename\":\"archive/data.warc\""
+        ),
+        std::string_view::npos
+    );
     EXPECT_TRUE(stderrLog->empty());
+}
+
+UTEST(CrawlerArtifacts, BuildWarcIncludesPageInfoRecord)
+{
+    auto exchange = makeBaseExchange("https://www.seed.test/");
+    exchange.seedUrl = "https://seed.test/"_t;
+    exchange.mainDocumentRedirects.push_back({
+        .redirectUrl = "https://seed.test/"_t,
+        .statusCode = 302_i64,
+        .statusMessage = "Found"_t,
+        .headers =
+            {
+                {"location", "https://www.seed.test/"},
+                {"content-type", "text/html; charset=utf-8"},
+            },
+        .timestamp = "2026-03-11T04:41:21.100Z"_t,
+    });
+    exchange.resources.push_back({
+        .resourceUrl = "https://www.seed.test/app.js"_t,
+        .method = "GET"_t,
+        .resourceType = "Script"_t,
+        .statusCode = 200_i64,
+        .statusMessage = "OK"_t,
+        .headers =
+            {
+                {"content-type", "application/javascript"},
+            },
+        .body = "console.log('ok');",
+        .timestamp = "2026-03-11T04:41:22.100Z"_t,
+    });
+
+    const auto warc = buildWarc(exchange);
+    const auto warcText = std::string_view(warc.bytes);
+
+    EXPECT_NE(
+        warcText.find("WARC-Target-URI: urn:pageinfo:https://seed.test/"), std::string_view::npos
+    );
+    EXPECT_NE(warcText.find("WARC-Resource-Type: pageinfo"), std::string_view::npos);
+    EXPECT_NE(warcText.find("\"pageid\":\"page-123\""), std::string_view::npos);
+    EXPECT_NE(warcText.find("\"url\":\"https://seed.test/\""), std::string_view::npos);
+    EXPECT_NE(warcText.find("\"counts\":{\"jsErrors\":0}"), std::string_view::npos);
+    EXPECT_NE(
+        warcText.find(
+            "\"https://www.seed.test/app.js\":{\"status\":200,\"mime\":\"application/javascript\","
+            "\"type\":\"Script\"}"
+        ),
+        std::string_view::npos
+    );
+    ASSERT_EQ(warc.cdxRecords.size(), numericCast<size_t>(4));
+    EXPECT_EQ(warc.cdxRecords.back().recordUrl, "urn:pageinfo:https://seed.test/"_t);
 }
 
 UTEST(CrawlerArtifacts, BuildWaczStoresFilesInExpectedZipOrder)
@@ -186,6 +267,8 @@ UTEST(CrawlerArtifacts, BuildWaczKeepsIpLiteralAndNonHttpKeysRaw)
 
     const auto ipCdxj = ipArchive.findFile("indexes/index.cdxj");
     ASSERT_TRUE(ipCdxj);
+    if (!ipCdxj)
+        return;
     EXPECT_NE(
         ipCdxj->find(
             "http://127.0.0.1:8080/seed 20260311044121 "
@@ -217,6 +300,8 @@ UTEST(CrawlerArtifacts, BuildWaczKeepsIpLiteralAndNonHttpKeysRaw)
 
     const auto blobCdxj = blobArchive.findFile("indexes/index.cdxj");
     ASSERT_TRUE(blobCdxj);
+    if (!blobCdxj)
+        return;
     EXPECT_NE(
         blobCdxj->find(
             "blob:https://seed.test/01234567-89ab-cdef-0123-456789abcdef 20260311044121 "
@@ -237,6 +322,8 @@ UTEST(CrawlerArtifacts, BuildWaczStripsTrailingDotBeforeGeneratingSurtKeys)
 
     const auto cdxj = archive.findFile("indexes/index.cdxj");
     ASSERT_TRUE(cdxj);
+    if (!cdxj)
+        return;
     EXPECT_NE(
         cdxj->find("test,seed)/ 20260311044121 {\"url\":\"https://seed.test./\""),
         std::string_view::npos

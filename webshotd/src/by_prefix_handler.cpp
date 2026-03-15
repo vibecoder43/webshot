@@ -85,7 +85,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
             normalizedPrefix =
                 Link::fromTextStripPort(*prefix, cfg.queryPartLengthMax()).normalized();
         } catch (const InvalidLinkException &e) {
-            return httpu::respondError(response, kBadRequest, *String::fromBytes(e.what()));
+            return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));
         }
         const std::string tokenArg = request.GetArg("page_token");
         const auto token = String::fromBytes(tokenArg);

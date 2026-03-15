@@ -21,6 +21,8 @@ UTEST(S3Secdist, ParsesAllFields)
     ASSERT_TRUE(parsed.accessKeyId);
     ASSERT_TRUE(parsed.secretAccessKey);
     ASSERT_TRUE(parsed.sessionToken);
+    if (!parsed.accessKeyId || !parsed.secretAccessKey || !parsed.sessionToken)
+        return;
     EXPECT_EQ(parsed.accessKeyId->GetUnderlying().view(), std::string("ACCESS"));
     EXPECT_EQ(parsed.secretAccessKey->GetUnderlying().view(), std::string("SECRET"));
     EXPECT_EQ(parsed.sessionToken->GetUnderlying().view(), std::string("TOKEN"));
@@ -43,6 +45,8 @@ UTEST(S3Secdist, PartialCredentials)
 
     const S3CredentialsSecdist parsed(builder.ExtractValue());
     ASSERT_TRUE(parsed.accessKeyId);
+    if (!parsed.accessKeyId)
+        return;
     EXPECT_EQ(parsed.accessKeyId->GetUnderlying().view(), std::string("ACCESS_ONLY"));
     EXPECT_FALSE(parsed.secretAccessKey);
     EXPECT_FALSE(parsed.sessionToken);

@@ -8,7 +8,7 @@ description: Build, run, and test workflow for the webshot repo
 Use this when the task involves building, running, or testing.
 
 ## Toolchain context
-- C++20 is required to build the service (forced by `ada` and `userver`); write in C++17 unless specifically requested otherwise.
+- C++20 is required to build the service (forced by upstream dependencies).
 - The primary toolchain comes from `nix/toolchain.nix` and uses `pkgs.llvmPackages_21` (Clang 21 + matching `stdenv`).
 - userver is consumed via the Nix flake in `nix/userver` (not by checking out userver sources in this repo).
 - CMake configures `./webshotd` with Ninja into `build/webshotd/{san,tidy,cov,release}`.

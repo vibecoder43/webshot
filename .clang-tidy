@@ -2,7 +2,8 @@ Checks: >
   -*,
   clang-diagnostic-*,
   bugprone-*,
-  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-empty-catch,
   readability-identifier-naming,
   readability-misleading-indentation,
   readability-suspicious-call-argument,
@@ -13,16 +14,16 @@ Checks: >
   modernize-use-bool-literals,
   modernize-use-override
 
-HeaderFilterRegex: '^(src|include|tests)/'
+HeaderFilterRegex: '(^|.*/)(webshotd|arkhiv)/(src|include|test)/'
 ExcludeHeaderFilterRegex: ''
 
-WarningsAsErrors: 'clang-diagnostic-*,bugprone-*'
+WarningsAsErrors: 'clang-diagnostic-*,bugprone-*,readability-*,misc-*,modernize-*'
 
 SystemHeaders: false
 UseColor: true
 
-HeaderFileExtensions: 'h,hh,hpp,hxx'
-ImplementationFileExtensions: 'c,cc,cpp,cxx'
+HeaderFileExtensions: ['h', 'hh', 'hpp', 'hxx']
+ImplementationFileExtensions: ['c', 'cc', 'cpp', 'cxx']
 
 FormatStyle: none
 
@@ -51,10 +52,14 @@ CheckOptions:
   - key: readability-identifier-naming.ConstantCase
     value: camelBack
   - key: readability-identifier-naming.ConstantPrefix
-    value: k
+    value: ''
   - key: readability-identifier-naming.EnumConstantCase
     value: CamelCase
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: k
   - key: readability-identifier-naming.GlobalConstantCase
-    value: camelBack
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: k
   - key: readability-identifier-naming.IgnoreMainLikeFunctions
     value: '1'

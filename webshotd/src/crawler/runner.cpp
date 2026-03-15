@@ -3,17 +3,22 @@
 #include "crawler/artifacts.hpp"
 #include "crawler/browser_sandbox.hpp"
 #include "crawler/cdp_client.hpp"
+#include "crawler/failure.hpp"
+#include "crawler/launch_policy.hpp"
 #include "integers.hpp"
 #include "schema/cdp.hpp"
 #include "text.hpp"
 #include "url.hpp"
 
 #include <algorithm>
-#include <boost/filesystem/path.hpp>
+#include <array>
+#include <atomic>
+#include <boost/uuid/uuid_io.hpp>
 #include <cctype>
 #include <chrono>
 #include <csignal>
 #include <exception>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -25,7 +30,6 @@
 
 #include <fmt/format.h>
 
-#include <userver/clients/http/response.hpp>
 #include <userver/crypto/base64.hpp>
 #include <userver/engine/sleep.hpp>
 #include <userver/engine/subprocess/process_starter.hpp>
@@ -34,7 +38,9 @@
 #include <userver/fs/blocking/read.hpp>
 #include <userver/fs/blocking/temp_directory.hpp>
 #include <userver/fs/blocking/write.hpp>
+#include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
+#include <userver/utils/boost_uuid4.hpp>
 #include <userver/utils/datetime.hpp>
 
 namespace us = userver;
@@ -46,17 +52,17 @@ using namespace text::literals;
 namespace v1 {
 namespace {
 
-constexpr auto kPostLoadDelayMs = 1000_i64;
-constexpr auto kNetIdleWaitMs = 0_i64;
-constexpr auto kPageExtraDelayMs = 0_i64;
-constexpr auto kBehaviorTimeoutMs = 1000_i64;
 constexpr auto kMaxBodyBytes = 50_i64 * 1024_i64 * 1024_i64;
-constexpr std::string_view kLang = "en";
 constexpr std::string_view kBwrapBin = "bwrap";
 constexpr std::string_view kBashBin = "bash";
 constexpr std::string_view kSocatBin = "socat";
 constexpr std::string_view kBrowserSandboxScriptPath = WEBSHOT_BROWSER_SANDBOX_SCRIPT_PATH;
-constexpr size_t kMaxLogBytes = 64 * 1024;
+constexpr std::string_view kBwrapStatusWrapperScript = R"(exec 3>"$1"; shift; exec "$@")";
+constexpr std::string_view kBrowserRunsRoot = "/tmp/webshot/browser-runs";
+constexpr std::string_view kBrowserFailuresRoot = "/tmp/webshot/browser-failures";
+constexpr size_t kMaxLogBytes = 64UL * 1024UL;
+
+std::atomic<uint64_t> gBrowserFailureSequence = 0;
 
 [[nodiscard]] std::string lowerAscii(std::string_view text)
 {
@@ -93,13 +99,18 @@ normalizeHeadersOrEmpty(const std::optional<dto::CdpHeaders> &headers)
     return normalizeHeaders(*headers);
 }
 
-[[nodiscard]] String extractWebsocketPath(const String &websocketUrlText)
+[[nodiscard]] std::optional<String> stringOrNull(const std::optional<std::string> &value)
 {
-    try {
-        return Url::fromTextThrow(websocketUrlText).pathWithSearch();
-    } catch (const std::exception &) {
-        throw std::runtime_error("invalid websocket debugger url");
-    }
+    if (!value)
+        return {};
+    return String::fromBytesThrow(*value);
+}
+
+[[nodiscard]] String generatePageId()
+{
+    return String::fromBytesThrow(
+        boost::uuids::to_string(us::utils::generators::GenerateBoostUuid())
+    );
 }
 
 class CaptureFailure final : public std::runtime_error {
@@ -144,11 +155,11 @@ void sleepWithinBudget(
         throw std::runtime_error(std::string(timeoutMessage));
 }
 
-[[nodiscard]] const dto::CdpEventMessage::Params &requireEventParams(const crawler::CdpEvent &event)
+template <typename T> [[nodiscard]] T parseEventParams(const crawler::CdpEvent &event)
 {
     if (!event.params)
         throw std::runtime_error(fmt::format("{} missing params", event.method.view()));
-    return *event.params;
+    return event.params->extra.As<T>();
 }
 
 struct [[nodiscard]] BrowserPaths {
@@ -160,63 +171,47 @@ struct [[nodiscard]] BrowserPaths {
     std::string crashpadDir;
     std::string proxySocketPath;
     std::string cdpSocketPath;
+    std::string websocketPathFilePath;
     std::string netlogPath;
+    std::string cdpTracePath;
     std::string stdoutLogPath;
     std::string stderrLogPath;
+    std::string chromiumStderrLogPath;
+    std::string bwrapStatusFilePath;
+    std::string phaseFilePath;
     std::string devNullPath;
 };
 
 [[nodiscard]] BrowserPaths createBrowserPaths()
 {
     BrowserPaths paths;
-    paths.tempDir = us::fs::blocking::TempDirectory::Create("/tmp", "webshotd-browser-");
+    const auto tempRoot = std::string(kBrowserRunsRoot);
+    us::fs::blocking::CreateDirectories(tempRoot);
+    paths.tempDir = us::fs::blocking::TempDirectory::Create(tempRoot, "browser-");
 
-    const auto rootDir = boost::filesystem::path(paths.tempDir.GetPath());
-    paths.rootDir = rootDir.string();
-    paths.userDataDir = (rootDir / "profile").string();
-    paths.xdgConfigHome = (rootDir / "xdg-config").string();
-    paths.xdgCacheHome = (rootDir / "xdg-cache").string();
-    paths.crashpadDir = (rootDir / "crashpad").string();
-    paths.proxySocketPath = (rootDir / "proxy.sock").string();
-    paths.cdpSocketPath = (rootDir / "cdp.sock").string();
-    paths.netlogPath = (rootDir / "netlog.json").string();
-    paths.stdoutLogPath = (rootDir / "stdout.log").string();
-    paths.stderrLogPath = (rootDir / "stderr.log").string();
-    paths.devNullPath = (rootDir / "devnull").string();
+    const auto rootDir = paths.tempDir.GetPath();
+    paths.rootDir = rootDir;
+    paths.userDataDir = rootDir + "/profile";
+    paths.xdgConfigHome = rootDir + "/xdg-config";
+    paths.xdgCacheHome = rootDir + "/xdg-cache";
+    paths.crashpadDir = rootDir + "/crashpad";
+    paths.proxySocketPath = rootDir + "/proxy.sock";
+    paths.cdpSocketPath = rootDir + "/cdp.sock";
+    paths.websocketPathFilePath = rootDir + "/websocket_path.txt";
+    paths.netlogPath = rootDir + "/netlog.json";
+    paths.cdpTracePath = rootDir + "/cdp-trace.jsonl";
+    paths.stdoutLogPath = rootDir + "/stdout.log";
+    paths.stderrLogPath = rootDir + "/stderr.log";
+    paths.chromiumStderrLogPath = rootDir + "/chromium-stderr.log";
+    paths.bwrapStatusFilePath = rootDir + "/bwrap-status.jsonl";
+    paths.phaseFilePath = rootDir + "/phase.txt";
+    paths.devNullPath = rootDir + "/devnull";
 
-    us::fs::blocking::CreateDirectories(paths.userDataDir);
-    us::fs::blocking::CreateDirectories(paths.xdgConfigHome);
-    us::fs::blocking::CreateDirectories(paths.xdgCacheHome);
-    us::fs::blocking::CreateDirectories(paths.crashpadDir);
-    us::fs::blocking::RewriteFileContents(paths.devNullPath, {});
+    for (auto x : {paths.userDataDir, paths.xdgConfigHome, paths.xdgCacheHome, paths.crashpadDir})
+        us::fs::blocking::CreateDirectories(x);
+    for (auto x : {paths.phaseFilePath, paths.cdpTracePath, paths.devNullPath})
+        us::fs::blocking::RewriteFileContents(x, {});
     return paths;
-}
-
-struct [[nodiscard]] ProxyUrlParts {
-    String host;
-    int port;
-};
-
-[[nodiscard]] ProxyUrlParts parseProxyUrlParts(const String &proxyServer)
-{
-    const auto url = [&proxyServer] {
-        try {
-            return Url::fromTextThrow(proxyServer);
-        } catch (const std::exception &) {
-            throw std::runtime_error("invalid proxy url");
-        }
-    }();
-    if (!url.isHttp())
-        throw std::runtime_error("unsupported proxy protocol");
-    if (!url.hasHostname())
-        throw std::runtime_error("proxy host is required");
-    if (!url.hasPort())
-        throw std::runtime_error("proxy port is required");
-
-    ProxyUrlParts proxyUrlParts;
-    proxyUrlParts.host = url.hostname();
-    proxyUrlParts.port = std::stoi(std::string(url.port().view()));
-    return proxyUrlParts;
 }
 
 void truncateLogBuffer(std::string &value)
@@ -235,6 +230,85 @@ void truncateLogBuffer(std::string &value)
     return value;
 }
 
+void writePhaseMarker(const std::string &path, std::string_view phase)
+{
+    us::fs::blocking::RewriteFileContents(
+        path, fmt::format("{} {}\n", currentTimestamp().view(), phase)
+    );
+}
+
+[[nodiscard]] std::string formatBrowserLogs(const std::pair<std::string, std::string> &logs)
+{
+    return fmt::format(
+        "stdout={}, stderr={}", logs.first.empty() ? "empty" : logs.first,
+        logs.second.empty() ? "empty" : logs.second
+    );
+}
+
+[[nodiscard]] std::string formatLaunchLogs(
+    const std::pair<std::string, std::string> &browserLogs, const std::string &bwrapStatus
+)
+{
+    auto value = formatBrowserLogs(browserLogs);
+    if (!bwrapStatus.empty())
+        value = fmt::format("{}, bwrap_status={}", value, bwrapStatus);
+    return value;
+}
+
+[[nodiscard]] std::string formatBool(bool value) { return value ? "true" : "false"; }
+
+[[nodiscard]] bool isProcessRunning(std::optional<us::engine::subprocess::ChildProcess> &process)
+{
+    return process && !process->WaitFor(chrono::milliseconds(0));
+}
+
+[[nodiscard]] std::optional<String> readSanitizedLogTail(const std::string &path)
+{
+    if (!us::fs::blocking::FileExists(path))
+        return {};
+
+    try {
+        const auto sanitized = crawler::sanitizeProcessOutputTail(
+            us::fs::blocking::ReadFileContents(path)
+        );
+        if (!sanitized.empty())
+            return sanitized;
+    } catch (const std::exception &) {
+    }
+
+    return {};
+}
+
+void appendDiagnosticField(std::string &out, std::string_view label, std::string_view value)
+{
+    if (!out.empty())
+        out += ", ";
+    out += std::string(label);
+    out += '=';
+    out += value;
+}
+
+void copyFileIfExists(const std::string &sourcePath, const std::string &destPath)
+{
+    if (!us::fs::blocking::FileExists(sourcePath))
+        return;
+
+    auto contents = us::fs::blocking::ReadFileContents(sourcePath);
+    us::fs::blocking::RewriteFileContents(destPath, contents);
+}
+
+[[nodiscard]] std::optional<String> readWebsocketPathFile(const std::string &path)
+{
+    if (!us::fs::blocking::FileExists(path))
+        return {};
+    auto value = us::fs::blocking::ReadFileContents(path);
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+        value.pop_back();
+    if (value.empty())
+        return {};
+    return String::fromBytesThrow(value);
+}
+
 [[nodiscard]] us::engine::subprocess::ChildProcess spawnProcess(
     us::engine::subprocess::ProcessStarter &processStarter, const std::string &executablePath,
     const std::vector<std::string> &args, const std::string &stdoutPath,
@@ -248,15 +322,12 @@ void truncateLogBuffer(std::string &value)
     return processStarter.Exec(executablePath, args, std::move(options));
 }
 
-[[nodiscard]] us::engine::subprocess::ChildProcess spawnProxyBridge(
-    us::engine::subprocess::ProcessStarter &processStarter, const BrowserPaths &paths,
-    const ProxyUrlParts &proxyUrlParts
-)
+[[nodiscard]] us::engine::subprocess::ChildProcess
+spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const BrowserPaths &paths)
 {
     auto args = std::vector<std::string>{
         "UNIX-LISTEN:" + paths.proxySocketPath + ",fork,unlink-early",
-        "TCP-CONNECT:" + std::string(proxyUrlParts.host.view()) + ":" +
-            std::to_string(proxyUrlParts.port),
+        "TCP-CONNECT:127.0.0.1:" + std::to_string(toNative(crawler::kProxyUpstreamPort)),
     };
     return spawnProcess(
         processStarter, std::string(kSocatBin), args, paths.devNullPath, paths.devNullPath
@@ -264,20 +335,14 @@ void truncateLogBuffer(std::string &value)
 }
 
 [[nodiscard]] us::engine::subprocess::ChildProcess spawnSandboxedBrowser(
-    us::engine::subprocess::ProcessStarter &processStarter, const BrowserPaths &paths,
-    const std::string &browserBin, const String &geometry
+    us::engine::subprocess::ProcessStarter &processStarter, const BrowserPaths &paths
 )
 {
-    crawler::BrowserSandboxOptions sandboxOptions;
-    sandboxOptions.browserBin = browserBin;
-    sandboxOptions.userDataDir = paths.userDataDir;
-    sandboxOptions.proxyUpstreamSocket = paths.proxySocketPath;
-    sandboxOptions.cdpSocket = paths.cdpSocketPath;
-    sandboxOptions.netlogPath = paths.netlogPath;
-    sandboxOptions.geometry = geometry;
-
-    auto chromiumArgs = crawler::buildChromiumArgs(sandboxOptions);
-    auto args = std::vector<std::string>{
+    auto chromiumArgs = crawler::buildChromiumArgs(paths.userDataDir, paths.netlogPath);
+    auto bwrapArgs = std::vector<std::string>{
+        std::string(kBwrapBin),
+        "--json-status-fd",
+        "3",
         "--die-with-parent",
         "--unshare-user",
         "--unshare-net",
@@ -322,12 +387,23 @@ void truncateLogBuffer(std::string &value)
         std::string(kBrowserSandboxScriptPath),
         paths.proxySocketPath,
         paths.cdpSocketPath,
+        paths.websocketPathFilePath,
+        std::to_string(toNative(crawler::kProxyListenPort)),
+        std::to_string(toNative(crawler::kDevtoolsPort)),
         "--",
-        browserBin,
+        std::string(crawler::kBrowserBin),
     };
-    args.insert(std::end(args), std::begin(chromiumArgs), std::end(chromiumArgs));
+    bwrapArgs.insert(std::end(bwrapArgs), std::begin(chromiumArgs), std::end(chromiumArgs));
+
+    auto args = std::vector<std::string>{
+        "-c",
+        std::string(kBwrapStatusWrapperScript),
+        std::string(kBashBin),
+        paths.bwrapStatusFilePath,
+    };
+    args.insert(std::end(args), std::begin(bwrapArgs), std::end(bwrapArgs));
     return spawnProcess(
-        processStarter, std::string(kBwrapBin), args, paths.stdoutLogPath, paths.stderrLogPath
+        processStarter, std::string(kBashBin), args, paths.stdoutLogPath, paths.stderrLogPath
     );
 }
 
@@ -350,13 +426,8 @@ template <typename Process> void stopProcess(Process &process, chrono::milliseco
 
 class [[nodiscard]] BrowserInstance final {
 public:
-    BrowserInstance(
-        us::clients::http::Client &httpClient,
-        us::engine::subprocess::ProcessStarter &processStarter, std::string browserBin,
-        String geometry, String proxyServer
-    )
-        : httpClient(httpClient), processStarter(processStarter), browserBin(std::move(browserBin)),
-          geometry(std::move(geometry)), proxyServer(std::move(proxyServer))
+    explicit BrowserInstance(us::engine::subprocess::ProcessStarter &processStarter)
+        : processStarter(processStarter)
     {
     }
 
@@ -370,21 +441,128 @@ public:
     void launch()
     {
         paths = createBrowserPaths();
-        proxyBridge.emplace(
-            spawnProxyBridge(processStarter, paths, parseProxyUrlParts(proxyServer))
-        );
-        process.emplace(spawnSandboxedBrowser(processStarter, paths, browserBin, geometry));
-        websocketPath = waitForDevtoolsPath();
+        markPhase("launch_browser");
+        const auto devtoolsDeadline = us::utils::datetime::SteadyNow() + chrono::seconds(8);
+        proxyBridge.emplace(spawnProxyBridge(processStarter, paths));
+        process.emplace(spawnSandboxedBrowser(processStarter, paths));
+        websocketPath = waitForDevtoolsPath(devtoolsDeadline);
     }
 
-    [[nodiscard]] crawler::CdpClient connectCdp() const
+    [[nodiscard]] std::unique_ptr<crawler::CdpClient> connectCdp() const
     {
-        return {httpClient, paths.cdpSocketPath, websocketPath};
+        try {
+            return std::make_unique<crawler::CdpClient>(
+                paths.cdpSocketPath, websocketPath, paths.cdpTracePath
+            );
+        } catch (const std::exception &e) {
+            throw std::runtime_error(
+                fmt::format(
+                    "devtools websocket handshake failed: {} ({})", e.what(), currentLaunchLogs()
+                )
+            );
+        }
     }
 
-    [[nodiscard]] std::pair<std::string, std::string> drainLogs() const
+    [[nodiscard]] std::pair<std::string, std::string> drainBrowserLogs() const
     {
         return {readLogTail(paths.stdoutLogPath), readLogTail(paths.stderrLogPath)};
+    }
+
+    void markPhase(std::string_view phase) const
+    {
+        if (paths.phaseFilePath.empty())
+            return;
+        writePhaseMarker(paths.phaseFilePath, phase);
+    }
+
+    [[nodiscard]] std::string currentLaunchLogs() const
+    {
+        return formatLaunchLogs(drainBrowserLogs(), readLogTail(paths.bwrapStatusFilePath));
+    }
+
+    [[nodiscard]] std::optional<std::string> preserveFailureArtifacts()
+    {
+        if (preservedFailureDir)
+            return preservedFailureDir;
+        if (paths.rootDir.empty())
+            return {};
+
+        const auto targetRoot = std::string(kBrowserFailuresRoot);
+        us::fs::blocking::CreateDirectories(targetRoot);
+
+        const auto targetDir = fmt::format(
+            "{}/browser-failure-{}", targetRoot, gBrowserFailureSequence.fetch_add(1) + 1
+        );
+        us::fs::blocking::CreateDirectories(targetDir);
+
+        using ArtifactFile = std::pair<const std::string *, std::string_view>;
+        const auto artifactFiles = std::array<ArtifactFile, 8>{{
+            ArtifactFile{&paths.stdoutLogPath, "/stdout.log"},
+            ArtifactFile{&paths.stderrLogPath, "/stderr.log"},
+            ArtifactFile{&paths.chromiumStderrLogPath, "/chromium-stderr.log"},
+            ArtifactFile{&paths.bwrapStatusFilePath, "/bwrap-status.jsonl"},
+            ArtifactFile{&paths.phaseFilePath, "/phase.txt"},
+            ArtifactFile{&paths.netlogPath, "/netlog.json"},
+            ArtifactFile{&paths.cdpTracePath, "/cdp-trace.jsonl"},
+            ArtifactFile{&paths.websocketPathFilePath, "/websocket_path.txt"},
+        }};
+        for (const auto &[sourcePath, suffix] : artifactFiles) {
+            auto destPath = targetDir;
+            destPath += suffix;
+            copyFileIfExists(*sourcePath, destPath);
+        }
+
+        preservedFailureDir = targetDir;
+        return preservedFailureDir;
+    }
+
+    [[nodiscard]] std::string buildRuntimeFailureDetail(std::string_view message)
+    {
+        try {
+            const auto preservedDir = preserveFailureArtifacts();
+            std::string diagnostics;
+
+            if (const auto browserLogs =
+                    crawler::summarizeProcessOutputs(paths.stdoutLogPath, paths.stderrLogPath)) {
+                appendDiagnosticField(diagnostics, "browser_logs", browserLogs->view());
+            }
+            if (const auto chromiumStderr = readSanitizedLogTail(paths.chromiumStderrLogPath))
+                appendDiagnosticField(diagnostics, "chromium_stderr", chromiumStderr->view());
+            if (const auto bwrapStatus = readSanitizedLogTail(paths.bwrapStatusFilePath))
+                appendDiagnosticField(diagnostics, "bwrap_status", bwrapStatus->view());
+            if (const auto phaseMarker = readSanitizedLogTail(paths.phaseFilePath))
+                appendDiagnosticField(diagnostics, "phase", phaseMarker->view());
+            if (const auto cdpTrace = readSanitizedLogTail(paths.cdpTracePath))
+                appendDiagnosticField(diagnostics, "cdp_trace_tail", cdpTrace->view());
+            if (const auto websocketPath = readWebsocketPathFile(paths.websocketPathFilePath))
+                appendDiagnosticField(diagnostics, "websocket_path", websocketPath->view());
+            appendDiagnosticField(
+                diagnostics, "websocket_path_file_exists",
+                formatBool(us::fs::blocking::FileExists(paths.websocketPathFilePath))
+            );
+            appendDiagnosticField(
+                diagnostics, "netlog_exists",
+                formatBool(us::fs::blocking::FileExists(paths.netlogPath))
+            );
+            appendDiagnosticField(
+                diagnostics, "browser_process_running", formatBool(isProcessRunning(process))
+            );
+            appendDiagnosticField(
+                diagnostics, "cdp_socket_exists",
+                formatBool(us::fs::blocking::FileExists(paths.cdpSocketPath))
+            );
+            appendDiagnosticField(
+                diagnostics, "proxy_bridge_running", formatBool(isProcessRunning(proxyBridge))
+            );
+            if (preservedDir)
+                appendDiagnosticField(diagnostics, "preserved_browser_dir", *preservedDir);
+
+            if (diagnostics.empty())
+                return std::string(message);
+            return fmt::format("{}, {}", message, diagnostics);
+        } catch (const std::exception &) {
+            return std::string(message);
+        }
     }
 
     void close()
@@ -400,46 +578,50 @@ public:
     }
 
 private:
-    [[nodiscard]] String waitForDevtoolsPath()
+    [[nodiscard]] String waitForDevtoolsPath(chrono::steady_clock::time_point deadline)
     {
-        const auto deadline = us::utils::datetime::SteadyNow() + chrono::seconds(8);
+        auto sawCdpSocket = false;
+        auto sawWebsocketPath = false;
         while (us::utils::datetime::SteadyNow() < deadline) {
+            sawCdpSocket = sawCdpSocket || us::fs::blocking::FileExists(paths.cdpSocketPath);
+            sawWebsocketPath = sawWebsocketPath ||
+                               us::fs::blocking::FileExists(paths.websocketPathFilePath);
             if (process && process->WaitFor(chrono::milliseconds(0))) {
-                const auto logs = drainLogs();
                 throw std::runtime_error(
                     fmt::format(
-                        "chromium exited before exposing devtools (stderr={})",
-                        logs.second.empty() ? "empty" : logs.second
+                        "chromium exited before exposing devtools ({})", currentLaunchLogs()
                     )
                 );
             }
-            try {
-                const auto response = httpClient.CreateRequest()
-                                          .get("http://localhost/json/version")
-                                          .unix_socket_path(paths.cdpSocketPath.c_str())
-                                          .follow_redirects(false)
-                                          .perform();
-                if (response->status_code() == us::clients::http::Status::kOk) {
-                    const auto body =
-                        json::FromString(response->body_view()).As<dto::DevtoolsVersionResponse>();
-                    return extractWebsocketPath(String::fromBytesThrow(body.webSocketDebuggerUrl));
-                }
-            } catch (const std::exception &) {
+            const auto websocketPath = readWebsocketPathFile(paths.websocketPathFilePath);
+            if (sawCdpSocket && websocketPath) {
+                return *websocketPath;
             }
             us::engine::SleepFor(chrono::milliseconds(100));
         }
-        throw std::runtime_error("timed out waiting for chromium devtools url");
+        if (process && process->WaitFor(chrono::milliseconds(0))) {
+            throw std::runtime_error(
+                fmt::format("chromium exited before exposing devtools ({})", currentLaunchLogs())
+            );
+        }
+        throw std::runtime_error(
+            fmt::format(
+                "{} ({})",
+                !sawWebsocketPath ? "devtools websocket path was never written"
+                : !sawCdpSocket
+                    ? "devtools websocket path was written but cdp socket never appeared"
+                    : "devtools websocket path and cdp socket appeared but handshake never started",
+                currentLaunchLogs()
+            )
+        );
     }
 
-    us::clients::http::Client &httpClient;
     us::engine::subprocess::ProcessStarter &processStarter;
-    std::string browserBin;
-    String geometry;
-    String proxyServer;
     BrowserPaths paths;
     std::optional<us::engine::subprocess::ChildProcess> proxyBridge;
     std::optional<us::engine::subprocess::ChildProcess> process;
     String websocketPath;
+    std::optional<std::string> preservedFailureDir;
     bool closed{false};
 };
 
@@ -471,26 +653,102 @@ struct [[nodiscard]] RetainedBodyBudget {
            statusCode != 304_i64;
 }
 
-struct [[nodiscard]] CapturedResourceState {
-    String resourceUrl;
+[[nodiscard]] std::optional<String> buildUrlOrigin(const String &urlText)
+{
+    const auto maybeUrl = Url::fromText(urlText);
+    if (!maybeUrl)
+        return {};
+    if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
+        return {};
+
+    return String::fromBytesThrow(
+        fmt::format("{}://{}", maybeUrl->isHttps() ? "https" : "http", maybeUrl->host())
+    );
+}
+
+[[nodiscard]] String resolveRedirectTargetUrl(
+    const String &baseUrl, const String &requestUrl,
+    const std::optional<dto::NetworkResponse> &redirectResponse
+)
+{
+    if (!redirectResponse)
+        return requestUrl;
+
+    const auto headers = normalizeHeadersOrEmpty(redirectResponse->headers);
+    const auto locationIt = headers.find("location");
+    if (locationIt == std::end(headers) || locationIt->second.empty())
+        return requestUrl;
+
+    const auto location = String::fromBytesThrow(locationIt->second);
+    if (const auto absoluteLocation = Url::fromText(location))
+        return absoluteLocation->href();
+
+    const auto origin = buildUrlOrigin(baseUrl);
+    if (!origin)
+        return requestUrl;
+
+    if (location.view().starts_with("//")) {
+        const auto maybeBaseUrl = Url::fromText(baseUrl);
+        if (!maybeBaseUrl)
+            return requestUrl;
+        return String::fromBytesThrow(
+            fmt::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", location)
+        );
+    }
+
+    if (location.view().starts_with("/"))
+        return String::fromBytesThrow(fmt::format("{}{}", *origin, location));
+
+    if (location.view().starts_with("?")) {
+        const auto maybeBaseUrl = Url::fromText(baseUrl);
+        if (!maybeBaseUrl)
+            return requestUrl;
+        return String::fromBytesThrow(
+            fmt::format("{}{}{}", *origin, maybeBaseUrl->pathname(), location)
+        );
+    }
+
+    return requestUrl;
+}
+
+struct [[nodiscard]] TrackedRequest {
+    String requestUrl;
     String method;
     std::optional<i64> statusCode;
     std::optional<String> statusMessage;
     std::optional<std::unordered_map<std::string, std::string>> headers;
     std::optional<String> timestamp;
+    std::optional<String> loaderId;
+    std::optional<String> frameId;
+    std::optional<String> resourceType;
     bool loaded{false};
+    bool isTrackedMainDocument{false};
 };
 
 class [[nodiscard]] PageTracker final {
 public:
     PageTracker(String sessionIdIn, String targetIdIn)
-        : sessionId(std::move(sessionIdIn)), targetId(std::move(targetIdIn))
+        : sessionId(std::move(sessionIdIn)), targetId(std::move(targetIdIn)),
+          pageId(generatePageId())
     {
+    }
+
+    void beginSeedNavigation(const String &seedUrl)
+    {
+        seedNavigationStarted = true;
+        seedNavigationUrl = seedUrl;
+    }
+
+    void setExpectedMainLoaderId(std::optional<String> loaderId)
+    {
+        if (loaderId)
+            mainLoaderId = std::move(*loaderId);
     }
 
     void handleEvent(const crawler::CdpEvent &event)
     {
-        if (event.method.view() == "Target.targetCrashed") {
+        const auto method = event.method.view();
+        if (method == "Target.targetCrashed") {
             if (event.params) {
                 const auto crashed = event.params->extra.As<dto::TargetTargetCrashedEvent>();
                 if (crashed.targetId && targetId.view() == *crashed.targetId)
@@ -498,28 +756,64 @@ public:
             }
             return;
         }
+        if (method == "Target.detachedFromTarget") {
+            if (event.params) {
+                const auto detachedSessionId = event.params->extra["sessionId"];
+                if (!detachedSessionId.IsMissing() &&
+                    detachedSessionId.As<std::string>() == sessionId.view()) {
+                    mainRequestFailure = "target session detached"_t;
+                }
+            }
+            return;
+        }
+        if (method == "Target.targetDestroyed") {
+            if (event.params) {
+                const auto destroyedTargetId = event.params->extra["targetId"];
+                if (!destroyedTargetId.IsMissing() &&
+                    destroyedTargetId.As<std::string>() == targetId.view()) {
+                    mainRequestFailure = "page target destroyed"_t;
+                }
+            }
+            return;
+        }
+        if (method == "Inspector.detached") {
+            if (event.sessionId && event.sessionId->view() != sessionId.view())
+                return;
+
+            if (event.params) {
+                const auto reason = event.params->extra["reason"];
+                if (!reason.IsMissing()) {
+                    mainRequestFailure = String::fromBytesThrow(
+                        fmt::format("inspector detached: {}", reason.As<std::string>())
+                    );
+                    return;
+                }
+            }
+            mainRequestFailure = "inspector detached"_t;
+            return;
+        }
 
         if (!event.sessionId || event.sessionId->view() != sessionId.view())
             return;
 
-        if (event.method.view() == "Page.loadEventFired") {
+        if (method == "Page.loadEventFired") {
             loaded = true;
             return;
         }
-        if (event.method.view() == "Network.requestWillBeSent") {
-            handleRequestWillBeSent(requireEventParams(event));
+        if (method == "Network.requestWillBeSent") {
+            handleRequestWillBeSent(parseEventParams<dto::NetworkRequestWillBeSentEvent>(event));
             return;
         }
-        if (event.method.view() == "Network.responseReceived") {
-            handleResponseReceived(requireEventParams(event));
+        if (method == "Network.responseReceived") {
+            handleResponseReceived(parseEventParams<dto::NetworkResponseReceivedEvent>(event));
             return;
         }
-        if (event.method.view() == "Network.loadingFinished") {
-            handleLoadingFinished(requireEventParams(event));
+        if (method == "Network.loadingFinished") {
+            handleLoadingFinished(parseEventParams<dto::NetworkLoadingFinishedEvent>(event));
             return;
         }
-        if (event.method.view() == "Network.loadingFailed") {
-            handleLoadingFailed(requireEventParams(event));
+        if (method == "Network.loadingFailed") {
+            handleLoadingFailed(parseEventParams<dto::NetworkLoadingFailedEvent>(event));
         }
     }
 
@@ -537,8 +831,11 @@ public:
     {
         cdp.waitUntil(
             [this]() {
+                const auto *request = activeMainRequest();
                 return mainRequestFailure.has_value() ||
-                       (mainResponse.has_value() && mainRequestLoaded);
+                       (completedMainRequest.has_value() && completedMainRequest->loaded &&
+                        hasResponse(*completedMainRequest)) ||
+                       (request != nullptr && hasResponse(*request) && request->loaded);
             },
             timeout, "timed out waiting for main document response"
         );
@@ -559,11 +856,12 @@ public:
 
     [[nodiscard]] std::optional<crawler::SeedPageProbe> currentSeedProbe() const
     {
-        if (mainResponse) {
+        if (const auto *request = resolvedMainRequest();
+            request != nullptr && request->statusCode) {
             return crawler::SeedPageProbe{
-                toNative(mainResponse->statusCode),
-                mainRequestLoaded && !mainRequestFailure ? std::optional<int64_t>{2}
-                                                         : std::optional<int64_t>{0},
+                toNative(*request->statusCode),
+                request->loaded && !mainRequestFailure ? std::optional<int64_t>{2}
+                                                       : std::optional<int64_t>{0},
             };
         }
 
@@ -573,17 +871,24 @@ public:
         return {};
     }
 
+    [[nodiscard]] const std::optional<String> &failureReason() const { return mainRequestFailure; }
+
     [[nodiscard]] std::string readBody(
         crawler::CdpClient &cdp, const String &sessionIdIn, RetainedBodyBudget &budget,
         const std::string &fallbackBody
     ) const
     {
-        if (!mainRequestId)
+        if (!fallbackBody.empty())
+            return retainBody(fallbackBody, budget);
+        const auto *bodyRequestId = mainResponseRequestId ? &*mainResponseRequestId : nullptr;
+        if (bodyRequestId == nullptr && mainRequestId)
+            bodyRequestId = &*mainRequestId;
+        if (bodyRequestId == nullptr)
             return retainBody(fallbackBody, budget);
 
         try {
             dto::NetworkGetResponseBodyParams params;
-            params.requestId = std::string(mainRequestId->view());
+            params.requestId = std::string(bodyRequestId->view());
             const auto body = cdp.send<dto::NetworkGetResponseBodyResult>(
                 "Network.getResponseBody", params, sessionIdIn
             );
@@ -601,21 +906,21 @@ public:
     {
         auto resources = redirectedResources;
 
-        for (const auto &[requestId, resource] : resourcesByRequestId) {
-            if (!resource.loaded || !resource.statusCode || !resource.statusMessage ||
-                !resource.headers || !resource.timestamp) {
+        for (const auto &[requestId, request] : activeRequests) {
+            if (request.isTrackedMainDocument || !hasResponse(request)) {
                 continue;
             }
 
-            if (!responseCanHaveBody(resource.method, *resource.statusCode)) {
+            if (!responseCanHaveBody(request.method, *request.statusCode)) {
                 resources.push_back({
-                    resource.resourceUrl,
-                    resource.method,
-                    *resource.statusCode,
-                    *resource.statusMessage,
-                    *resource.headers,
+                    request.requestUrl,
+                    request.method,
+                    request.resourceType,
+                    *request.statusCode,
+                    *request.statusMessage,
+                    *request.headers,
                     {},
-                    *resource.timestamp,
+                    *request.timestamp,
                 });
                 continue;
             }
@@ -627,19 +932,30 @@ public:
                     "Network.getResponseBody", params, sessionIdIn
                 );
                 resources.push_back({
-                    resource.resourceUrl,
-                    resource.method,
-                    *resource.statusCode,
-                    *resource.statusMessage,
-                    *resource.headers,
+                    request.requestUrl,
+                    request.method,
+                    request.resourceType,
+                    *request.statusCode,
+                    *request.statusMessage,
+                    *request.headers,
                     retainBody(
                         bodyValue.base64Encoded ? us::crypto::base64::Base64Decode(bodyValue.body)
                                                 : bodyValue.body,
                         budget
                     ),
-                    *resource.timestamp,
+                    *request.timestamp,
                 });
             } catch (const std::exception &) {
+                resources.push_back({
+                    request.requestUrl,
+                    request.method,
+                    request.resourceType,
+                    *request.statusCode,
+                    *request.statusMessage,
+                    *request.headers,
+                    {},
+                    *request.timestamp,
+                });
             }
         }
 
@@ -655,20 +971,14 @@ public:
         std::vector<crawler::CapturedResource> resources
     ) const
     {
-        crawler::CapturedExchange exchange;
+        crawler::CapturedExchange exchange{};
+        exchange.seedUrl = seedNavigationUrl ? *seedNavigationUrl : finalUrl;
+        exchange.pageId = pageId;
         exchange.finalUrl = std::move(finalUrl);
-        exchange.statusCode = 0_i64;
-        exchange.timestamp = currentTimestamp();
-        if (mainResponse) {
-            exchange.statusCode = mainResponse->statusCode;
-            exchange.statusMessage = mainResponse->statusMessage;
-            exchange.headers = mainResponse->headers;
-            exchange.timestamp = mainResponse->timestamp;
-        }
-        exchange.redirectChain = redirectChain.empty() ? std::vector<String>{exchange.finalUrl}
-                                                       : redirectChain;
-        exchange.body = std::move(body);
+        applyMainResponse(exchange, exchange.finalUrl);
+        exchange.redirectChain = buildRedirectChainForExchange(exchange.finalUrl);
         exchange.mainDocumentRedirects = mainDocumentRedirects;
+        exchange.body = std::move(body);
         exchange.resources = std::move(resources);
         exchange.title = std::move(title);
         return exchange;
@@ -678,126 +988,277 @@ public:
 
 private:
     struct [[nodiscard]] MainResponse {
+        String requestUrl;
         i64 statusCode;
         String statusMessage;
         std::unordered_map<std::string, std::string> headers;
         String timestamp;
     };
 
-    void handleRequestWillBeSent(const dto::CdpEventMessage::Params &params)
+    void applyMainResponse(crawler::CapturedExchange &exchange, const String &finalUrl) const
     {
-        const auto requestWillBeSent = params.extra.As<dto::NetworkRequestWillBeSentEvent>();
-        if (requestWillBeSent.request.url.starts_with("data:"))
-            return;
-
-        inflight.insert(String::fromBytesThrow(requestWillBeSent.requestId));
-        lastNetworkAt = us::utils::datetime::SteadyNow();
-
-        if (requestWillBeSent.frameId && mainFrameId &&
-            *requestWillBeSent.frameId == mainFrameId->view() && requestWillBeSent.type &&
-            *requestWillBeSent.type == "Document") {
-            if (!mainRequestId)
-                mainRequestId = String::fromBytesThrow(requestWillBeSent.requestId);
-            if (mainRequestId->view() != requestWillBeSent.requestId)
-                return;
-            recordMainDocumentRedirect(requestWillBeSent.redirectResponse);
-            const auto urlText = String::fromBytesThrow(requestWillBeSent.request.url);
-            if (redirectChain.empty() || redirectChain.back() != urlText)
-                redirectChain.push_back(urlText);
-            return;
-        }
-
-        const auto requestIdText = String::fromBytesThrow(requestWillBeSent.requestId);
-        recordResourceRedirect(requestIdText, requestWillBeSent.redirectResponse);
-        resourcesByRequestId.insert_or_assign(
-            requestIdText, CapturedResourceState{
-                               String::fromBytesThrow(requestWillBeSent.request.url),
-                               String::fromBytesThrow(requestWillBeSent.request.method),
-                               {},
-                               {},
-                               {},
-                               {},
-                               false,
-                           }
-        );
+        const auto response = selectMainResponse(finalUrl);
+        UINVARIANT(response, "missing main response while building exchange");
+        exchange.statusCode = response->statusCode;
+        exchange.statusMessage = response->statusMessage;
+        exchange.headers = response->headers;
+        exchange.timestamp = response->timestamp;
     }
 
-    void handleResponseReceived(const dto::CdpEventMessage::Params &params)
+    [[nodiscard]] std::vector<String> buildRedirectChainForExchange(const String &finalUrl) const
     {
-        const auto responseReceived = params.extra.As<dto::NetworkResponseReceivedEvent>();
-        const auto requestIdText = String::fromBytesThrow(responseReceived.requestId);
-        const auto headers = normalizeHeadersOrEmpty(responseReceived.response.headers);
-        auto resourceIt = resourcesByRequestId.find(requestIdText);
-        if (resourceIt != resourcesByRequestId.end()) {
-            if (responseReceived.response.url)
-                resourceIt->second.resourceUrl = String::fromBytesThrow(
-                    *responseReceived.response.url
-                );
-            resourceIt->second.statusCode = responseReceived.response.status
-                                                ? i64(*responseReceived.response.status)
-                                                : 0_i64;
-            resourceIt->second.statusMessage = String::fromBytesThrow(
-                responseReceived.response.statusText.value_or("")
-            );
-            resourceIt->second.headers = headers;
-            resourceIt->second.timestamp = currentTimestamp();
-        }
+        if (!redirectChain.empty())
+            return redirectChain;
+        return {finalUrl};
+    }
 
-        if (!mainRequestId || requestIdText != *mainRequestId)
-            return;
+    [[nodiscard]] static bool hasResponse(const TrackedRequest &request)
+    {
+        return request.statusCode && request.statusMessage && request.headers && request.timestamp;
+    }
 
-        mainResponse = MainResponse{
-            responseReceived.response.status ? i64(*responseReceived.response.status) : 0_i64,
-            String::fromBytesThrow(responseReceived.response.statusText.value_or("")),
-            headers,
-            currentTimestamp(),
+    [[nodiscard]] static MainResponse toMainResponse(const TrackedRequest &request)
+    {
+        UINVARIANT(hasResponse(request), "tracked request missing response");
+        return {
+            request.requestUrl, *request.statusCode, *request.statusMessage,
+            *request.headers,   *request.timestamp,
         };
     }
 
-    void handleLoadingFinished(const dto::CdpEventMessage::Params &params)
+    [[nodiscard]] TrackedRequest *activeMainRequest()
     {
-        const auto loadingFinished = params.extra.As<dto::NetworkLoadingFinishedEvent>();
+        if (!mainRequestId)
+            return nullptr;
+        if (const auto it = activeRequests.find(*mainRequestId); it != std::end(activeRequests))
+            return &it->second;
+        return nullptr;
+    }
+
+    [[nodiscard]] const TrackedRequest *activeMainRequest() const
+    {
+        if (!mainRequestId)
+            return nullptr;
+        if (const auto it = activeRequests.find(*mainRequestId); it != std::end(activeRequests))
+            return &it->second;
+        return nullptr;
+    }
+
+    [[nodiscard]] const TrackedRequest *resolvedMainRequest() const
+    {
+        if (completedMainRequest && hasResponse(*completedMainRequest))
+            return &*completedMainRequest;
+        return activeMainRequest();
+    }
+
+    [[nodiscard]] std::optional<MainResponse> selectMainResponse(const String &finalUrl) const
+    {
+        if (completedMainRequest && hasResponse(*completedMainRequest)) {
+            if (completedMainRequest->requestUrl == finalUrl)
+                return toMainResponse(*completedMainRequest);
+        }
+        if (const auto *request = activeMainRequest();
+            request != nullptr && hasResponse(*request)) {
+            if (request->requestUrl == finalUrl)
+                return toMainResponse(*request);
+        }
+        if (completedMainRequest && hasResponse(*completedMainRequest))
+            return toMainResponse(*completedMainRequest);
+        if (const auto *request = activeMainRequest(); request != nullptr && hasResponse(*request))
+            return toMainResponse(*request);
+        return {};
+    }
+
+    [[nodiscard]] bool matchesTrackedMainLoader(const std::optional<std::string> &loaderId) const
+    {
+        if (!mainLoaderId)
+            return true;
+        return loaderId && *loaderId == mainLoaderId->view();
+    }
+
+    [[nodiscard]] bool
+    isMainFrameDocumentRequest(const dto::NetworkRequestWillBeSentEvent &requestWillBeSent) const
+    {
+        return requestWillBeSent.frameId && mainFrameId &&
+               *requestWillBeSent.frameId == mainFrameId->view() && requestWillBeSent.type &&
+               *requestWillBeSent.type == "Document";
+    }
+
+    void handleRequestWillBeSent(dto::NetworkRequestWillBeSentEvent requestWillBeSent)
+    {
+        if (requestWillBeSent.request.url.starts_with("data:"))
+            return;
+
+        const auto requestIdText = String::fromBytesThrow(requestWillBeSent.requestId);
+        const auto rawRequestUrl = String::fromBytesThrow(requestWillBeSent.request.url);
+        const auto requestMethod = String::fromBytesThrow(requestWillBeSent.request.method);
+
+        inflight.insert(requestIdText);
+        lastNetworkAt = us::utils::datetime::SteadyNow();
+
+        auto isTrackedMainDocument = false;
+        if (isMainFrameDocumentRequest(requestWillBeSent)) {
+            if (!seedNavigationStarted)
+                return;
+            if (mainLoaderId && !matchesTrackedMainLoader(requestWillBeSent.loaderId))
+                return;
+            if (!mainLoaderId && !mainRequestId && seedNavigationUrl) {
+                const auto seedView = seedNavigationUrl->view();
+                const auto rawView = rawRequestUrl.view();
+                const auto matchesExact = rawRequestUrl == *seedNavigationUrl;
+                const auto matchesTrailingSlash = !seedView.ends_with('/') &&
+                                                  rawView.size() == seedView.size() + 1 &&
+                                                  rawView.starts_with(seedView) &&
+                                                  rawView.back() == '/';
+                if (!matchesExact && !matchesTrailingSlash)
+                    return;
+            }
+            if (!mainLoaderId && requestWillBeSent.loaderId)
+                mainLoaderId = stringOrNull(requestWillBeSent.loaderId);
+            isTrackedMainDocument = true;
+        }
+
+        std::optional<String> previousRequestUrl;
+        if (const auto it = activeRequests.find(requestIdText); it != std::end(activeRequests))
+            previousRequestUrl = it->second.requestUrl;
+        if (requestWillBeSent.redirectResponse)
+            finalizeRedirectRequest(requestIdText, requestWillBeSent.redirectResponse);
+
+        const auto canonicalRequestUrl = previousRequestUrl
+                                             ? resolveRedirectTargetUrl(
+                                                   *previousRequestUrl, rawRequestUrl,
+                                                   requestWillBeSent.redirectResponse
+                                               )
+                                             : rawRequestUrl;
+
+        TrackedRequest trackedRequest{
+            canonicalRequestUrl,
+            requestMethod,
+            {},
+            {},
+            {},
+            {},
+            stringOrNull(requestWillBeSent.loaderId),
+            stringOrNull(requestWillBeSent.frameId),
+            stringOrNull(requestWillBeSent.type),
+            false,
+            isTrackedMainDocument,
+        };
+        activeRequests.insert_or_assign(requestIdText, std::move(trackedRequest));
+
+        if (isTrackedMainDocument) {
+            mainRequestId = requestIdText;
+            if (redirectChain.empty() || redirectChain.back() != canonicalRequestUrl)
+                redirectChain.push_back(canonicalRequestUrl);
+            return;
+        }
+    }
+
+    void handleResponseReceived(dto::NetworkResponseReceivedEvent responseReceived)
+    {
+        const auto requestIdText = String::fromBytesThrow(responseReceived.requestId);
+        const auto requestIt = activeRequests.find(requestIdText);
+        if (requestIt == std::end(activeRequests))
+            return;
+
+        const auto headers = normalizeHeadersOrEmpty(responseReceived.response.headers);
+        const auto timestamp = currentTimestamp();
+        auto &request = requestIt->second;
+        request.statusCode = responseReceived.response.status
+                                 ? i64(*responseReceived.response.status)
+                                 : 0_i64;
+        request.statusMessage = String::fromBytesThrow(
+            responseReceived.response.statusText.value_or("")
+        );
+        request.headers = std::move(headers);
+        request.timestamp = timestamp;
+        if (responseReceived.type)
+            request.resourceType = stringOrNull(responseReceived.type);
+        if (responseReceived.loaderId)
+            request.loaderId = stringOrNull(responseReceived.loaderId);
+        if (request.isTrackedMainDocument && hasResponse(request)) {
+            completedMainRequest = request;
+            mainResponseRequestId = requestIdText;
+        }
+    }
+
+    void handleLoadingFinished(dto::NetworkLoadingFinishedEvent loadingFinished)
+    {
         const auto requestIdText = String::fromBytesThrow(loadingFinished.requestId);
         inflight.erase(requestIdText);
         lastNetworkAt = us::utils::datetime::SteadyNow();
-        if (auto it = resourcesByRequestId.find(requestIdText); it != resourcesByRequestId.end())
+        if (const auto it = activeRequests.find(requestIdText); it != std::end(activeRequests)) {
             it->second.loaded = true;
-        if (mainRequestId && requestIdText == *mainRequestId)
-            mainRequestLoaded = true;
+            if (it->second.isTrackedMainDocument && hasResponse(it->second)) {
+                completedMainRequest = it->second;
+                mainResponseRequestId = requestIdText;
+            }
+        }
     }
 
-    void handleLoadingFailed(const dto::CdpEventMessage::Params &params)
+    void handleLoadingFailed(dto::NetworkLoadingFailedEvent loadingFailed)
     {
-        const auto loadingFailed = params.extra.As<dto::NetworkLoadingFailedEvent>();
         const auto requestIdText = String::fromBytesThrow(loadingFailed.requestId);
         inflight.erase(requestIdText);
         lastNetworkAt = us::utils::datetime::SteadyNow();
-        if (auto it = resourcesByRequestId.find(requestIdText); it != resourcesByRequestId.end()) {
-            if (it->second.statusCode &&
-                responseCanHaveBody(it->second.method, *it->second.statusCode)) {
-                resourcesByRequestId.erase(it);
-            } else {
-                it->second.loaded = true;
-            }
-        }
-        if (mainRequestId && requestIdText == *mainRequestId) {
-            mainRequestFailure = String::fromBytesThrow(
-                loadingFailed.errorText.value_or("main document request failed")
-            );
-        }
+
+        const auto requestIt = activeRequests.find(requestIdText);
+        if (requestIt == std::end(activeRequests))
+            return;
+
+        auto &request = requestIt->second;
+        request.loaded = true;
+        if (!request.isTrackedMainDocument)
+            return;
+        if (hasResponse(request))
+            return;
+
+        mainRequestFailure = String::fromBytesThrow(
+            loadingFailed.errorText.value_or("main document request failed")
+        );
     }
 
-    void recordMainDocumentRedirect(const std::optional<dto::NetworkResponse> &redirectResponse)
+    void finalizeRedirectRequest(
+        const String &requestId, const std::optional<dto::NetworkResponse> &redirectResponse
+    )
     {
-        if (!redirectResponse || !redirectResponse->url || !redirectResponse->status)
+        if (!redirectResponse || !redirectResponse->status)
+            return;
+
+        const auto requestIt = activeRequests.find(requestId);
+        if (requestIt == std::end(activeRequests))
+            return;
+
+        auto request = std::move(requestIt->second);
+        activeRequests.erase(requestIt);
+
+        request.statusCode = i64(*redirectResponse->status);
+        request.statusMessage = String::fromBytesThrow(redirectResponse->statusText.value_or(""));
+        request.headers = normalizeHeadersOrEmpty(redirectResponse->headers);
+        request.timestamp = currentTimestamp();
+        request.loaded = true;
+
+        if (request.isTrackedMainDocument) {
+            recordMainDocumentRedirect(request);
+            if (mainRequestId && *mainRequestId == requestId)
+                mainRequestId.reset();
+            return;
+        }
+
+        recordResourceRedirect(request);
+    }
+
+    void recordMainDocumentRedirect(const TrackedRequest &request)
+    {
+        if (!hasResponse(request))
             return;
 
         crawler::CapturedMainDocumentRedirect redirect;
-        redirect.redirectUrl = String::fromBytesThrow(*redirectResponse->url);
-        redirect.statusCode = i64(*redirectResponse->status);
-        redirect.statusMessage = String::fromBytesThrow(redirectResponse->statusText.value_or(""));
-        redirect.headers = normalizeHeadersOrEmpty(redirectResponse->headers);
-        redirect.timestamp = currentTimestamp();
+        redirect.redirectUrl = request.requestUrl;
+        redirect.statusCode = *request.statusCode;
+        redirect.statusMessage = *request.statusMessage;
+        redirect.headers = *request.headers;
+        redirect.timestamp = *request.timestamp;
 
         if (!mainDocumentRedirects.empty()) {
             const auto &previous = mainDocumentRedirects.back();
@@ -809,39 +1270,38 @@ private:
         mainDocumentRedirects.push_back(std::move(redirect));
     }
 
-    void recordResourceRedirect(
-        const String &requestId, const std::optional<dto::NetworkResponse> &redirectResponse
-    )
+    void recordResourceRedirect(const TrackedRequest &request)
     {
-        const auto resourceIt = resourcesByRequestId.find(requestId);
-        if (resourceIt == resourcesByRequestId.end() || !redirectResponse ||
-            !redirectResponse->status) {
+        if (!hasResponse(request))
             return;
-        }
 
         redirectedResources.push_back({
-            redirectResponse->url ? String::fromBytesThrow(*redirectResponse->url)
-                                  : resourceIt->second.resourceUrl,
-            resourceIt->second.method,
-            i64(*redirectResponse->status),
-            String::fromBytesThrow(redirectResponse->statusText.value_or("")),
-            normalizeHeadersOrEmpty(redirectResponse->headers),
+            request.requestUrl,
+            request.method,
+            request.resourceType,
+            *request.statusCode,
+            *request.statusMessage,
+            *request.headers,
             {},
-            currentTimestamp(),
+            *request.timestamp,
         });
     }
 
     String sessionId;
     String targetId;
-    std::unordered_map<String, CapturedResourceState> resourcesByRequestId;
+    String pageId;
+    std::unordered_map<String, TrackedRequest> activeRequests;
     std::vector<crawler::CapturedResource> redirectedResources;
     std::vector<String> redirectChain;
     std::vector<crawler::CapturedMainDocumentRedirect> mainDocumentRedirects;
     std::unordered_set<String> inflight;
     std::optional<String> mainRequestId;
-    std::optional<MainResponse> mainResponse;
-    bool mainRequestLoaded{false};
+    std::optional<String> mainResponseRequestId;
+    std::optional<String> mainLoaderId;
+    std::optional<String> seedNavigationUrl;
+    std::optional<TrackedRequest> completedMainRequest;
     bool loaded{false};
+    bool seedNavigationStarted{false};
     std::optional<String> mainRequestFailure;
     chrono::steady_clock::time_point lastNetworkAt{us::utils::datetime::SteadyNow()};
 };
@@ -865,15 +1325,12 @@ struct [[nodiscard]] DomState {
         "Runtime.evaluate", params, sessionId
     );
     const auto &value = result.result.value;
-    std::optional<String> title;
-    if (value.title)
-        title = String::fromBytesThrow(*value.title);
-    DomState out{
+    return {
         String::fromBytesThrow(value.finalUrl),
-        std::move(title),
+        value.title ? std::make_optional(String::fromBytesThrow(*value.title))
+                    : std::optional<String>{},
         value.html,
     };
-    return out;
 }
 
 void runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, chrono::milliseconds timeout)
@@ -899,147 +1356,329 @@ struct [[nodiscard]] CaptureResult {
     crawler::CapturedExchange exchange;
 };
 
-[[nodiscard]] CaptureResult captureViaProxy(
-    us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
-    const crawler::RunRequest &run, const std::string &browserBin, const String &geometry,
-    const String &proxyServer
-)
-{
-    const auto deadline = us::utils::datetime::SteadyNow() + toMilliseconds(run.jobTimeoutMs);
-    auto browser = BrowserInstance(httpClient, processStarter, browserBin, geometry, proxyServer);
-    browser.launch();
+class [[nodiscard]] CaptureSession final {
+public:
+    CaptureSession(
+        us::engine::subprocess::ProcessStarter &processStarter, crawler::RunRequest runIn
+    )
+        : run(std::move(runIn)),
+          deadline(us::utils::datetime::SteadyNow() + toMilliseconds(run.jobTimeoutMs)),
+          browser(processStarter)
+    {
+    }
 
-    try {
-        auto cdp = browser.connectCdp();
+    [[nodiscard]] CaptureResult capture()
+    {
+        try {
+            launch();
+            try {
+                return captureAttachedTarget();
+            } catch (const std::exception &e) {
+                auto failureDetail = browser.buildRuntimeFailureDetail(e.what());
+                if (tracker && tracker->failureReason()) {
+                    failureDetail = fmt::format(
+                        "{}, tracker_failure={}", failureDetail, tracker->failureReason()->view()
+                    );
+                }
+                auto seedProbe = currentSeedProbe();
+                closeCdpForFailure();
+                throw CaptureFailure(std::move(failureDetail), std::move(seedProbe));
+            }
+        } catch (const CaptureFailure &) {
+            closeCdpForFailure();
+            browser.close();
+            throw;
+        } catch (const std::exception &) {
+            closeCdpForFailure();
+            static_cast<void>(browser.preserveFailureArtifacts());
+            browser.close();
+            throw;
+        }
+    }
 
-        const auto browserContext = cdp.send<dto::TargetCreateBrowserContextResult>(
+private:
+    void launch()
+    {
+        browser.launch();
+        browser.markPhase("connect_cdp");
+        cdp = browser.connectCdp();
+
+        browser.markPhase("create_browser_context");
+        const auto browserContext = cdpClient().send<dto::TargetCreateBrowserContextResult>(
             "Target.createBrowserContext"
         );
-        const auto browserContextId = String::fromBytesThrow(browserContext.browserContextId);
+        browserContextId = String::fromBytesThrow(browserContext.browserContextId);
 
+        browser.markPhase("create_target");
         dto::TargetCreateTargetParams targetParams;
         targetParams.url = "about:blank";
-        targetParams.browserContextId = std::string(browserContextId.view());
-        const auto target = cdp.send<dto::TargetCreateTargetResult>(
+        targetParams.browserContextId = std::string(browserContextId->view());
+        const auto target = cdpClient().send<dto::TargetCreateTargetResult>(
             "Target.createTarget", targetParams
         );
-        const auto targetId = String::fromBytesThrow(target.targetId);
+        targetId = String::fromBytesThrow(target.targetId);
 
+        browser.markPhase("attach_target");
         dto::TargetAttachToTargetParams attachParams;
-        attachParams.targetId = std::string(targetId.view());
+        attachParams.targetId = std::string(targetId->view());
         attachParams.flatten = true;
-        const auto attached = cdp.send<dto::TargetAttachToTargetResult>(
+        const auto attached = cdpClient().send<dto::TargetAttachToTargetResult>(
             "Target.attachToTarget", attachParams
         );
-        const auto sessionId = String::fromBytesThrow(attached.sessionId);
-
-        PageTracker tracker(sessionId, targetId);
-        const auto listenerId = cdp.addListener([&tracker](const crawler::CdpEvent &event) {
-            tracker.handleEvent(event);
+        sessionId = String::fromBytesThrow(attached.sessionId);
+        tracker = std::make_unique<PageTracker>(*sessionId, *targetId);
+        listenerId = cdpClient().addListener([this](crawler::CdpEvent event) {
+            if (tracker)
+                tracker->handleEvent(event);
         });
+    }
+
+    [[nodiscard]] CaptureResult captureAttachedTarget()
+    {
+        browser.markPhase("enable_page");
+        static_cast<void>(
+            cdpClient().send<dto::CdpEmptyObject>("Page.enable", attachedSessionId())
+        );
+        browser.markPhase("enable_runtime");
+        static_cast<void>(
+            cdpClient().send<dto::CdpEmptyObject>("Runtime.enable", attachedSessionId())
+        );
+        browser.markPhase("enable_network");
+        static_cast<void>(
+            cdpClient().send<dto::CdpEmptyObject>("Network.enable", attachedSessionId())
+        );
+
+        browser.markPhase("enable_lifecycle_events");
+        dto::PageSetLifecycleEventsEnabledParams lifecycleParams;
+        lifecycleParams.enabled = true;
+        static_cast<void>(cdpClient().send<dto::CdpEmptyObject>(
+            "Page.setLifecycleEventsEnabled", lifecycleParams, attachedSessionId()
+        ));
+
+        browser.markPhase("disable_cache");
+        dto::NetworkSetCacheDisabledParams cacheParams;
+        cacheParams.cacheDisabled = true;
+        static_cast<void>(cdpClient().send<dto::CdpEmptyObject>(
+            "Network.setCacheDisabled", cacheParams, attachedSessionId()
+        ));
+
+        browser.markPhase("bypass_service_worker");
+        dto::NetworkSetBypassServiceWorkerParams serviceWorkerParams;
+        serviceWorkerParams.bypass = true;
+        static_cast<void>(cdpClient().send<dto::CdpEmptyObject>(
+            "Network.setBypassServiceWorker", serviceWorkerParams, attachedSessionId()
+        ));
+
+        browser.markPhase("set_extra_headers");
+        dto::NetworkSetExtraHTTPHeadersParams headerParams;
+        headerParams.headers.extra.emplace(
+            "Accept-Language", std::string(crawler::kBrowserAcceptLanguage)
+        );
+        static_cast<void>(cdpClient().send<dto::CdpEmptyObject>(
+            "Network.setExtraHTTPHeaders", headerParams, attachedSessionId()
+        ));
+
+        browser.markPhase("get_frame_tree");
+        const auto frameTree = cdpClient().send<dto::PageGetFrameTreeResult>(
+            "Page.getFrameTree", attachedSessionId()
+        );
+        pageTracker().mainFrameId = String::fromBytesThrow(frameTree.frameTree.frame.id);
+
+        browser.markPhase("navigate");
+        dto::PageNavigateParams navigateParams;
+        navigateParams.url = std::string(run.seedUrl.view());
+        pageTracker().beginSeedNavigation(run.seedUrl);
+        const auto navigateResult = cdpClient().send<dto::PageNavigateResult>(
+            "Page.navigate", navigateParams, attachedSessionId()
+        );
+        if (navigateResult.errorText)
+            throw std::runtime_error(*navigateResult.errorText);
+        pageTracker().setExpectedMainLoaderId(stringOrNull(navigateResult.loaderId));
+
+        browser.markPhase("wait_for_load");
+        pageTracker().waitForLoad(
+            cdpClient(), remainingBudgetOrThrow(deadline, "timed out waiting for page load")
+        );
+        if (crawler::kPostLoadDelayMs > 0_i64) {
+            browser.markPhase("post_load_delay");
+            sleepWithinBudget(
+                deadline, toMilliseconds(crawler::kPostLoadDelayMs),
+                "timed out waiting for post-load delay"
+            );
+            browser.markPhase("post_load_delay_done");
+        }
+        if (crawler::kBehaviorTimeoutMs > 0_i64) {
+            browser.markPhase("run_site_behavior");
+            browser.markPhase("run_site_behavior_runtime_evaluate");
+            runSiteBehavior(
+                cdpClient(), attachedSessionId(),
+                std::min(
+                    toMilliseconds(crawler::kBehaviorTimeoutMs),
+                    remainingBudgetOrThrow(deadline, "timed out running site behavior")
+                )
+            );
+            browser.markPhase("run_site_behavior_done");
+        }
+        if (crawler::kNetIdleWaitMs > 0_i64) {
+            browser.markPhase("wait_for_idle");
+            browser.markPhase("wait_for_idle_wait");
+            pageTracker().waitForIdle(
+                cdpClient(), toMilliseconds(crawler::kNetIdleWaitMs),
+                remainingBudgetOrThrow(deadline, "timed out waiting for network idle")
+            );
+            browser.markPhase("wait_for_idle_done");
+        }
+        if (crawler::kPageExtraDelayMs > 0_i64) {
+            browser.markPhase("page_extra_delay");
+            sleepWithinBudget(
+                deadline, toMilliseconds(crawler::kPageExtraDelayMs),
+                "timed out waiting for extra page delay"
+            );
+            browser.markPhase("page_extra_delay_done");
+        }
+        browser.markPhase("wait_for_main_document");
+        browser.markPhase("wait_for_main_document_wait");
+        pageTracker().waitForMainDocument(
+            cdpClient(),
+            remainingBudgetOrThrow(deadline, "timed out waiting for main document response")
+        );
+        browser.markPhase("wait_for_main_document_done");
+
+        browser.markPhase("read_dom_state");
+        browser.markPhase("read_dom_state_runtime_evaluate");
+        auto domState = readDomState(cdpClient(), attachedSessionId());
+        browser.markPhase("read_dom_state_done");
+        RetainedBodyBudget budget{kMaxBodyBytes, 0_i64};
+        browser.markPhase("read_main_body");
+        auto body = pageTracker().readBody(cdpClient(), attachedSessionId(), budget, domState.html);
+        browser.markPhase("read_resources");
+        auto resources = pageTracker().readResources(cdpClient(), attachedSessionId(), budget);
+
+        removeTrackerListener();
+        detachTarget();
+        disposeBrowserContext();
+
+        browser.markPhase("build_exchange_start");
+        LOG_INFO() << fmt::format(
+            "captureViaProxy building exchange for {} (body_bytes={}, resources={})", run.seedUrl,
+            body.size(), resources.size()
+        );
+        auto exchange = pageTracker().buildExchange(
+            std::move(domState.finalUrl), std::move(domState.title), std::move(body),
+            std::move(resources)
+        );
+        browser.markPhase("build_exchange_done");
+        LOG_INFO() << fmt::format(
+            "captureViaProxy built exchange for {} (status={}, resources={}, body_bytes={})",
+            run.seedUrl, toNative(exchange.statusCode), exchange.resources.size(),
+            exchange.body.size()
+        );
+        tracker.reset();
+        cdp.reset();
+
+        browser.markPhase("close_browser_success");
+        browser.markPhase("before_browser_close");
+        LOG_INFO() << fmt::format("captureViaProxy closing browser for {}", run.seedUrl);
+        browser.close();
+        LOG_INFO() << fmt::format("captureViaProxy returning capture for {}", run.seedUrl);
+        return {std::move(exchange)};
+    }
+
+    void detachTarget()
+    {
+        if (!sessionId)
+            return;
+
+        browser.markPhase("detach_target");
+        dto::TargetDetachFromTargetParams detachParams;
+        detachParams.sessionId = std::string(sessionId->view());
+        static_cast<void>(
+            cdpClient().send<dto::CdpEmptyObject>("Target.detachFromTarget", detachParams)
+        );
+        sessionId.reset();
+    }
+
+    void disposeBrowserContext()
+    {
+        if (!browserContextId)
+            return;
+
+        browser.markPhase("dispose_browser_context");
+        dto::TargetDisposeBrowserContextParams disposeParams;
+        disposeParams.browserContextId = std::string(browserContextId->view());
+        static_cast<void>(
+            cdpClient().send<dto::CdpEmptyObject>("Target.disposeBrowserContext", disposeParams)
+        );
+        browserContextId.reset();
+        targetId.reset();
+    }
+
+    void removeTrackerListener()
+    {
+        if (!cdp || !listenerId)
+            return;
+        cdp->removeListener(*listenerId);
+        listenerId.reset();
+    }
+
+    void closeCdpForFailure()
+    {
+        removeTrackerListener();
+        if (!cdp)
+            return;
 
         try {
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>("Page.enable", sessionId));
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>("Runtime.enable", sessionId));
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>("Network.enable", sessionId));
-
-            dto::PageSetLifecycleEventsEnabledParams lifecycleParams;
-            lifecycleParams.enabled = true;
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>(
-                "Page.setLifecycleEventsEnabled", lifecycleParams, sessionId
-            ));
-
-            dto::NetworkSetCacheDisabledParams cacheParams;
-            cacheParams.cacheDisabled = true;
-            static_cast<void>(
-                cdp.send<dto::CdpEmptyObject>("Network.setCacheDisabled", cacheParams, sessionId)
-            );
-
-            dto::NetworkSetBypassServiceWorkerParams serviceWorkerParams;
-            serviceWorkerParams.bypass = true;
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>(
-                "Network.setBypassServiceWorker", serviceWorkerParams, sessionId
-            ));
-
-            dto::NetworkSetExtraHTTPHeadersParams headerParams;
-            headerParams.headers.extra.emplace("Accept-Language", std::string(kLang));
-            static_cast<void>(cdp.send<dto::CdpEmptyObject>(
-                "Network.setExtraHTTPHeaders", headerParams, sessionId
-            ));
-
-            const auto frameTree = cdp.send<dto::PageGetFrameTreeResult>(
-                "Page.getFrameTree", sessionId
-            );
-            tracker.mainFrameId = String::fromBytesThrow(frameTree.frameTree.frame.id);
-
-            dto::PageNavigateParams navigateParams;
-            navigateParams.url = std::string(run.seedUrl.view());
-            static_cast<void>(cdp.send<json::Value>("Page.navigate", navigateParams, sessionId));
-
-            tracker.waitForLoad(
-                cdp, remainingBudgetOrThrow(deadline, "timed out waiting for page load")
-            );
-            if (kPostLoadDelayMs > 0_i64)
-                sleepWithinBudget(
-                    deadline, toMilliseconds(kPostLoadDelayMs),
-                    "timed out waiting for post-load delay"
-                );
-            if (kBehaviorTimeoutMs > 0_i64)
-                runSiteBehavior(
-                    cdp, sessionId,
-                    std::min(
-                        toMilliseconds(kBehaviorTimeoutMs),
-                        remainingBudgetOrThrow(deadline, "timed out running site behavior")
-                    )
-                );
-            if (kNetIdleWaitMs > 0_i64)
-                tracker.waitForIdle(
-                    cdp, toMilliseconds(kNetIdleWaitMs),
-                    remainingBudgetOrThrow(deadline, "timed out waiting for network idle")
-                );
-            if (kPageExtraDelayMs > 0_i64)
-                sleepWithinBudget(
-                    deadline, toMilliseconds(kPageExtraDelayMs),
-                    "timed out waiting for extra page delay"
-                );
-            tracker.waitForMainDocument(
-                cdp,
-                remainingBudgetOrThrow(deadline, "timed out waiting for main document response")
-            );
-
-            const auto domState = readDomState(cdp, sessionId);
-            RetainedBodyBudget budget{kMaxBodyBytes, 0_i64};
-            const auto fallbackBody = domState.html;
-            const auto body = tracker.readBody(cdp, sessionId, budget, fallbackBody);
-            auto resources = tracker.readResources(cdp, sessionId, budget);
-
-            dto::TargetDetachFromTargetParams detachParams;
-            detachParams.sessionId = std::string(sessionId.view());
-            static_cast<void>(
-                cdp.send<dto::CdpEmptyObject>("Target.detachFromTarget", detachParams)
-            );
-            dto::TargetDisposeBrowserContextParams disposeParams;
-            disposeParams.browserContextId = std::string(browserContextId.view());
-            static_cast<void>(
-                cdp.send<dto::CdpEmptyObject>("Target.disposeBrowserContext", disposeParams)
-            );
-            cdp.removeListener(listenerId);
-
-            auto exchange = tracker.buildExchange(
-                domState.finalUrl, domState.title, body, std::move(resources)
-            );
-            auto logs = browser.drainLogs();
-            browser.close();
-            static_cast<void>(logs);
-            return {std::move(exchange)};
+            cdp->close();
         } catch (const std::exception &e) {
-            cdp.removeListener(listenerId);
-            throw CaptureFailure(std::string(e.what()), tracker.currentSeedProbe());
+            LOG_WARNING() << "Suppressing CDP close failure during capture cleanup: " << e.what();
         }
-    } catch (const std::exception &) {
-        browser.close();
-        throw;
+        cdp.reset();
     }
+
+    [[nodiscard]] std::optional<crawler::SeedPageProbe> currentSeedProbe() const
+    {
+        if (!tracker)
+            return {};
+        return tracker->currentSeedProbe();
+    }
+
+    [[nodiscard]] crawler::CdpClient &cdpClient() const
+    {
+        UINVARIANT(cdp, "cdp client is not connected");
+        return *cdp;
+    }
+
+    [[nodiscard]] PageTracker &pageTracker() const
+    {
+        UINVARIANT(tracker, "page tracker is not attached");
+        return *tracker;
+    }
+
+    [[nodiscard]] const String &attachedSessionId() const
+    {
+        UINVARIANT(sessionId, "cdp session is not attached");
+        return *sessionId;
+    }
+
+    crawler::RunRequest run;
+    chrono::steady_clock::time_point deadline;
+    BrowserInstance browser;
+    std::unique_ptr<crawler::CdpClient> cdp;
+    std::unique_ptr<PageTracker> tracker;
+    std::optional<String> browserContextId;
+    std::optional<String> targetId;
+    std::optional<String> sessionId;
+    std::optional<crawler::CdpClient::ListenerId> listenerId;
+};
+
+[[nodiscard]] CaptureResult captureViaProxy(
+    us::engine::subprocess::ProcessStarter &processStarter, const crawler::RunRequest &run
+)
+{
+    auto session = CaptureSession(
+        processStarter, crawler::RunRequest{run.seedUrl, run.jobTimeoutMs}
+    );
+    return session.capture();
 }
 
 struct [[nodiscard]] RunExecutionResult {
@@ -1054,21 +1693,28 @@ struct [[nodiscard]] RunExecutionResult {
 
 [[nodiscard]] RunExecutionResult executeRun(
     us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
-    const crawler::RunRequest &run, const std::string &browserBin, const String &geometry,
-    const String &proxyServer
+    const crawler::RunRequest &run
 )
 {
+    static_cast<void>(httpClient);
     try {
-        auto capture = captureViaProxy(
-            httpClient, processStarter, run, browserBin, geometry, proxyServer
+        LOG_INFO() << fmt::format("crawler executeRun starting for {}", run.seedUrl);
+        auto capture = captureViaProxy(processStarter, run);
+        LOG_INFO() << fmt::format(
+            "crawler captureViaProxy finished for {} with status={}", run.seedUrl,
+            toNative(capture.exchange.statusCode)
         );
         auto pages = crawler::buildPagesJsonl(capture.exchange);
-        auto stdoutLog = crawler::buildSuccessStdoutLog(
-            run, capture.exchange, browserBin, std::optional<String>{geometry}, 0_i64, false
-        );
+        LOG_INFO() << fmt::format("crawler buildPagesJsonl finished for {}", run.seedUrl);
+        auto stdoutLog = crawler::buildSuccessStdoutLog(run, capture.exchange, 0_i64, false);
         std::string stderrLog;
         auto warc = crawler::buildWarc(capture.exchange);
+        LOG_INFO() << fmt::format("crawler buildWarc finished for {}", run.seedUrl);
         auto wacz = crawler::buildWacz(run, pages, warc, stdoutLog, stderrLog);
+        LOG_INFO() << fmt::format(
+            "crawler buildWacz finished for {} (wacz_bytes={}, pages_bytes={})", run.seedUrl,
+            wacz.size(), pages.size()
+        );
 
         const auto retainedBytes = i64(wacz.size()) + i64(pages.size()) + i64(stdoutLog.size()) +
                                    i64(stderrLog.size());
@@ -1100,6 +1746,11 @@ struct [[nodiscard]] RunExecutionResult {
             );
         }
 
+        LOG_INFO() << fmt::format(
+            "crawler executeRun finished for {} (exit_code={}, wacz_exists=true)", run.seedUrl,
+            toNative(exitCode)
+        );
+
         return {
             exitCode,
             crawler::SeedPageProbe{capture.exchange.statusCode, loadState},
@@ -1127,29 +1778,14 @@ CrawlerRunner::CrawlerRunner(
     us::clients::http::Client &httpClientIn,
     us::engine::subprocess::ProcessStarter &processStarterIn, i64 runTimeoutSecIn
 )
-    : CrawlerRunner(
-          httpClientIn, processStarterIn, runTimeoutSecIn, "http://127.0.0.1:3128"_t, "chromium",
-          "1600x900"_t
-      )
-{
-}
-
-CrawlerRunner::CrawlerRunner(
-    us::clients::http::Client &httpClientIn,
-    us::engine::subprocess::ProcessStarter &processStarterIn, i64 runTimeoutSecIn,
-    String proxyServerIn, std::string browserBinIn, String geometryIn
-)
-    : httpClient(httpClientIn), processStarter(processStarterIn), runTimeoutSec(runTimeoutSecIn),
-      proxyServer(std::move(proxyServerIn)), browserBin(std::move(browserBinIn)),
-      geometry(std::move(geometryIn))
+    : httpClient(httpClientIn), processStarter(processStarterIn), runTimeoutSec(runTimeoutSecIn)
 {
 }
 
 CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
 {
     auto result = executeRun(
-        httpClient, processStarter, crawler::RunRequest{seedUrl, runTimeoutSec * 1000_i64},
-        browserBin, geometry, proxyServer
+        httpClient, processStarter, crawler::RunRequest{seedUrl, runTimeoutSec * 1000_i64}
     );
 
     CrawlerRunArtifacts out;

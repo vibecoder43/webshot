@@ -24,6 +24,8 @@ UTEST(Pagination, CursorRoundTrip)
     const auto token = encodeCursor(cursor);
     const auto decoded = decodeCursor(token);
     ASSERT_TRUE(decoded);
+    if (!decoded)
+        return;
     EXPECT_EQ(timePointToMicros(decoded->createdAt), timePointToMicros(cursor.createdAt));
     EXPECT_EQ(decoded->id, cursor.id);
 }

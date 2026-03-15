@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <set>
@@ -9,7 +10,7 @@
 
 namespace arkhiv {
 
-enum class ZipArchiveErrorCode {
+enum class ZipArchiveErrorCode : uint8_t {
     kNone,
     kWriterInitFailed,
     kReaderInitFailed,
@@ -36,7 +37,7 @@ struct [[nodiscard]] ZipArchiveError {
 class [[nodiscard]] ZipArchiveBuilder {
 public:
     [[nodiscard]] bool
-    addStoredFile(std::string_view path, std::string_view body, ZipArchiveError &errorOut);
+    addStoredFile(std::string_view path, ZipArchiveError &errorOut, std::string_view body);
 
     [[nodiscard]] std::optional<std::string> finish(ZipArchiveError &errorOut) const;
 

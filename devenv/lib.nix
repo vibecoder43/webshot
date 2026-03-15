@@ -43,7 +43,7 @@
   llvm21 = pkgsWithOverlay.llvmPackages_21;
   system = pkgsWithOverlay.stdenv.system;
   crawlerRuntimeBins = with pkgsWithOverlay; [
-    chromium
+    ungoogled-chromium
     bubblewrap
     socat
   ];
@@ -151,6 +151,7 @@
       san
       // {
         clangTidy = "clang-tidy";
+        disablePrecompileHeaders = true;
       };
 
     cov =
@@ -176,7 +177,10 @@
       "-DBUILD_TESTING=${cmakeBool variant.buildTesting}"
       "-DWEBSHOT_ENABLE_COVERAGE=${cmakeBool variant.enableCoverage}"
     ]
-    ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}";
+    ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}"
+    ++ lib.optional
+    (variant ? disablePrecompileHeaders && variant.disablePrecompileHeaders)
+    "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON";
 
   mkTaskCmakeFlags = buildDir: variant:
     [

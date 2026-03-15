@@ -5,6 +5,7 @@
 #include "text.hpp"
 
 #include <chrono>
+#include <fstream>
 #include <functional>
 #include <optional>
 #include <string>
@@ -12,7 +13,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <userver/clients/http/client.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/websocket/connection.hpp>
@@ -30,10 +30,11 @@ struct [[nodiscard]] CdpEvent {
 class [[nodiscard]] CdpClient final {
 public:
     using ListenerId = int64_t;
+    using EventListener = std::function<void(CdpEvent)>;
 
-    CdpClient(us::clients::http::Client &httpClient, std::string socketPath, String websocketPath);
+    CdpClient(std::string socketPath, String websocketPath, std::string tracePath);
 
-    ~CdpClient();
+    ~CdpClient() noexcept;
 
     CdpClient(const CdpClient &) = delete;
     CdpClient(CdpClient &&) = delete;
@@ -74,7 +75,7 @@ public:
         return value.As<T>();
     }
 
-    ListenerId addListener(std::function<void(const CdpEvent &)> listener);
+    ListenerId addListener(EventListener listener);
     void removeListener(ListenerId id);
 
     bool tryPumpOnce();
@@ -86,20 +87,36 @@ public:
     void close();
 
 private:
+    struct [[nodiscard]] PendingRequestTrace {
+        std::string method;
+        std::optional<String> sessionId;
+    };
+
     [[nodiscard]] us::formats::json::Value sendRaw(
         std::string_view method, const us::formats::json::Value &params,
         const std::optional<String> &sessionId
     );
     void pumpOne();
+    void dispatchEvent(CdpEvent event);
     void handleMessage(const std::string &payload);
-    [[nodiscard]] std::string makeEndpointUrl() const;
+    void closeNoThrow() noexcept;
+    [[nodiscard]] std::string makeEndpointPath() const;
+    void writeTraceLine(const us::formats::json::Value &value);
+    void traceCommand(int64_t id, std::string_view method, const std::optional<String> &sessionId);
+    void traceResponse(
+        int64_t id, const PendingRequestTrace *request, const std::optional<String> &error
+    );
+    void traceEvent(std::string_view method, const std::optional<String> &sessionId);
+    void traceClose(std::string_view direction, int closeCode);
+    void traceTransportError(std::string_view operation, std::string_view error);
 
-    us::clients::http::Client &httpClient;
     std::string socketPath;
     String websocketPath;
     std::shared_ptr<us::websocket::WebSocketConnection> connection;
-    std::unordered_map<ListenerId, std::function<void(const CdpEvent &)>> listeners;
+    std::unordered_map<ListenerId, EventListener> listeners;
     std::unordered_map<int64_t, us::formats::json::Value> pendingResults;
+    std::unordered_map<int64_t, PendingRequestTrace> pendingRequests;
+    std::ofstream traceStream;
     ListenerId nextListenerId{1};
     int64_t nextRequestId{1};
     bool closed{false};

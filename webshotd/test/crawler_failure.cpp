@@ -50,6 +50,8 @@ UTEST(CrawlerFailure, SummarizeProcessOutputsReadsBoundedStdoutAndStderr)
     const auto summary = v1::crawler::summarizeProcessOutputs(stdoutPath, stderrPath);
 
     ASSERT_TRUE(summary.has_value());
+    if (!summary)
+        return;
     EXPECT_EQ(summary->view(), "stdout=\"hello from stdout\", stderr=\"failure on stderr\"");
 }
 

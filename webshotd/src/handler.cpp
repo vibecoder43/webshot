@@ -118,7 +118,7 @@ std::string Handler::HandleRequestThrow(
         try {
             link = Link::fromTextStripPort(*str, config.queryPartLengthMax());
         } catch (const InvalidLinkException &e) {
-            return httpu::respondError(response, kBadRequest, *String::fromBytes(e.what()));
+            return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));
         }
         const std::string tokenArg = request.GetArg("page_token");
         const auto token = String::fromBytes(tokenArg);

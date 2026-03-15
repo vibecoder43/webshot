@@ -114,9 +114,9 @@ template <typename... Ts> String format(fmt::format_string<Ts...> fmt, Ts &&...a
 }
 
 namespace literals {
-[[nodiscard]] constexpr String operator""_t(const char *bytes, size_t n) noexcept
+[[nodiscard]] constexpr String operator""_t(const char *bytes, size_t n)
 {
-    return *String::fromBytes(std::string_view{bytes, n});
+    return String::fromBytesThrow(std::string_view{bytes, n});
 }
 } // namespace literals
 
