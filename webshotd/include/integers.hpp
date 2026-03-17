@@ -63,7 +63,15 @@ namespace integers {
 
 template <typename To, typename From> [[nodiscard]] constexpr To numericCast(From value)
 {
-    return userver::utils::numeric_cast<To>(value);
+    if constexpr (std::is_enum_v<To>) {
+        using ToUnderlying = std::underlying_type_t<To>;
+        return static_cast<To>(numericCast<ToUnderlying>(value));
+    } else if constexpr (std::is_enum_v<From>) {
+        using FromUnderlying = std::underlying_type_t<From>;
+        return numericCast<To>(static_cast<FromUnderlying>(value));
+    } else {
+        return userver::utils::numeric_cast<To>(value);
+    }
 }
 
 template <typename T, typename PromotionPolicy, typename ExceptionPolicy>
@@ -77,7 +85,12 @@ template <typename To, typename T, typename PromotionPolicy, typename ExceptionP
 [[nodiscard]] constexpr std::enable_if_t<!std::is_same_v<To, T>, To>
 numericCast(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value)
 {
-    return userver::utils::numeric_cast<To>(numericCast(value));
+    if constexpr (std::is_enum_v<To>) {
+        using ToUnderlying = std::underlying_type_t<To>;
+        return static_cast<To>(numericCast<ToUnderlying>(numericCast(value)));
+    } else {
+        return userver::utils::numeric_cast<To>(numericCast(value));
+    }
 }
 
 template <typename T, typename PromotionPolicy, typename ExceptionPolicy>

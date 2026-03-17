@@ -75,7 +75,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 [[nodiscard]] inline bool isNonRetryableCrawlerExitCode(int code) noexcept
 {
     using enum CrawlerExitCode;
-    switch (static_cast<CrawlerExitCode>(code)) {
+    switch (numericCast<CrawlerExitCode>(code)) {
     case kOutOfSpace:
     case kBrowserCrashed:
     case kSignalInterrupted:
@@ -97,7 +97,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 {
     using enum CrawlerExitCode;
     using text::literals::operator""_t;
-    switch (static_cast<CrawlerExitCode>(code)) {
+    switch (numericCast<CrawlerExitCode>(code)) {
     case kSizeLimit:
         return "crawler hit Browsertrix sizeLimit (max WARC size)"_t;
     case kTimeLimit:

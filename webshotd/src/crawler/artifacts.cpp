@@ -179,9 +179,7 @@ serializeRecordPair(const SerializableResponse &response)
         response.statusMessage.empty()
             ? String::fromBytesThrow(
                   std::string(
-                      http::StatusCodeString(
-                          static_cast<http::StatusCode>(numericCast<int>(response.statusCode))
-                      )
+                      http::StatusCodeString(numericCast<http::StatusCode>(response.statusCode))
                   )
               )
             : response.statusMessage;
