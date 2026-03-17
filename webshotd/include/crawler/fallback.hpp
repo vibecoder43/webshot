@@ -66,7 +66,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 
     if (!probe->loadState)
         return false;
-    if (*probe->loadState != 0)
+    if (probe->loadState.value() != 0)
         return false;
 
     if (status >= 400)

@@ -354,7 +354,7 @@ std::optional<ZipArchive> ZipArchive::fromBytes(std::string_view bytes, ZipArchi
         auto body = readEntryBytes(reader->get(), entry, errorOut);
         if (!body)
             return {};
-        it->second = std::move(*body);
+        it->second = std::move(body.value());
         pathsOut.push_back(std::string(path));
     }
 

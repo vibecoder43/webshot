@@ -63,8 +63,8 @@ UTEST(PrefixPagination, EncodeDecodeWithTimeAndIdRoundTrip)
     ASSERT_TRUE(decoded->id);
     if (!decoded->createdAt || !decoded->id)
         return;
-    EXPECT_EQ(timePointToMicros(*decoded->createdAt), timePointToMicros(tp));
-    EXPECT_EQ(*decoded->id, id);
+    EXPECT_EQ(timePointToMicros(decoded->createdAt.value()), timePointToMicros(tp));
+    EXPECT_EQ(decoded->id.value(), id);
 }
 
 UTEST(PrefixPagination, DecodeInvalidTokenReturnsNullopt)

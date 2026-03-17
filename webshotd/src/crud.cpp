@@ -274,8 +274,8 @@ public:
         UINVARIANT(
             creds.accessKeyId && creds.secretAccessKey, "missing required S3 secdist credentials"
         );
-        staticAccessKeyId = *creds.accessKeyId;
-        staticSecretAccessKey = *creds.secretAccessKey;
+        staticAccessKeyId = creds.accessKeyId.value();
+        staticSecretAccessKey = creds.secretAccessKey.value();
         S3ClientState initialState;
         if (s3UseSts) {
             initialState = fetchS3ClientStateFromSts();
@@ -367,7 +367,7 @@ struct [[nodiscard]] CrawlContext {
     LOG_INFO() << fmt::format(
         "Persisted metadata for job {} ({})", us::utils::ToString(id), ctx.link.normalized()
     );
-    return {ctx.id, *createdAt, std::string(ctx.link.normalized().view())};
+    return {ctx.id, createdAt.value(), std::string(ctx.link.normalized().view())};
 }
 
 us::utils::datetime::TimePointTz Crud::Impl::insertJob(Uuid id, String link)
@@ -429,22 +429,22 @@ std::optional<dto::CaptureJob> Crud::Impl::loadJob(Uuid id)
     );
     if (rowOpt->startedAt)
         job.started_at = us::utils::datetime::TimePointTz(
-            static_cast<system_clock::time_point>(*rowOpt->startedAt)
+            static_cast<system_clock::time_point>(rowOpt->startedAt.value())
         );
     if (rowOpt->finishedAt)
         job.finished_at = us::utils::datetime::TimePointTz(
-            static_cast<system_clock::time_point>(*rowOpt->finishedAt)
+            static_cast<system_clock::time_point>(rowOpt->finishedAt.value())
         );
     if (rowOpt->resultCreatedAt)
         job.result_created_at = us::utils::datetime::TimePointTz(
-            static_cast<system_clock::time_point>(*rowOpt->resultCreatedAt)
+            static_cast<system_clock::time_point>(rowOpt->resultCreatedAt.value())
         );
     if (job.status == dto::CaptureJob::Status::kFailed && rowOpt->errorMessage) {
-        dto::ErrorEnvelope::Error err{*rowOpt->errorMessage};
+        dto::ErrorEnvelope::Error err{rowOpt->errorMessage.value()};
         job.error = dto::ErrorEnvelope{err};
     }
     if (job.status == dto::CaptureJob::Status::kSucceeded && job.result_created_at)
-        job.result = dto::UuidWithTimeLink(job.uuid, *job.result_created_at, job.link);
+        job.result = dto::UuidWithTimeLink(job.uuid, job.result_created_at.value(), job.link);
     return job;
 }
 
@@ -485,7 +485,7 @@ std::optional<dto::CaptureJob> Crud::Impl::findLatestJobForLink(const String &li
     auto idOpt = sharedReadonly(sql::kSelectLatestCrawlJobByLink, link).AsOptionalSingleRow<Uuid>();
     if (!idOpt)
         return {};
-    return loadJob(*idOpt);
+    return loadJob(idOpt.value());
 }
 
 void Crud::Impl::startS3RefreshTask()
@@ -591,7 +591,9 @@ crawler::AttemptSummary Crud::Impl::runCrawlerAttempt(CrawlContext &ctx, const S
         LOG_INFO() << fmt::format("Uploading WACZ for {} to {}", seedUrl, ctx.s3Key);
         UINVARIANT(run.wacz, "embedded crawler reported missing WACZ payload");
         auto snapshot = s3State.Read();
-        snapshot->client->PutObject(ctx.s3Key.view(), *run.wacz, {}, "application/zip", {}, {});
+        snapshot->client->PutObject(
+            ctx.s3Key.view(), run.wacz.value(), {}, "application/zip", {}, {}
+        );
         LOG_INFO() << fmt::format("Uploaded WACZ for {} to {}", seedUrl, ctx.s3Key);
     } catch (const std::exception &e) {
         const auto msg = fmt::format("S3 upload failed for {}: {}", ctx.s3Key, e.what());
@@ -628,7 +630,7 @@ void Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
     }
 
     if (result.outcome == crawler::RunOutcome::kFailedSizeLimit) {
-        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto attempt = result.httpAttempt ? result.httpAttempt.value() : result.httpsAttempt;
         const auto msg = fmt::format(
             "Failed to crawl {} ({})", result.httpAttempt ? httpSeedUrl : httpsSeedUrl,
             crawler::formatAttemptStatus(result.httpAttempt ? "http" : "https", attempt)
@@ -638,7 +640,7 @@ void Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
     }
 
     if (result.outcome == crawler::RunOutcome::kFailedChildNoExit) {
-        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto attempt = result.httpAttempt ? result.httpAttempt.value() : result.httpsAttempt;
         const auto attemptContext = crawler::formatAttemptContext(attempt);
         const auto msg = fmt::format(
             "Failed to crawl {}, child process did not exit cleanly{}",
@@ -650,7 +652,7 @@ void Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
     }
 
     if (result.outcome == crawler::RunOutcome::kFailedNoWacz) {
-        const auto attempt = result.httpAttempt ? *result.httpAttempt : result.httpsAttempt;
+        const auto attempt = result.httpAttempt ? result.httpAttempt.value() : result.httpsAttempt;
         const auto attemptContext = crawler::formatAttemptContext(attempt);
         const auto msg = fmt::format(
             "Failed to crawl {}, no WACZ{}", result.httpAttempt ? httpSeedUrl : httpsSeedUrl,
@@ -665,7 +667,7 @@ void Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
         result.httpAttempt
             ? fmt::format(
                   "{}, {}", crawler::formatAttemptStatus("https", result.httpsAttempt),
-                  crawler::formatAttemptStatus("http", *result.httpAttempt)
+                  crawler::formatAttemptStatus("http", result.httpAttempt.value())
               )
             : std::string(crawler::formatAttemptStatus("https", result.httpsAttempt).view())
     );
@@ -769,7 +771,7 @@ dto::CaptureJob Crud::createCaptureJob(Link link)
             const auto lastCreated = latestJob->created_at.GetTimePoint();
             const auto deadline = lastCreated + chrono::seconds{implPtr->linkCooldownSec};
             if (now < deadline)
-                return *latestJob;
+                return latestJob.value();
         }
     }
 
@@ -815,7 +817,9 @@ std::optional<Link> Crud::findCapture(Uuid uuid)
         LOG_INFO() << fmt::format("UUID not found: {}", us::utils::ToString(uuid));
         return {};
     }
-    return {Link::fromText(String::fromBytesThrow(*location), impl->svcCfg.queryPartLengthMax())};
+    return {
+        Link::fromText(String::fromBytesThrow(location.value()), impl->svcCfg.queryPartLengthMax())
+    };
 }
 
 std::optional<dto::CaptureJob> Crud::findCaptureJob(Uuid uuid) { return impl->loadJob(uuid); }
@@ -922,7 +926,7 @@ Crud::findCapturesByPrefixPage(String normalizedPrefix, String pageToken)
             return impl
                 ->readonly(
                     sql::kSelectCaptureByLinkNext, link, raw(impl->perLinkMax),
-                    pg::TimePointTz(*cur->createdAt), *cur->id
+                    pg::TimePointTz(cur->createdAt.value()), cur->id.value()
                 )
                 .AsContainer<std::vector<Row>>(pg::kRowTag);
         }

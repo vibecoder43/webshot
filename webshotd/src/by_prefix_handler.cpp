@@ -83,7 +83,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
         String normalizedPrefix;
         try {
             normalizedPrefix =
-                Link::fromTextStripPort(*prefix, cfg.queryPartLengthMax()).normalized();
+                Link::fromTextStripPort(prefix.value(), cfg.queryPartLengthMax()).normalized();
         } catch (const InvalidLinkException &e) {
             return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));
         }
@@ -94,7 +94,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
                 response, kBadRequest, "page_token"_t, "invalid parameter"_t
             );
         try {
-            auto page = crud.findCapturesByPrefixPage(normalizedPrefix, *token);
+            auto page = crud.findCapturesByPrefixPage(normalizedPrefix, token.value());
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondParamError(

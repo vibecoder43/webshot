@@ -73,9 +73,9 @@ std::string S3V4Client::PutObject(
     http::Headers headers;
     headers[userver::http::headers::kContentType] = std::string(contentType);
     if (contentDisposition)
-        headers[userver::http::headers::kContentDisposition] = *contentDisposition;
+        headers[userver::http::headers::kContentDisposition] = contentDisposition.value();
     if (meta) {
-        for (const auto &kv : *meta)
+        for (const auto &kv : meta.value())
             headers["x-amz-meta-" + kv.first] = kv.second;
     }
     const String payloadHash = sha256Hex(data);
@@ -140,7 +140,7 @@ S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &reques
     }
     if (request.headers) {
         out.headers.emplace();
-        for (const auto &wanted : *request.headers) {
+        for (const auto &wanted : request.headers.value()) {
             auto it = resp->headers().find(wanted);
             if (it != resp->headers().end())
                 out.headers->emplace(it->first, it->second);

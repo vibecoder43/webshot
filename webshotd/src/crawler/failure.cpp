@@ -41,7 +41,7 @@ constexpr size_t kProcessOutputCharsMax = 240UL;
     if (attempt.failureDetail) {
         if (!msg.empty())
             msg += ", "_t;
-        msg += *attempt.failureDetail;
+        msg += attempt.failureDetail.value();
     }
     return msg;
 }
@@ -123,11 +123,11 @@ summarizeProcessOutputs(const std::string &stdoutPath, const std::string &stderr
 
     String detail;
     if (stdoutText)
-        detail = text::format("stdout=\"{}\"", *stdoutText);
+        detail = text::format("stdout=\"{}\"", stdoutText.value());
     if (stderrText) {
         if (!detail.empty())
             detail += ", "_t;
-        detail += text::format("stderr=\"{}\"", *stderrText);
+        detail += text::format("stderr=\"{}\"", stderrText.value());
     }
     return detail;
 }

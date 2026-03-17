@@ -142,7 +142,8 @@ StsCredentials fetchStsCredentials(
             const auto bodyOut = resp->body();
             if (const auto bodyUtf8 = String::fromBytes(bodyOut)) {
                 LOG_ERROR() << fmt::format(
-                    "STS request failed: url={}, status={}, body={}", urlBytes, status, *bodyUtf8
+                    "STS request failed: url={}, status={}, body={}", urlBytes, status,
+                    bodyUtf8.value()
                 );
             } else {
                 LOG_ERROR() << fmt::format(

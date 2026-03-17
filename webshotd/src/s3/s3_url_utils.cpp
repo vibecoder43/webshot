@@ -42,7 +42,7 @@ std::vector<std::pair<String, String>> decodeQueryString(String search)
         const auto valueText = String::fromBytes(value);
         if (!valueText)
             throw std::runtime_error("invalid UTF-8 in S3 query value");
-        query.emplace_back(*keyText, *valueText);
+        query.emplace_back(keyText.value(), valueText.value());
         if (amp == std::string::npos)
             break;
         pos = amp + 1;

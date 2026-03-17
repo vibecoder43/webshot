@@ -98,14 +98,14 @@ normalizeHeadersOrEmpty(const std::optional<dto::CdpHeaders> &headers)
 {
     if (!headers)
         return {};
-    return normalizeHeaders(*headers);
+    return normalizeHeaders(headers.value());
 }
 
 [[nodiscard]] std::optional<String> stringOrNull(const std::optional<std::string> &value)
 {
     if (!value)
         return {};
-    return String::fromBytesThrow(*value);
+    return String::fromBytesThrow(value.value());
 }
 
 [[nodiscard]] String generatePageId()
@@ -525,7 +525,7 @@ public:
                 diagnostics, "proxy_bridge_running", formatBool(isProcessRunning(proxyBridge))
             );
             if (preservedDir)
-                appendDiagnosticField(diagnostics, "preserved_browser_dir", *preservedDir);
+                appendDiagnosticField(diagnostics, "preserved_browser_dir", preservedDir.value());
 
             if (diagnostics.empty())
                 return std::string(message);
@@ -566,7 +566,7 @@ private:
             }
             const auto websocketPath = readWebsocketPathFile(paths.websocketPathFilePath);
             if (sawCdpSocket && websocketPath) {
-                return *websocketPath;
+                return websocketPath.value();
             }
             us::engine::SleepFor(chrono::milliseconds(100));
         }
@@ -667,14 +667,14 @@ struct [[nodiscard]] RetainedBodyBudget {
     }
 
     if (location.view().starts_with("/"))
-        return String::fromBytesThrow(fmt::format("{}{}", *origin, location));
+        return String::fromBytesThrow(fmt::format("{}{}", origin.value(), location));
 
     if (location.view().starts_with("?")) {
         const auto maybeBaseUrl = Url::fromText(baseUrl);
         if (!maybeBaseUrl)
             return requestUrl;
         return String::fromBytesThrow(
-            fmt::format("{}{}{}", *origin, maybeBaseUrl->pathname(), location)
+            fmt::format("{}{}{}", origin.value(), maybeBaseUrl->pathname(), location)
         );
     }
 
@@ -712,7 +712,7 @@ public:
     void setExpectedMainLoaderId(std::optional<String> loaderId)
     {
         if (loaderId)
-            mainLoaderId = std::move(*loaderId);
+            mainLoaderId = std::move(loaderId.value());
     }
 
     void handleEvent(const crawler::CdpEvent &event)
@@ -721,7 +721,7 @@ public:
         if (method == "Target.targetCrashed") {
             if (event.params) {
                 const auto crashed = event.params->extra.As<dto::TargetTargetCrashedEvent>();
-                if (crashed.targetId && targetId.view() == *crashed.targetId)
+                if (crashed.targetId && targetId.view() == crashed.targetId.value())
                     mainRequestFailure = "page target crashed"_t;
             }
             return;
@@ -804,7 +804,7 @@ public:
                 const auto *request = activeMainRequest();
                 return mainRequestFailure.has_value() ||
                        (completedMainRequest.has_value() && completedMainRequest->loaded &&
-                        hasResponse(*completedMainRequest)) ||
+                        hasResponse(completedMainRequest.value())) ||
                        (request != nullptr && hasResponse(*request) && request->loaded);
             },
             deadline, "timed out waiting for main document response"
@@ -829,7 +829,7 @@ public:
         if (const auto *request = resolvedMainRequest();
             request != nullptr && request->statusCode) {
             return crawler::SeedPageProbe{
-                raw(*request->statusCode),
+                raw(request->statusCode.value()),
                 request->loaded && !mainRequestFailure ? std::optional<int64_t>{2}
                                                        : std::optional<int64_t>{0},
             };
@@ -850,9 +850,10 @@ public:
     {
         if (!fallbackBody.empty())
             return retainBody(fallbackBody, budget);
-        const auto *bodyRequestId = mainResponseRequestId ? &*mainResponseRequestId : nullptr;
+        const auto *bodyRequestId = mainResponseRequestId ? &mainResponseRequestId.value()
+                                                          : nullptr;
         if (bodyRequestId == nullptr && mainRequestId)
-            bodyRequestId = &*mainRequestId;
+            bodyRequestId = &mainRequestId.value();
         if (bodyRequestId == nullptr)
             return retainBody(fallbackBody, budget);
 
@@ -944,7 +945,7 @@ public:
     ) const
     {
         crawler::CapturedExchange exchange{};
-        exchange.seedUrl = seedNavigationUrl ? *seedNavigationUrl : finalUrl;
+        exchange.seedUrl = seedNavigationUrl ? seedNavigationUrl.value() : finalUrl;
         exchange.pageId = pageId;
         exchange.finalUrl = std::move(finalUrl);
         applyMainResponse(exchange, exchange.finalUrl);
@@ -1005,7 +1006,8 @@ private:
     {
         if (!mainRequestId)
             return nullptr;
-        if (const auto it = activeRequests.find(*mainRequestId); it != std::end(activeRequests))
+        if (const auto it = activeRequests.find(mainRequestId.value());
+            it != std::end(activeRequests))
             return &it->second;
         return nullptr;
     }
@@ -1014,31 +1016,32 @@ private:
     {
         if (!mainRequestId)
             return nullptr;
-        if (const auto it = activeRequests.find(*mainRequestId); it != std::end(activeRequests))
+        if (const auto it = activeRequests.find(mainRequestId.value());
+            it != std::end(activeRequests))
             return &it->second;
         return nullptr;
     }
 
     [[nodiscard]] const TrackedRequest *resolvedMainRequest() const
     {
-        if (completedMainRequest && hasResponse(*completedMainRequest))
-            return &*completedMainRequest;
+        if (completedMainRequest && hasResponse(completedMainRequest.value()))
+            return &completedMainRequest.value();
         return activeMainRequest();
     }
 
     [[nodiscard]] std::optional<MainResponse> selectMainResponse(const String &finalUrl) const
     {
-        if (completedMainRequest && hasResponse(*completedMainRequest)) {
+        if (completedMainRequest && hasResponse(completedMainRequest.value())) {
             if (completedMainRequest->requestUrl == finalUrl)
-                return toMainResponse(*completedMainRequest);
+                return toMainResponse(completedMainRequest.value());
         }
         if (const auto *request = activeMainRequest();
             request != nullptr && hasResponse(*request)) {
             if (request->requestUrl == finalUrl)
                 return toMainResponse(*request);
         }
-        if (completedMainRequest && hasResponse(*completedMainRequest))
-            return toMainResponse(*completedMainRequest);
+        if (completedMainRequest && hasResponse(completedMainRequest.value()))
+            return toMainResponse(completedMainRequest.value());
         if (const auto *request = activeMainRequest(); request != nullptr && hasResponse(*request))
             return toMainResponse(*request);
         return {};
@@ -1048,15 +1051,15 @@ private:
     {
         if (!mainLoaderId)
             return true;
-        return loaderId && *loaderId == mainLoaderId->view();
+        return loaderId && loaderId.value() == mainLoaderId->view();
     }
 
     [[nodiscard]] bool
     isMainFrameDocumentRequest(const dto::NetworkRequestWillBeSentEvent &requestWillBeSent) const
     {
         return requestWillBeSent.frameId && mainFrameId &&
-               *requestWillBeSent.frameId == mainFrameId->view() && requestWillBeSent.type &&
-               *requestWillBeSent.type == "Document";
+               requestWillBeSent.frameId.value() == mainFrameId->view() && requestWillBeSent.type &&
+               requestWillBeSent.type.value() == "Document";
     }
 
     void handleRequestWillBeSent(dto::NetworkRequestWillBeSentEvent requestWillBeSent)
@@ -1080,7 +1083,7 @@ private:
             if (!mainLoaderId && !mainRequestId && seedNavigationUrl) {
                 const auto seedView = seedNavigationUrl->view();
                 const auto rawView = rawRequestUrl.view();
-                const auto matchesExact = rawRequestUrl == *seedNavigationUrl;
+                const auto matchesExact = rawRequestUrl == seedNavigationUrl.value();
                 const auto matchesTrailingSlash = !seedView.ends_with('/') &&
                                                   rawView.size() == seedView.size() + 1 &&
                                                   rawView.starts_with(seedView) &&
@@ -1101,7 +1104,7 @@ private:
 
         const auto canonicalRequestUrl = previousRequestUrl
                                              ? resolveRedirectTargetUrl(
-                                                   *previousRequestUrl, rawRequestUrl,
+                                                   previousRequestUrl.value(), rawRequestUrl,
                                                    requestWillBeSent.redirectResponse
                                                )
                                              : rawRequestUrl;
@@ -1140,7 +1143,7 @@ private:
         const auto timestamp = currentTimestamp();
         auto &request = requestIt->second;
         request.statusCode = responseReceived.response.status
-                                 ? i64(*responseReceived.response.status)
+                                 ? i64(responseReceived.response.status.value())
                                  : 0_i64;
         request.statusMessage = String::fromBytesThrow(
             responseReceived.response.statusText.value_or("")
@@ -1207,7 +1210,7 @@ private:
         auto request = std::move(requestIt->second);
         activeRequests.erase(requestIt);
 
-        request.statusCode = i64(*redirectResponse->status);
+        request.statusCode = i64(redirectResponse->status.value());
         request.statusMessage = String::fromBytesThrow(redirectResponse->statusText.value_or(""));
         request.headers = normalizeHeadersOrEmpty(redirectResponse->headers);
         request.timestamp = currentTimestamp();
@@ -1215,7 +1218,7 @@ private:
 
         if (request.isTrackedMainDocument) {
             recordMainDocumentRedirect(request);
-            if (mainRequestId && *mainRequestId == requestId)
+            if (mainRequestId && mainRequestId.value() == requestId)
                 mainRequestId.reset();
             return;
         }
@@ -1302,7 +1305,7 @@ struct [[nodiscard]] DomState {
     const auto &value = result.result.value;
     return {
         String::fromBytesThrow(value.finalUrl),
-        value.title ? std::make_optional(String::fromBytesThrow(*value.title))
+        value.title ? std::make_optional(String::fromBytesThrow(value.title.value()))
                     : std::optional<String>{},
         value.html,
     };
@@ -1401,7 +1404,7 @@ private:
             "Target.attachToTarget", attachParams
         );
         sessionId = String::fromBytesThrow(attached.sessionId);
-        tracker = std::make_unique<PageTracker>(*sessionId, *targetId);
+        tracker = std::make_unique<PageTracker>(sessionId.value(), targetId.value());
         listenerId = cdpClient().addListener([this](crawler::CdpEvent event) {
             if (tracker)
                 tracker->handleEvent(event);
@@ -1467,7 +1470,7 @@ private:
             "Page.navigate", navigateParams, attachedSessionId()
         );
         if (navigateResult.errorText)
-            throw std::runtime_error(*navigateResult.errorText);
+            throw std::runtime_error(navigateResult.errorText.value());
         pageTracker().setExpectedMainLoaderId(stringOrNull(navigateResult.loaderId));
 
         browser.markPhase("wait_for_load");
@@ -1585,7 +1588,7 @@ private:
     {
         if (!cdp || !listenerId)
             return;
-        cdp->removeListener(*listenerId);
+        cdp->removeListener(listenerId.value());
         listenerId.reset();
     }
 
@@ -1625,7 +1628,7 @@ private:
     [[nodiscard]] const String &attachedSessionId() const
     {
         UINVARIANT(sessionId, "cdp session is not attached");
-        return *sessionId;
+        return sessionId.value();
     }
 
     crawler::RunRequest run;
@@ -1759,14 +1762,14 @@ CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
     out.attempt.waczExists = result.wacz.has_value();
     out.attempt.seedProbe = result.seedProbe;
     if (result.failureDetail)
-        out.attempt.failureDetail = *result.failureDetail;
+        out.attempt.failureDetail = result.failureDetail.value();
 
     out.stdoutLog = result.stdoutLog;
     out.stderrLog = result.stderrLog;
     if (result.wacz)
-        out.wacz = *result.wacz;
+        out.wacz = result.wacz.value();
     if (result.pages)
-        out.pagesJsonl = *result.pages;
+        out.pagesJsonl = result.pages.value();
     return out;
 }
 

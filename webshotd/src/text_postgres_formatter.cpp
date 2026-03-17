@@ -30,7 +30,7 @@ void BufferParser<String>::operator()(const FieldBuffer &buffer)
         throw ::userver::storages::postgres::InvalidInputFormat(
             "invalid UTF-8 in PostgreSQL text field"
         );
-    value = *parsed;
+    value = parsed.value();
 }
 
 } // namespace userver::storages::postgres::io

@@ -116,7 +116,7 @@ std::string Handler::HandleRequestThrow(
             return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
         std::optional<Link> link;
         try {
-            link = Link::fromTextStripPort(*str, config.queryPartLengthMax());
+            link = Link::fromTextStripPort(str.value(), config.queryPartLengthMax());
         } catch (const InvalidLinkException &e) {
             return httpu::respondError(response, kBadRequest, String::fromBytesThrow(e.what()));
         }
@@ -127,7 +127,7 @@ std::string Handler::HandleRequestThrow(
                 response, kBadRequest, "page_token"_t, "missing parameter"_t
             );
         try {
-            auto page = crud.findCapturesByLinkPage(*link, *token);
+            auto page = crud.findCapturesByLinkPage(link.value(), token.value());
             return httpu::respondJson(response, kOk, page);
         } catch (const errors::InvalidPageTokenException &) {
             return httpu::respondParamError(

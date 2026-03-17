@@ -29,7 +29,7 @@ namespace {
     const auto archive = arkhiv::ZipArchive::fromBytes(bytes, error);
     if (!archive)
         throw std::runtime_error(error.detail);
-    return *archive;
+    return archive.value();
 }
 
 [[nodiscard]] RunRequest makeRun(std::string_view seedUrl)

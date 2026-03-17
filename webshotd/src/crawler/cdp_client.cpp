@@ -427,9 +427,9 @@ bool CdpClient::tryPumpOnce()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", numericCast<int>(*message.close_status));
+        traceClose("in", numericCast<int>(message.close_status.value()));
         throw std::runtime_error(
-            fmt::format("cdp socket closed ({})", numericCast<int>(*message.close_status))
+            fmt::format("cdp socket closed ({})", numericCast<int>(message.close_status.value()))
         );
     }
     handleMessage(message.data);
@@ -478,9 +478,9 @@ void CdpClient::pumpOne()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", numericCast<int>(*message.close_status));
+        traceClose("in", numericCast<int>(message.close_status.value()));
         throw std::runtime_error(
-            fmt::format("cdp socket closed ({})", numericCast<int>(*message.close_status))
+            fmt::format("cdp socket closed ({})", numericCast<int>(message.close_status.value()))
         );
     }
     handleMessage(message.data);
@@ -539,15 +539,16 @@ void CdpClient::handleMessage(const std::string &payload)
     auto eventMessage = value.As<dto::CdpEventMessage>();
     traceEvent(
         eventMessage.method,
-        eventMessage.sessionId ? std::make_optional(String::fromBytesThrow(*eventMessage.sessionId))
-                               : std::optional<String>{}
+        eventMessage.sessionId
+            ? std::make_optional(String::fromBytesThrow(eventMessage.sessionId.value()))
+            : std::optional<String>{}
     );
     dispatchEvent(
         CdpEvent{
             String::fromBytesThrow(eventMessage.method),
             std::move(eventMessage.params),
             eventMessage.sessionId
-                ? std::make_optional(String::fromBytesThrow(*eventMessage.sessionId))
+                ? std::make_optional(String::fromBytesThrow(eventMessage.sessionId.value()))
                 : std::optional<String>{},
         }
     );

@@ -13,7 +13,7 @@ std::optional<Url> Url::fromText(const String &text)
     auto parsed = ada::parse<ada::url_aggregator>(text.view());
     if (!parsed)
         return {};
-    return Url(std::move(*parsed));
+    return Url(std::move(parsed.value()));
 }
 
 Url Url::fromTextThrow(const String &text)
@@ -21,7 +21,7 @@ Url Url::fromTextThrow(const String &text)
     const auto maybeUrl = fromText(text);
     if (!maybeUrl)
         throw std::runtime_error("invalid url");
-    return *maybeUrl;
+    return maybeUrl.value();
 }
 
 Url Url::fromParsed(ada::url_aggregator url) { return Url(std::move(url)); }

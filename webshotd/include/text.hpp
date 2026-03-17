@@ -45,7 +45,7 @@ public:
         auto ret = fromBytes(bytes);
         if (!ret)
             throw InvalidTextException("not valid UTF-8");
-        return *ret;
+        return ret.value();
     }
 
     [[nodiscard]] constexpr std::string_view view() const noexcept

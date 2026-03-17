@@ -81,7 +81,7 @@ std::string JobHandler::HandleRequestThrow(
         auto job = crud.findCaptureJob(uuid);
         if (!job)
             return httpu::respondError(response, kNotFound, "job not found"_t);
-        return httpu::respondJson(response, kOk, *job);
+        return httpu::respondJson(response, kOk, job.value());
     } catch (const engine::WaitInterruptedException &) {
         throw;
     } catch (const std::exception &e) {

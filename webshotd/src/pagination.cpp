@@ -21,7 +21,7 @@ namespace v1::crud {
     const auto dtoOpt = decodeToken<dto::PaginationCursor>(token);
     if (!dtoOpt)
         return {};
-    const auto &cur = *dtoOpt;
+    const auto &cur = dtoOpt.value();
     Cursor out;
     out.createdAt = microsToTimePoint(cur.t);
     out.id = cur.i;

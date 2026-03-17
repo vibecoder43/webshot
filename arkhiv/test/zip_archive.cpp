@@ -112,7 +112,7 @@ TEST(ZipArchive, WritesAndReadsStoredFilesByPath)
         return;
     EXPECT_EQ(error.code, ZipArchiveErrorCode::kNone);
 
-    const auto archive = ZipArchive::fromBytes(*zipBytes, error);
+    const auto archive = ZipArchive::fromBytes(zipBytes.value(), error);
     ASSERT_TRUE(archive);
     if (!archive)
         return;
@@ -130,13 +130,13 @@ TEST(ZipArchive, WritesAndReadsStoredFilesByPath)
     ASSERT_TRUE(datapackage);
     if (!datapackage)
         return;
-    EXPECT_EQ(*datapackage, std::string_view{R"({"profile":"data-package"})"});
+    EXPECT_EQ(datapackage.value(), std::string_view{R"({"profile":"data-package"})"});
 
     const auto warc = archive->findFile("archive/data.warc");
     ASSERT_TRUE(warc);
     if (!warc)
         return;
-    EXPECT_EQ(*warc, std::string_view{"warc bytes"});
+    EXPECT_EQ(warc.value(), std::string_view{"warc bytes"});
 }
 
 TEST(ZipArchive, BuilderRejectsDuplicateEntryNames)

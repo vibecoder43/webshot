@@ -86,13 +86,13 @@ std::string DenylistCheckHandler::HandleRequestThrow(
 
         std::optional<Link> link;
         try {
-            link = Link::fromTextStripPort(*body, config.queryPartLengthMax());
+            link = Link::fromTextStripPort(body.value(), config.queryPartLengthMax());
         } catch (const InvalidLinkException &) {
             response.SetStatus(kBadRequest);
             return {};
         }
 
-        auto prefixKey = prefix::makePrefixKey(*link);
+        auto prefixKey = prefix::makePrefixKey(link.value());
         if (!denylist.isAllowedPrefix(prefixKey)) {
             response.SetStatus(kForbidden);
             return {};

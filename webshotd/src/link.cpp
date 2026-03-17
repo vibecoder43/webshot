@@ -100,7 +100,7 @@ Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort,
     if (auto hostname = url->get_hostname(); !hostname.empty() && hostname.back() == '.')
         url->set_hostname(std::string(begin(hostname), end(hostname) - 1));
 
-    return {Url::fromParsed(std::move(*url))};
+    return {Url::fromParsed(std::move(url.value()))};
 }
 
 Link Link::fromTextStripPort(const String &text, size_t queryPartLengthMax)

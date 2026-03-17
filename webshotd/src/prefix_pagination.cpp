@@ -18,7 +18,7 @@ namespace v1::crud {
     const auto dtoOpt = decodeToken<dto::PaginationPrefixCursor>(token);
     if (!dtoOpt)
         return {};
-    const auto &cur = *dtoOpt;
+    const auto &cur = dtoOpt.value();
     const auto prefix = String::fromBytes(cur.p);
     if (!prefix)
         return {};
@@ -26,11 +26,11 @@ namespace v1::crud {
     if (!link)
         return {};
     PrefixCursor out;
-    out.prefix = *prefix;
-    out.link = *link;
+    out.prefix = prefix.value();
+    out.link = link.value();
     if (cur.t && cur.i) {
-        out.createdAt = microsToTimePoint(*cur.t);
-        out.id = *cur.i;
+        out.createdAt = microsToTimePoint(cur.t.value());
+        out.id = cur.i.value();
     }
     return out;
 }

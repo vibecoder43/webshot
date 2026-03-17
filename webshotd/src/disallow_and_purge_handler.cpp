@@ -80,14 +80,14 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     std::optional<Link> link;
     try {
-        link = Link::fromTextStripPortQuery(*host, config.queryPartLengthMax());
+        link = Link::fromTextStripPortQuery(host.value(), config.queryPartLengthMax());
     } catch (const InvalidLinkException &e) {
         LOG_INFO() << fmt::format("invalid host: {}", e.what());
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     }
     LOG_INFO() << fmt::format("invoked for: {}", link->host());
     try {
-        auto prefixKey = prefix::makePrefixKey(*link);
+        auto prefixKey = prefix::makePrefixKey(link.value());
         crud.disallowAndPurgePrefix(prefixKey);
         response.SetStatus(kAccepted);
         return {};

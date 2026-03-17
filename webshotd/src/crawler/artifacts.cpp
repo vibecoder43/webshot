@@ -170,7 +170,7 @@ serializeRecordPair(const SerializableResponse &response)
     auto requestPath = "/"_t;
     String requestHost;
     if (const auto urlText = String::fromBytes(response.responseUrl.view())) {
-        if (const auto maybeUrl = Url::fromText(*urlText)) {
+        if (const auto maybeUrl = Url::fromText(urlText.value())) {
             requestPath = maybeUrl->pathWithSearch();
             requestHost = maybeUrl->host();
         }
@@ -205,8 +205,9 @@ serializeRecordPair(const SerializableResponse &response)
         "{}",
         response.responseUrl, recordDate, responseRecordId,
         response.pageId.empty() ? "" : fmt::format("WARC-Page-ID: {}\r\n", response.pageId),
-        response.resourceType ? fmt::format("WARC-Resource-Type: {}\r\n", *response.resourceType)
-                              : std::string{},
+        response.resourceType
+            ? fmt::format("WARC-Resource-Type: {}\r\n", response.resourceType.value())
+            : std::string{},
         httpResponseHead.size() + response.body.size(), httpResponseHead
     );
 
@@ -230,8 +231,9 @@ serializeRecordPair(const SerializableResponse &response)
         "{}\r\n",
         response.responseUrl, recordDate, requestRecordId, responseRecordId,
         response.pageId.empty() ? "" : fmt::format("WARC-Page-ID: {}\r\n", response.pageId),
-        response.resourceType ? fmt::format("WARC-Resource-Type: {}\r\n", *response.resourceType)
-                              : std::string{},
+        response.resourceType
+            ? fmt::format("WARC-Resource-Type: {}\r\n", response.resourceType.value())
+            : std::string{},
         requestPayload.size(), requestPayload
     );
 
@@ -354,7 +356,7 @@ serializeRecordPair(const SerializableResponse &response)
     }
 
     auto path = std::string(maybeUrl->pathWithSearch().view());
-    if (shouldIncludePort(*maybeUrl))
+    if (shouldIncludePort(maybeUrl.value()))
         surtHost += ":" + port;
     return String::fromBytesThrow(surtHost + ")" + path);
 }
@@ -555,7 +557,7 @@ std::string buildWacz(
     const auto zipBytes = zip.finish(error);
     if (!zipBytes)
         throw std::runtime_error(error.detail);
-    return *zipBytes;
+    return zipBytes.value();
 }
 
 } // namespace v1::crawler
