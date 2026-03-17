@@ -5,6 +5,7 @@
 #include "crawler/cdp_client.hpp"
 #include "crawler/failure.hpp"
 #include "crawler/launch_policy.hpp"
+#include "deadline_utils.hpp"
 #include "integers.hpp"
 #include "schema/cdp.hpp"
 #include "text.hpp"
@@ -31,6 +32,7 @@
 #include <fmt/format.h>
 
 #include <userver/crypto/base64.hpp>
+#include <userver/engine/deadline.hpp>
 #include <userver/engine/sleep.hpp>
 #include <userver/engine/subprocess/process_starter.hpp>
 #include <userver/formats/json.hpp>
@@ -122,38 +124,6 @@ public:
 
     std::optional<crawler::SeedPageProbe> seedProbe;
 };
-
-[[nodiscard]] chrono::milliseconds remainingBudget(chrono::steady_clock::time_point deadline)
-{
-    const auto now = us::utils::datetime::SteadyNow();
-    if (deadline <= now)
-        return chrono::milliseconds(0);
-    return chrono::duration_cast<chrono::milliseconds>(deadline - now);
-}
-
-[[nodiscard]] chrono::milliseconds
-remainingBudgetOrThrow(chrono::steady_clock::time_point deadline, std::string_view timeoutMessage)
-{
-    const auto remaining = remainingBudget(deadline);
-    if (remaining <= chrono::milliseconds(0))
-        throw std::runtime_error(std::string(timeoutMessage));
-    return remaining;
-}
-
-void sleepWithinBudget(
-    chrono::steady_clock::time_point deadline, chrono::milliseconds delay,
-    std::string_view timeoutMessage
-)
-{
-    if (delay <= chrono::milliseconds(0))
-        return;
-
-    const auto remaining = remainingBudgetOrThrow(deadline, timeoutMessage);
-    const auto sleepFor = std::min(delay, remaining);
-    us::engine::SleepFor(sleepFor);
-    if (sleepFor != delay)
-        throw std::runtime_error(std::string(timeoutMessage));
-}
 
 template <typename T> [[nodiscard]] T parseEventParams(const crawler::CdpEvent &event)
 {
@@ -442,7 +412,7 @@ public:
     {
         paths = createBrowserPaths();
         markPhase("launch_browser");
-        const auto devtoolsDeadline = us::utils::datetime::SteadyNow() + chrono::seconds(8);
+        const auto devtoolsDeadline = us::engine::Deadline::FromDuration(chrono::seconds(8));
         proxyBridge.emplace(spawnProxyBridge(processStarter, paths));
         process.emplace(spawnSandboxedBrowser(processStarter, paths));
         websocketPath = waitForDevtoolsPath(devtoolsDeadline);
@@ -578,11 +548,12 @@ public:
     }
 
 private:
-    [[nodiscard]] String waitForDevtoolsPath(chrono::steady_clock::time_point deadline)
+    [[nodiscard]] String waitForDevtoolsPath(us::engine::Deadline deadline)
     {
+        UINVARIANT(deadline.IsReachable(), "devtools deadline must be reachable");
         auto sawCdpSocket = false;
         auto sawWebsocketPath = false;
-        while (us::utils::datetime::SteadyNow() < deadline) {
+        while (!deadline.IsReached()) {
             sawCdpSocket = sawCdpSocket || us::fs::blocking::FileExists(paths.cdpSocketPath);
             sawWebsocketPath = sawWebsocketPath ||
                                us::fs::blocking::FileExists(paths.websocketPathFilePath);
@@ -816,17 +787,17 @@ public:
         }
     }
 
-    void waitForLoad(crawler::CdpClient &cdp, chrono::milliseconds timeout)
+    void waitForLoad(crawler::CdpClient &cdp, us::engine::Deadline deadline)
     {
         cdp.waitUntil(
-            [this]() { return loaded || mainRequestFailure.has_value(); }, timeout,
+            [this]() { return loaded || mainRequestFailure.has_value(); }, deadline,
             "timed out waiting for page load"
         );
         if (mainRequestFailure)
             throw std::runtime_error(std::string(mainRequestFailure->view()));
     }
 
-    void waitForMainDocument(crawler::CdpClient &cdp, chrono::milliseconds timeout)
+    void waitForMainDocument(crawler::CdpClient &cdp, us::engine::Deadline deadline)
     {
         cdp.waitUntil(
             [this]() {
@@ -836,20 +807,20 @@ public:
                         hasResponse(*completedMainRequest)) ||
                        (request != nullptr && hasResponse(*request) && request->loaded);
             },
-            timeout, "timed out waiting for main document response"
+            deadline, "timed out waiting for main document response"
         );
         if (mainRequestFailure)
             throw std::runtime_error(std::string(mainRequestFailure->view()));
     }
 
     void
-    waitForIdle(crawler::CdpClient &cdp, chrono::milliseconds idle, chrono::milliseconds timeout)
+    waitForIdle(crawler::CdpClient &cdp, chrono::milliseconds idle, us::engine::Deadline deadline)
     {
         cdp.waitUntil(
             [this, idle]() {
                 return inflight.empty() && us::utils::datetime::SteadyNow() - lastNetworkAt >= idle;
             },
-            timeout, "timed out waiting for network idle"
+            deadline, "timed out waiting for network idle"
         );
     }
 
@@ -1363,7 +1334,7 @@ public:
         us::engine::subprocess::ProcessStarter &processStarter, crawler::RunRequest runIn
     )
         : run(std::move(runIn)),
-          deadline(us::utils::datetime::SteadyNow() + chrono::milliseconds{run.jobTimeoutMs}),
+          deadline(us::engine::Deadline::FromDuration(chrono::milliseconds{raw(run.jobTimeoutMs)})),
           browser(processStarter)
     {
     }
@@ -1497,12 +1468,10 @@ private:
         pageTracker().setExpectedMainLoaderId(stringOrNull(navigateResult.loaderId));
 
         browser.markPhase("wait_for_load");
-        pageTracker().waitForLoad(
-            cdpClient(), remainingBudgetOrThrow(deadline, "timed out waiting for page load")
-        );
+        pageTracker().waitForLoad(cdpClient(), deadline);
         if (crawler::kPostLoadDelayMs > 0_i64) {
             browser.markPhase("post_load_delay");
-            sleepWithinBudget(
+            sleepWithinDeadline(
                 deadline, chrono::milliseconds{crawler::kPostLoadDelayMs},
                 "timed out waiting for post-load delay"
             );
@@ -1511,12 +1480,12 @@ private:
         if (crawler::kBehaviorTimeoutMs > 0_i64) {
             browser.markPhase("run_site_behavior");
             browser.markPhase("run_site_behavior_runtime_evaluate");
+            const auto behaviorBudget = timeLeftOrThrowMs(
+                deadline, "timed out running site behavior"
+            );
             runSiteBehavior(
                 cdpClient(), attachedSessionId(),
-                std::min(
-                    chrono::milliseconds{crawler::kBehaviorTimeoutMs},
-                    remainingBudgetOrThrow(deadline, "timed out running site behavior")
-                )
+                std::min(chrono::milliseconds{crawler::kBehaviorTimeoutMs}, behaviorBudget)
             );
             browser.markPhase("run_site_behavior_done");
         }
@@ -1524,14 +1493,13 @@ private:
             browser.markPhase("wait_for_idle");
             browser.markPhase("wait_for_idle_wait");
             pageTracker().waitForIdle(
-                cdpClient(), chrono::milliseconds{crawler::kNetIdleWaitMs},
-                remainingBudgetOrThrow(deadline, "timed out waiting for network idle")
+                cdpClient(), chrono::milliseconds{crawler::kNetIdleWaitMs}, deadline
             );
             browser.markPhase("wait_for_idle_done");
         }
         if (crawler::kPageExtraDelayMs > 0_i64) {
             browser.markPhase("page_extra_delay");
-            sleepWithinBudget(
+            sleepWithinDeadline(
                 deadline, chrono::milliseconds{crawler::kPageExtraDelayMs},
                 "timed out waiting for extra page delay"
             );
@@ -1539,10 +1507,7 @@ private:
         }
         browser.markPhase("wait_for_main_document");
         browser.markPhase("wait_for_main_document_wait");
-        pageTracker().waitForMainDocument(
-            cdpClient(),
-            remainingBudgetOrThrow(deadline, "timed out waiting for main document response")
-        );
+        pageTracker().waitForMainDocument(cdpClient(), deadline);
         browser.markPhase("wait_for_main_document_done");
 
         browser.markPhase("read_dom_state");
@@ -1661,7 +1626,7 @@ private:
     }
 
     crawler::RunRequest run;
-    chrono::steady_clock::time_point deadline;
+    us::engine::Deadline deadline;
     BrowserInstance browser;
     std::unique_ptr<crawler::CdpClient> cdp;
     std::unique_ptr<PageTracker> tracker;

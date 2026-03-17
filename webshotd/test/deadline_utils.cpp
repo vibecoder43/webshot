@@ -8,6 +8,28 @@
 using userver::engine::Deadline;
 using namespace std::chrono_literals;
 
+UTEST(DeadlineUtils, TimeLeftOrZeroExpiredIsZero)
+{
+    EXPECT_EQ(v1::timeLeftOrZeroMs(Deadline::Passed()), 0ms);
+}
+
+UTEST(DeadlineUtils, TimeLeftOrThrowExpiredThrows)
+{
+    EXPECT_THROW(v1::timeLeftOrThrowMs(Deadline::Passed(), "timeout"), std::runtime_error);
+}
+
+UTEST(DeadlineUtils, TimeLeftOrZeroUnreachableIsMax)
+{
+    const auto unreachable = Deadline{};
+    EXPECT_FALSE(unreachable.IsReachable());
+    EXPECT_EQ(v1::timeLeftOrZeroMs(unreachable), std::chrono::milliseconds::max());
+}
+
+UTEST(DeadlineUtils, SleepWithinDeadlineExpiredThrows)
+{
+    EXPECT_THROW(v1::sleepWithinDeadline(Deadline::Passed(), 1ms, "timeout"), std::runtime_error);
+}
+
 UTEST(DeadlineUtils, ChoosesExpiredOverFuture)
 {
     const auto expired = Deadline::Passed();

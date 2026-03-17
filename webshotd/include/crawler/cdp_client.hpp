@@ -4,7 +4,6 @@
 #include "schema/cdp.hpp"
 #include "text.hpp"
 
-#include <chrono>
 #include <fstream>
 #include <functional>
 #include <optional>
@@ -13,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <userver/engine/deadline.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/websocket/connection.hpp>
@@ -80,7 +80,7 @@ public:
 
     bool tryPumpOnce();
     void waitUntil(
-        const std::function<bool()> &predicate, std::chrono::milliseconds timeout,
+        const std::function<bool()> &predicate, us::engine::Deadline deadline,
         std::string_view timeoutMessage
     );
 

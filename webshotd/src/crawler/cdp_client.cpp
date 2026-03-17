@@ -383,7 +383,8 @@ json::Value CdpClient::sendRaw(
 
     try {
         waitUntil(
-            [this, id]() { return pendingResults.contains(id); }, chrono::seconds(10),
+            [this, id]() { return pendingResults.contains(id); },
+            us::engine::Deadline::FromDuration(chrono::seconds(10)),
             "timed out waiting for cdp response"
         );
     } catch (const std::exception &e) {
@@ -436,15 +437,14 @@ bool CdpClient::tryPumpOnce()
 }
 
 void CdpClient::waitUntil(
-    const std::function<bool()> &predicate, std::chrono::milliseconds timeout,
+    const std::function<bool()> &predicate, us::engine::Deadline deadline,
     std::string_view timeoutMessage
 )
 {
-    const auto deadline = us::utils::datetime::SteadyNow() + timeout;
     while (!predicate()) {
         if (tryPumpOnce())
             continue;
-        if (us::utils::datetime::SteadyNow() >= deadline)
+        if (deadline.IsReachable() && deadline.IsReached())
             throw std::runtime_error(std::string(timeoutMessage));
         us::engine::SleepFor(std::chrono::milliseconds(10));
     }
