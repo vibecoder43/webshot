@@ -187,6 +187,28 @@ target_link_libraries(${PROJECT_NAME}_objs PRIVATE absl::strings)
 target_link_libraries(${PROJECT_NAME}_objs
                       PUBLIC userver::core userver::postgresql userver::s3api
                              )
+
+if(CMAKE_CXX_INCLUDE_WHAT_YOU_USE)
+  set(_webshot_iwyu_cmd ${CMAKE_CXX_INCLUDE_WHAT_YOU_USE})
+  list(GET _webshot_iwyu_cmd 0 _webshot_iwyu_tool)
+  find_program(_webshot_iwyu_path NAMES "${_webshot_iwyu_tool}")
+  if(NOT _webshot_iwyu_path)
+    message(
+      FATAL_ERROR
+        "CMAKE_CXX_INCLUDE_WHAT_YOU_USE is set to '${_webshot_iwyu_tool}', but include-what-you-use was not found in PATH"
+    )
+  endif()
+  list(REMOVE_AT _webshot_iwyu_cmd 0)
+  set(_webshot_iwyu_cmd "${_webshot_iwyu_path}" ${_webshot_iwyu_cmd})
+  set_property(TARGET ${PROJECT_NAME}_objs PROPERTY CXX_INCLUDE_WHAT_YOU_USE
+                                                    "${_webshot_iwyu_cmd}")
+  set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_INCLUDE_WHAT_YOU_USE
+                                               "${_webshot_iwyu_cmd}")
+
+  # Prevent IWYU from running in subdirectories (arkhiv) and codegen targets.
+  set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE "")
+endif()
+
 add_subdirectory("${WEBSHOT_REPO_ROOT}/arkhiv" "${CMAKE_CURRENT_BINARY_DIR}/arkhiv")
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE arkhiv::arkhiv)
 target_sources(

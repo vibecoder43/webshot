@@ -152,6 +152,7 @@
       // {
         clangTidy = "clang-tidy";
         disablePrecompileHeaders = true;
+        cmakeCxxIncludeWhatYouUse = "include-what-you-use";
       };
 
     cov =
@@ -178,6 +179,9 @@
       "-DWEBSHOT_ENABLE_COVERAGE=${cmakeBool variant.enableCoverage}"
     ]
     ++ lib.optional (variant ? clangTidy) "-DCMAKE_CXX_CLANG_TIDY=${variant.clangTidy}"
+    ++ lib.optional
+    (variant ? cmakeCxxIncludeWhatYouUse)
+    "-DCMAKE_CXX_INCLUDE_WHAT_YOU_USE=${variant.cmakeCxxIncludeWhatYouUse}"
     ++ lib.optional
     (variant ? disablePrecompileHeaders && variant.disablePrecompileHeaders)
     "-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON";

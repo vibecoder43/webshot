@@ -18,6 +18,7 @@ in {
       common.toolchain.cc
       common.llvm21.llvm
       common.llvm21.clang-tools
+      common.pkgsWithOverlay.include-what-you-use
       common.userverPkgs.userver-debug-addr-ub
       common.uniAlgoPkgs.default
       common.yttsPkgs.default
