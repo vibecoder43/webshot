@@ -15,7 +15,9 @@ UTEST(DeadlineUtils, TimeLeftOrZeroExpiredIsZero)
 
 UTEST(DeadlineUtils, TimeLeftOrThrowExpiredThrows)
 {
-    EXPECT_THROW(v1::timeLeftOrThrowMs(Deadline::Passed(), "timeout"), std::runtime_error);
+    EXPECT_THROW(
+        static_cast<void>(v1::timeLeftOrThrowMs(Deadline::Passed(), "timeout")), std::runtime_error
+    );
 }
 
 UTEST(DeadlineUtils, TimeLeftOrZeroUnreachableIsMax)

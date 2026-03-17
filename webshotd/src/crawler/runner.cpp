@@ -991,10 +991,13 @@ private:
 
     [[nodiscard]] static MainResponse toMainResponse(const TrackedRequest &request)
     {
-        UINVARIANT(hasResponse(request), "tracked request missing response");
+        UINVARIANT(
+            request.statusCode && request.statusMessage && request.headers && request.timestamp,
+            "tracked request missing response"
+        );
         return {
-            request.requestUrl, *request.statusCode, *request.statusMessage,
-            *request.headers,   *request.timestamp,
+            request.requestUrl,      request.statusCode.value(), request.statusMessage.value(),
+            request.headers.value(), request.timestamp.value(),
         };
     }
 
@@ -1222,15 +1225,15 @@ private:
 
     void recordMainDocumentRedirect(const TrackedRequest &request)
     {
-        if (!hasResponse(request))
+        if (!request.statusCode || !request.statusMessage || !request.headers || !request.timestamp)
             return;
 
         crawler::CapturedMainDocumentRedirect redirect;
         redirect.redirectUrl = request.requestUrl;
-        redirect.statusCode = *request.statusCode;
-        redirect.statusMessage = *request.statusMessage;
-        redirect.headers = *request.headers;
-        redirect.timestamp = *request.timestamp;
+        redirect.statusCode = request.statusCode.value();
+        redirect.statusMessage = request.statusMessage.value();
+        redirect.headers = request.headers.value();
+        redirect.timestamp = request.timestamp.value();
 
         if (!mainDocumentRedirects.empty()) {
             const auto &previous = mainDocumentRedirects.back();
@@ -1244,18 +1247,18 @@ private:
 
     void recordResourceRedirect(const TrackedRequest &request)
     {
-        if (!hasResponse(request))
+        if (!request.statusCode || !request.statusMessage || !request.headers || !request.timestamp)
             return;
 
         redirectedResources.push_back({
             request.requestUrl,
             request.method,
             request.resourceType,
-            *request.statusCode,
-            *request.statusMessage,
-            *request.headers,
+            request.statusCode.value(),
+            request.statusMessage.value(),
+            request.headers.value(),
             {},
-            *request.timestamp,
+            request.timestamp.value(),
         });
     }
 
