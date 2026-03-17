@@ -1,29 +1,38 @@
-#include "job_handler.hpp"
 /**
  * @file
  * @brief Handler that exposes crawl job status by UUID.
  */
+
+#include "job_handler.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
+#include "schema/webshot.hpp"
 #include "text.hpp"
-
+#include <boost/safe_numerics/checked_default.hpp>
+#include <boost/safe_numerics/checked_result_operations.hpp>
+#include <boost/safe_numerics/safe_base_operations.hpp>
+#include <boost/safe_numerics/safe_common.hpp>
 #include <chrono>
-
+#include <exception>
 #include <fmt/format.h>
-
-#include <userver/components/component.hpp>
+#include <optional>
+#include <stdint.h>
+#include <userver/engine/deadline.hpp>
 #include <userver/engine/exception.hpp>
-#include <userver/engine/task/current_task.hpp>
+#include <userver/engine/task/cancel.hpp>
 #include <userver/http/status_code.hpp>
+#include <userver/logging/level.hpp>
 #include <userver/logging/log.hpp>
+#include <userver/logging/log_helper.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_request.hpp>
-#include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/boost_uuid4.hpp>
+#include <userver/utils/zstring_view.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <userver/yaml_config/yaml_config.hpp>
 
 using namespace v1;
 using namespace text::literals;

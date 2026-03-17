@@ -5,27 +5,32 @@
  * Implements the subset of methods required by this service (PUT, HEAD, DELETE)
  * and presign helpers. It relies on userver HTTP client for transport.
  */
+
 #include "s3/s3_v4_client.hpp"
-#include "s3/sigv4_signer.hpp"
-
 #include "link.hpp"
+#include "s3/sigv4_signer.hpp"
 #include "text.hpp"
-
+#include <ada/url_aggregator-inl.h>
+#include <ada/url_aggregator.h>
 #include <algorithm>
-#include <iterator>
-#include <stdexcept>
-#include <utility>
-
+#include <cctype>
 #include <fmt/format.h>
-
-#include <userver/crypto/hash.hpp>
-
+#include <iterator>
+#include <memory>
+#include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
 #include <userver/clients/http/client.hpp>
+#include <userver/clients/http/request.hpp>
 #include <userver/clients/http/response.hpp>
 #include <userver/http/common_headers.hpp>
-#include <userver/logging/log.hpp>
+#include <userver/http/header_map.hpp>
+#include <userver/s3api/models/multipart_upload/responses.hpp>
 #include <userver/utils/assert.hpp>
-#include <userver/utils/datetime.hpp>
+#include <userver/utils/datetime_light.hpp>
+#include <userver/utils/strong_typedef.hpp>
+#include <utility>
+#include <vector>
 
 namespace s3 = userver::s3api;
 namespace http = userver::clients::http;

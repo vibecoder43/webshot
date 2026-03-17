@@ -1,11 +1,14 @@
 #pragma once
 
-#include "crawler/fallback.hpp"
 #include "text.hpp"
-
 #include <optional>
 #include <string>
 #include <string_view>
+namespace v1 {
+namespace crawler {
+struct AttemptSummary;
+}
+} // namespace v1
 
 namespace v1::crawler {
 

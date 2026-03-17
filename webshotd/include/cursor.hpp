@@ -1,5 +1,15 @@
 #pragma once
 
+#include "text.hpp"
+#include <chrono>
+#include <exception>
+#include <optional>
+#include <stdint.h>
+#include <string>
+#include <userver/crypto/base64.hpp>
+#include <userver/formats/json/serialize.hpp>
+#include <userver/formats/json/value_builder.hpp>
+
 /**
  * @file
  * @brief Helpers for time conversions and opaque pagination tokens.

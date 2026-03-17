@@ -1,13 +1,13 @@
-#include "config.hpp"
 /**
  * @file
  * @brief Component that provides typed read-only configuration.
  */
 
+#include "config.hpp"
 #include <chrono>
-
-#include <userver/components/component.hpp>
+#include <string>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <userver/yaml_config/yaml_config.hpp>
 
 namespace v1 {
 Config::Config(

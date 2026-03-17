@@ -1,5 +1,12 @@
 #pragma once
 
+#include "text.hpp"
+#include <format>
+#include <string>
+#include <userver/storages/postgres/io/io_fwd.hpp>
+#include <userver/storages/postgres/io/pg_types.hpp>
+#include <userver/storages/postgres/io/traits.hpp>
+
 /**
  * @file
  * @brief PostgreSQL I/O customization for String.

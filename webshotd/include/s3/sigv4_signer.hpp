@@ -1,17 +1,16 @@
 #pragma once
 
+#include "s3_credentials_types.hpp"
+#include "text.hpp"
 #include <chrono>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <userver/clients/http/response.hpp>
 #include <utility>
 #include <vector>
-
-#include <userver/clients/http/client.hpp>
-
-#include "s3_credentials_types.hpp"
-#include "text.hpp"
 
 namespace v1::s3v4 {
 

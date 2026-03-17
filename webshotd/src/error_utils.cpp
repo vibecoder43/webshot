@@ -1,14 +1,13 @@
-#include "error_utils.hpp"
 /**
  * @file
  * @brief Helpers to produce JSON error envelopes used by handlers.
  */
+
+#include "error_utils.hpp"
 #include "schema/webshot.hpp"
 #include "text.hpp"
-
-#include <fmt/format.h>
+#include <string>
 #include <userver/formats/json/value_builder.hpp>
-#include <userver/utils/assert.hpp>
 
 namespace json = userver::formats::json;
 

@@ -1,8 +1,9 @@
-#include "handler.hpp"
 /**
  * @file
  * @brief Handler that creates captures and lists them by exact link.
  */
+
+#include "handler.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
@@ -14,30 +15,33 @@
 #include "schema/webshot.hpp"
 #include "server_errors.hpp"
 #include "text.hpp"
-
+#include <boost/safe_numerics/checked_default.hpp>
+#include <boost/safe_numerics/checked_result_operations.hpp>
+#include <boost/safe_numerics/safe_base_operations.hpp>
+#include <boost/safe_numerics/safe_common.hpp>
 #include <chrono>
 #include <exception>
-#include <optional>
-#include <string>
-
 #include <fmt/format.h>
-
-#include <userver/components/component.hpp>
+#include <optional>
+#include <stdint.h>
+#include <string>
+#include <userver/engine/deadline.hpp>
 #include <userver/engine/exception.hpp>
-#include <userver/engine/task/current_task.hpp>
-#include <userver/formats/json.hpp>
-#include <userver/formats/serialize/common_containers.hpp>
-#include <userver/http/common_headers.hpp>
-#include <userver/http/content_type.hpp>
+#include <userver/engine/task/cancel.hpp>
+#include <userver/formats/json/serialize.hpp>
+#include <userver/formats/json/value.hpp>
 #include <userver/http/status_code.hpp>
+#include <userver/logging/level.hpp>
 #include <userver/logging/log.hpp>
+#include <userver/logging/log_helper.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_method.hpp>
 #include <userver/server/http/http_request.hpp>
-#include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
-#include <userver/utils/boost_uuid4.hpp>
+#include <userver/utils/zstring_view.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <userver/yaml_config/yaml_config.hpp>
+#include <utility>
 
 using namespace v1;
 using namespace text::literals;

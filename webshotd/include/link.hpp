@@ -1,11 +1,9 @@
 #pragma once
 
-#include "url.hpp"
-
-#include <stdexcept>
-#include <string>
-
 #include "text.hpp"
+#include "url.hpp"
+#include <stddef.h>
+#include <stdexcept>
 
 namespace v1 {
 /**

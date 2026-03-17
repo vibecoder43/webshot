@@ -1,11 +1,9 @@
 #pragma once
 
 #include "text.hpp"
-
-#include <optional>
-
-#include <ada.h>
+#include <ada/scheme.h>
 #include <ada/url_aggregator.h>
+#include <optional>
 
 namespace v1 {
 

@@ -1,4 +1,3 @@
-#include "crud.hpp"
 /**
  * @file
  * @brief Implementation of storage and crawl orchestration.
@@ -6,9 +5,13 @@
  * Implements the `Crud` component, including background crawl startup,
  * metadata writes, and various paged queries.
  */
+
+#include "crud.hpp"
 #include "config.hpp"
 #include "crawler/failure.hpp"
+#include "crawler/fallback.hpp"
 #include "crawler/runner.hpp"
+#include "cursor.hpp"
 #include "denylist.hpp"
 #include "integers.hpp"
 #include "link.hpp"
@@ -17,58 +20,72 @@
 #include "prefix_utils.hpp"
 #include "s3/s3_sts_client.hpp"
 #include "s3/s3_v4_client.hpp"
+#include "s3_credentials_types.hpp"
 #include "s3_refresh_utils.hpp"
 #include "s3_secdist.hpp"
 #include "schema/webshot.hpp"
 #include "server_errors.hpp"
 #include "text.hpp"
-#include "text_postgres_formatter.hpp"
-
-#include <webshot/sql_queries.hpp>
-
+#include <boost/pfr/detail/core17.hpp>
+#include <boost/safe_numerics/checked_default.hpp>
+#include <boost/safe_numerics/checked_result_operations.hpp>
+#include <boost/safe_numerics/safe_base.hpp>
+#include <boost/safe_numerics/safe_base_operations.hpp>
+#include <boost/safe_numerics/safe_common.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <chrono>
+#include <compare>
 #include <cstdlib>
 #include <exception>
+#include <fmt/format.h>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <shared_mutex>
+#include <stdint.h>
 #include <string>
 #include <string_view>
-#include <utility>
-
-#include <boost/uuid/uuid.hpp>
-
-#include <fmt/format.h>
-
+#include <userver/clients/http/client.hpp>
 #include <userver/clients/http/component.hpp>
-#include <userver/components/component.hpp>
 #include <userver/components/component_base.hpp>
 #include <userver/components/process_starter.hpp>
 #include <userver/concurrent/background_task_storage.hpp>
-#include <userver/crypto/base64.hpp>
+#include <userver/engine/deadline.hpp>
 #include <userver/engine/semaphore.hpp>
 #include <userver/engine/sleep.hpp>
-#include <userver/engine/task/current_task.hpp>
+#include <userver/engine/subprocess/process_starter.hpp>
+#include <userver/engine/task/cancel.hpp>
 #include <userver/engine/task/task_processor_fwd.hpp>
-#include <userver/formats/json.hpp>
+#include <userver/engine/task/task_with_result.hpp>
+#include <userver/logging/level.hpp>
 #include <userver/logging/log.hpp>
+#include <userver/logging/log_helper.hpp>
 #include <userver/rcu/rcu.hpp>
-#include <userver/storages/postgres/cluster.hpp>
+#include <userver/storages/postgres/cluster_types.hpp>
+#include <userver/storages/postgres/component.hpp>
+#include <userver/storages/postgres/detail/iterator_direction.hpp>
+#include <userver/storages/postgres/io/buffer_io.hpp>
 #include <userver/storages/postgres/io/chrono.hpp>
 #include <userver/storages/postgres/io/row_types.hpp>
-#include <userver/storages/postgres/io/uuid.hpp>
-#include <userver/storages/postgres/postgres.hpp>
+#include <userver/storages/postgres/io/traits.hpp>
+#include <userver/storages/postgres/io/type_traits.hpp>
+#include <userver/storages/postgres/postgres_fwd.hpp>
+#include <userver/storages/postgres/result_set.hpp>
+#include <userver/storages/postgres/row.hpp>
 #include <userver/storages/secdist/component.hpp>
 #include <userver/storages/secdist/secdist.hpp>
 #include <userver/utils/assert.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/utils/boost_uuid4.hpp>
-#include <userver/utils/datetime.hpp>
-#include <userver/utils/datetime/from_string_saturating.hpp>
 #include <userver/utils/datetime/timepoint_tz.hpp>
+#include <userver/utils/datetime_light.hpp>
 #include <userver/utils/periodic_task.hpp>
+#include <userver/utils/strong_typedef_fwd.hpp>
+#include <userver/utils/zstring_view.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
+#include <utility>
+#include <webshot/sql_queries.hpp>
 
 namespace pg = us::storages::postgres;
 namespace engine = us::engine;

@@ -1,10 +1,8 @@
 #include "crawler/failure.hpp"
-
+#include "crawler/fallback.hpp"
 #include <algorithm>
 #include <exception>
-
-#include <fmt/format.h>
-
+#include <stddef.h>
 #include <userver/fs/blocking/read.hpp>
 
 namespace us = userver;
