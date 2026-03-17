@@ -1,5 +1,6 @@
 #include "s3/s3_sts_client.hpp"
 
+#include "integers.hpp"
 #include "link.hpp"
 #include "s3/s3_url_utils.hpp"
 #include "s3/sigv4_signer.hpp"
@@ -67,7 +68,7 @@ StsCredentials detail::fetchStsWithExecutor(
     std::chrono::milliseconds timeout
 )
 {
-    const auto stsLink = Link::fromText(stsEndpoint, static_cast<size_t>(stsEndpoint.sizeBytes()));
+    const auto stsLink = Link::fromText(stsEndpoint, stsEndpoint.sizeBytes());
     UINVARIANT(stsLink.url.isHttps(), "STS endpoint must use https scheme");
 
     const auto host = stsLink.url.host();
@@ -136,7 +137,7 @@ StsCredentials fetchStsCredentials(
                         .headers(headers)
                         .timeout(timeoutMs)
                         .perform();
-        const auto status = static_cast<int>(resp->status_code());
+        const auto status = numericCast<int>(resp->status_code());
         if (status >= 300) {
             const auto bodyOut = resp->body();
             if (const auto bodyUtf8 = String::fromBytes(bodyOut)) {

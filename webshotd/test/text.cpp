@@ -6,6 +6,7 @@
 #include <uni_algo/conv.h>
 #include <uni_algo/norm.h>
 
+#include "integers.hpp"
 #include "text.hpp"
 
 using namespace text::literals;
@@ -107,11 +108,11 @@ UTEST(TextString, SizeAndEmptyConsistency)
 {
     String empty;
     EXPECT_TRUE(empty.empty());
-    EXPECT_EQ(empty.sizeBytes(), static_cast<size_t>(0));
+    EXPECT_EQ(empty.sizeBytes(), numericCast<size_t>(0));
 
     const auto value = "xyz"_t;
     EXPECT_FALSE(value.empty());
-    EXPECT_EQ(value.sizeBytes(), static_cast<size_t>(3));
+    EXPECT_EQ(value.sizeBytes(), numericCast<size_t>(3));
 }
 
 UTEST(TextString, PlusConcatenatesAscii)
@@ -190,7 +191,7 @@ UTEST(TextString, HandlesLongCombiningSequenceStreamSafe)
     EXPECT_TRUE(isUtf8(value.view()));
     constexpr size_t kNonStarters = 1000UL;
     constexpr size_t kExtraBytes = streamSafeExtraBytesUpperBoundForNonStarters(kNonStarters);
-    EXPECT_LE(value.sizeBytes(), static_cast<size_t>(input.size()) + kExtraBytes);
+    EXPECT_LE(value.sizeBytes(), input.size() + kExtraBytes);
 }
 
 UTEST(TextString, Idempotence)

@@ -426,9 +426,9 @@ bool CdpClient::tryPumpOnce()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", static_cast<int>(*message.close_status));
+        traceClose("in", numericCast<int>(*message.close_status));
         throw std::runtime_error(
-            fmt::format("cdp socket closed ({})", static_cast<int>(*message.close_status))
+            fmt::format("cdp socket closed ({})", numericCast<int>(*message.close_status))
         );
     }
     handleMessage(message.data);
@@ -454,7 +454,7 @@ void CdpClient::close()
 {
     if (closed)
         return;
-    traceClose("out", static_cast<int>(us::websocket::CloseStatus::kNormal));
+    traceClose("out", numericCast<int>(us::websocket::CloseStatus::kNormal));
     closed = true;
     try {
         if (connection)
@@ -478,9 +478,9 @@ void CdpClient::pumpOne()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", static_cast<int>(*message.close_status));
+        traceClose("in", numericCast<int>(*message.close_status));
         throw std::runtime_error(
-            fmt::format("cdp socket closed ({})", static_cast<int>(*message.close_status))
+            fmt::format("cdp socket closed ({})", numericCast<int>(*message.close_status))
         );
     }
     handleMessage(message.data);

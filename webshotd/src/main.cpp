@@ -11,6 +11,7 @@
 #include "disallow_and_purge_handler.hpp"
 #include "docs_handler.hpp"
 #include "handler.hpp"
+#include "integers.hpp"
 #include "job_handler.hpp"
 
 #include <cstdlib>
@@ -43,7 +44,7 @@ void writeStderr(std::string_view text) noexcept
         const auto written = ::write(STDERR_FILENO, text.data(), text.size());
         if (written <= 0)
             return;
-        text.remove_prefix(static_cast<size_t>(written));
+        text.remove_prefix(numericCast<size_t>(written));
     }
 }
 

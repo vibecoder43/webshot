@@ -1,5 +1,6 @@
 #pragma once
 
+#include "integers.hpp"
 #include "text.hpp"
 
 #include <cstdint>
@@ -120,7 +121,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 
 [[nodiscard]] inline bool isAttemptSuccess(const AttemptSummary &attempt) noexcept
 {
-    return attempt.exited && attempt.exitCode == static_cast<int>(CrawlerExitCode::kSuccess) &&
+    return attempt.exited && attempt.exitCode == numericCast<int>(CrawlerExitCode::kSuccess) &&
            attempt.waczExists;
 }
 
@@ -128,7 +129,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 {
     if (!httpsAttempt.exited)
         return false;
-    if (httpsAttempt.exitCode == static_cast<int>(CrawlerExitCode::kSuccess))
+    if (httpsAttempt.exitCode == numericCast<int>(CrawlerExitCode::kSuccess))
         return false;
     if (isNonRetryableCrawlerExitCode(httpsAttempt.exitCode))
         return false;
@@ -145,9 +146,9 @@ template <typename AttemptFn>
         return {RunOutcome::kSucceeded, httpsAttempt, {}};
     if (!httpsAttempt.exited)
         return {RunOutcome::kFailedChildNoExit, httpsAttempt, {}};
-    if (httpsAttempt.exitCode == static_cast<int>(CrawlerExitCode::kSizeLimit))
+    if (httpsAttempt.exitCode == numericCast<int>(CrawlerExitCode::kSizeLimit))
         return {RunOutcome::kFailedSizeLimit, httpsAttempt, {}};
-    if (httpsAttempt.exitCode == static_cast<int>(CrawlerExitCode::kSuccess) &&
+    if (httpsAttempt.exitCode == numericCast<int>(CrawlerExitCode::kSuccess) &&
         !httpsAttempt.waczExists)
         return {RunOutcome::kFailedNoWacz, httpsAttempt, {}};
     if (!shouldAttemptHttpFallback(httpsAttempt))
@@ -158,9 +159,9 @@ template <typename AttemptFn>
         return {RunOutcome::kSucceeded, httpsAttempt, httpAttempt};
     if (!httpAttempt.exited)
         return {RunOutcome::kFailedChildNoExit, httpsAttempt, httpAttempt};
-    if (httpAttempt.exitCode == static_cast<int>(CrawlerExitCode::kSizeLimit))
+    if (httpAttempt.exitCode == numericCast<int>(CrawlerExitCode::kSizeLimit))
         return {RunOutcome::kFailedSizeLimit, httpsAttempt, httpAttempt};
-    if (httpAttempt.exitCode == static_cast<int>(CrawlerExitCode::kSuccess) &&
+    if (httpAttempt.exitCode == numericCast<int>(CrawlerExitCode::kSuccess) &&
         !httpAttempt.waczExists)
         return {RunOutcome::kFailedNoWacz, httpsAttempt, httpAttempt};
     return {RunOutcome::kFailed, httpsAttempt, httpAttempt};
