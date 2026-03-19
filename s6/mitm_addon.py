@@ -10,12 +10,12 @@ from mitmproxy import ctx, exceptions, http
 if TYPE_CHECKING:
     from mitmproxy.proxy import server_hooks
 
-kDenylistTimeoutSec = 5.0
-kLocalHosts = frozenset({"test-target", "asset.test-target"})
-kLocalHttpPorts = frozenset({80, 18080})
-kLocalHttpsPorts = frozenset({443, 18443})
-kLocalHttpAddress = ("127.0.0.1", 18080)
-kLocalHttpsAddress = ("127.0.0.1", 18443)
+DENYLIST_TIMEOUT_SEC = 5.0
+LOCAL_HOSTS = frozenset({"test-target", "asset.test-target"})
+LOCAL_HTTP_PORTS = frozenset({80, 18080})
+LOCAL_HTTPS_PORTS = frozenset({443, 18443})
+LOCAL_HTTP_ADDRESS = ("127.0.0.1", 18080)
+LOCAL_HTTPS_ADDRESS = ("127.0.0.1", 18443)
 
 
 class WebshotProxy:
@@ -58,16 +58,16 @@ class WebshotProxy:
             return
 
         original_host, original_port = data.server.address
-        if original_host not in kLocalHosts:
+        if original_host not in LOCAL_HOSTS:
             return
 
-        if original_port in kLocalHttpPorts:
-            data.server.address = kLocalHttpAddress
+        if original_port in LOCAL_HTTP_PORTS:
+            data.server.address = LOCAL_HTTP_ADDRESS
             data.server.sni = None
             return
 
-        if original_port in kLocalHttpsPorts:
-            data.server.address = kLocalHttpsAddress
+        if original_port in LOCAL_HTTPS_PORTS:
+            data.server.address = LOCAL_HTTPS_ADDRESS
             data.server.sni = original_host
 
     def _normalize_local_request(self, flow: http.HTTPFlow) -> None:
@@ -103,22 +103,22 @@ class WebshotProxy:
             return
 
         port = flow.request.port
-        if port in kLocalHttpPorts:
-            flow.server_conn.address = kLocalHttpAddress
+        if port in LOCAL_HTTP_PORTS:
+            flow.server_conn.address = LOCAL_HTTP_ADDRESS
             flow.server_conn.sni = None
             return
 
-        if port in kLocalHttpsPorts:
-            flow.server_conn.address = kLocalHttpsAddress
+        if port in LOCAL_HTTPS_PORTS:
+            flow.server_conn.address = LOCAL_HTTPS_ADDRESS
             flow.server_conn.sni = host
 
     def _resolve_local_host(self, flow: http.HTTPFlow) -> str | None:
         request_host = flow.request.host
-        if request_host in kLocalHosts:
+        if request_host in LOCAL_HOSTS:
             return request_host
 
         server_sni = flow.server_conn.sni
-        if server_sni in kLocalHosts:
+        if server_sni in LOCAL_HOSTS:
             return server_sni
 
         return None
@@ -135,7 +135,7 @@ class WebshotProxy:
             return url
 
         hostname = parts.hostname
-        if hostname not in kLocalHosts:
+        if hostname not in LOCAL_HOSTS:
             return url
 
         port = parts.port
@@ -203,7 +203,7 @@ class WebshotProxy:
         port = request.port
 
         if request.method == "CONNECT" or request.first_line_format == "authority":
-            scheme = "https" if port in kLocalHttpsPorts else "http"
+            scheme = "https" if port in LOCAL_HTTPS_PORTS else "http"
             path = "/"
         else:
             scheme = request.scheme
@@ -237,7 +237,7 @@ class WebshotProxy:
             headers={"Content-Type": "text/plain; charset=utf-8"},
         )
         try:
-            with urlopen(request, timeout=kDenylistTimeoutSec) as response:
+            with urlopen(request, timeout=DENYLIST_TIMEOUT_SEC) as response:
                 status = response.getcode()
                 body = response.read()
                 content_type = response.headers.get("Content-Type")
