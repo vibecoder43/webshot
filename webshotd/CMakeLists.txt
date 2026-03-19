@@ -54,6 +54,39 @@ set(CMAKE_LINKER_TYPE MOLD)
 # `LD_LIBRARY_PATH` by embedding runtime search paths for linked dependencies.
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
 
+set_property(
+  DIRECTORY
+  APPEND
+  PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh")
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
+     WEBSHOT_BROWSER_SANDBOX_SH_CONTENT)
+set(_webshot_browser_sandbox_delim "WSBSH")
+set(_webshot_browser_sandbox_terminator ")${_webshot_browser_sandbox_delim}\"")
+string(FIND "${WEBSHOT_BROWSER_SANDBOX_SH_CONTENT}"
+            "${_webshot_browser_sandbox_terminator}"
+            _webshot_browser_sandbox_terminator_pos)
+if(NOT _webshot_browser_sandbox_terminator_pos EQUAL -1)
+  message(
+    FATAL_ERROR
+      "browser_sandbox.sh contains raw-string terminator '${_webshot_browser_sandbox_terminator}'. Please change the delimiter in CMakeLists.txt.")
+endif()
+
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/crawler")
+file(
+  WRITE "${CMAKE_CURRENT_BINARY_DIR}/src/crawler/browser_sandbox.sh.hpp"
+  "#pragma once\n"
+  "\n"
+  "#include <string_view>\n"
+  "\n"
+  "namespace v1::crawler {\n"
+  "\n"
+  "inline constexpr std::string_view kBrowserSandboxScript = R\"${_webshot_browser_sandbox_delim}(\n"
+  "${WEBSHOT_BROWSER_SANDBOX_SH_CONTENT}\n"
+  ")${_webshot_browser_sandbox_delim}\";\n"
+  "\n"
+  "} // namespace v1::crawler\n")
+
 set(${PROJECT_NAME}_headers
     include/integers.hpp
     include/s3_credentials_types.hpp
@@ -141,10 +174,6 @@ add_executable(${PROJECT_NAME} src/main.cpp
 apply_defaults(${PROJECT_NAME}_objs)
 apply_defaults(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME webshotd)
-target_compile_definitions(
-  ${PROJECT_NAME}_objs
-  PRIVATE
-    WEBSHOT_BROWSER_SANDBOX_SCRIPT_PATH="${CMAKE_INSTALL_PREFIX}/webshotd/browser_sandbox.sh")
 add_custom_target(
   ${PROJECT_NAME}_stage_runtime_layout ALL
   COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_INSTALL_PREFIX}/webshotd"
@@ -155,12 +184,7 @@ add_custom_target(
     ${CMAKE_COMMAND} -E copy_if_different
     "${CMAKE_BINARY_DIR}/CMakeCache.txt"
     "${CMAKE_INSTALL_PREFIX}/webshotd/CMakeCache.txt"
-  COMMAND
-    ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
-    "${CMAKE_INSTALL_PREFIX}/webshotd/browser_sandbox.sh"
   DEPENDS ${PROJECT_NAME} "${CMAKE_BINARY_DIR}/CMakeCache.txt"
-          "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
   VERBATIM)
 
 if(WEBSHOT_RAPIDOC_ASSETS_DIR STREQUAL "")
@@ -274,8 +298,6 @@ target_include_directories(
                                ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION "webshotd")
-install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.sh"
-        DESTINATION "webshotd")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/"
         DESTINATION "webshotd/config")
 install(DIRECTORY "${WEBSHOT_REPO_ROOT}/schema/"

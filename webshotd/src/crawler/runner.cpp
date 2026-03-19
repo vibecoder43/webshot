@@ -2,6 +2,7 @@
 
 #include "crawler/artifacts.hpp"
 #include "crawler/browser_sandbox.hpp"
+#include "crawler/browser_sandbox.sh.hpp"
 #include "crawler/cdp_client.hpp"
 #include "crawler/failure.hpp"
 #include "crawler/launch_policy.hpp"
@@ -13,7 +14,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <boost/uuid/uuid_io.hpp>
 #include <cctype>
 #include <chrono>
@@ -55,16 +55,9 @@ namespace v1 {
 namespace {
 
 constexpr auto kMaxBodyBytes = 50_i64 * 1024_i64 * 1024_i64;
-constexpr std::string_view kBwrapBin = "bwrap";
-constexpr std::string_view kBashBin = "bash";
-constexpr std::string_view kSocatBin = "socat";
-constexpr std::string_view kBrowserSandboxScriptPath = WEBSHOT_BROWSER_SANDBOX_SCRIPT_PATH;
-constexpr std::string_view kBwrapStatusWrapperScript = R"(exec 3>"$1"; shift; exec "$@")";
 constexpr std::string_view kBrowserRunsRoot = "/tmp/webshot/browser-runs";
-constexpr std::string_view kBrowserFailuresRoot = "/tmp/webshot/browser-failures";
 constexpr size_t kMaxLogBytes = 64UL * 1024UL;
-
-std::atomic<uint64_t> gBrowserFailureSequence = 0;
+const std::string kBwrapStatusWrapperScript = R"(exec 3>"$1"; shift; exec "$@")";
 
 [[nodiscard]] std::string lowerAscii(std::string_view text)
 {
@@ -133,7 +126,6 @@ template <typename T> [[nodiscard]] T parseEventParams(const crawler::CdpEvent &
 }
 
 struct [[nodiscard]] BrowserPaths {
-    us::fs::blocking::TempDirectory tempDir;
     std::string rootDir;
     std::string userDataDir;
     std::string xdgConfigHome;
@@ -157,10 +149,17 @@ struct [[nodiscard]] BrowserPaths {
     BrowserPaths paths;
     const auto tempRoot = std::string(kBrowserRunsRoot);
     us::fs::blocking::CreateDirectories(tempRoot);
-    paths.tempDir = us::fs::blocking::TempDirectory::Create(tempRoot, "browser-");
 
-    const auto rootDir = paths.tempDir.GetPath();
-    paths.rootDir = rootDir;
+    paths.rootDir = fmt::format(
+        "{}/browser-{}", tempRoot,
+        boost::uuids::to_string(us::utils::generators::GenerateBoostUuid())
+    );
+    us::fs::blocking::CreateDirectories(paths.rootDir);
+
+    const auto rootDir = paths.rootDir;
+    us::fs::blocking::RewriteFileContents(
+        rootDir + "/browser_sandbox.sh", std::string(crawler::kBrowserSandboxScript)
+    );
     paths.userDataDir = rootDir + "/profile";
     paths.xdgConfigHome = rootDir + "/xdg-config";
     paths.xdgCacheHome = rootDir + "/xdg-cache";
@@ -258,13 +257,23 @@ void appendDiagnosticField(std::string &out, std::string_view label, std::string
     out += value;
 }
 
-void copyFileIfExists(const std::string &sourcePath, const std::string &destPath)
+void removeBrowserRunDirNoThrow(const std::string &path) noexcept
 {
-    if (!us::fs::blocking::FileExists(sourcePath))
+    if (path.empty())
         return;
 
-    auto contents = us::fs::blocking::ReadFileContents(sourcePath);
-    us::fs::blocking::RewriteFileContents(destPath, contents);
+    const auto prefix = std::string_view(kBrowserRunsRoot);
+    if (path.size() < prefix.size() || path.compare(0, prefix.size(), prefix) != 0) {
+        LOG_WARNING() << fmt::format("Refusing to remove browser dir outside {}: {}", prefix, path);
+        return;
+    }
+
+    try {
+        auto tempDir = us::fs::blocking::TempDirectory::Adopt(path);
+        std::move(tempDir).Remove();
+    } catch (const std::exception &e) {
+        LOG_WARNING() << fmt::format("Failed to remove browser dir {}: {}", path, e.what());
+    }
 }
 
 [[nodiscard]] std::optional<String> readWebsocketPathFile(const std::string &path)
@@ -299,9 +308,7 @@ spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const B
         "UNIX-LISTEN:" + paths.proxySocketPath + ",fork,unlink-early",
         fmt::format("TCP-CONNECT:127.0.0.1:{}", crawler::kProxyUpstreamPort),
     };
-    return spawnProcess(
-        processStarter, std::string(kSocatBin), args, paths.devNullPath, paths.devNullPath
-    );
+    return spawnProcess(processStarter, "socat", args, paths.devNullPath, paths.devNullPath);
 }
 
 [[nodiscard]] us::engine::subprocess::ChildProcess spawnSandboxedBrowser(
@@ -310,7 +317,7 @@ spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const B
 {
     auto chromiumArgs = crawler::buildChromiumArgs(paths.userDataDir, paths.netlogPath);
     auto bwrapArgs = std::vector<std::string>{
-        std::string(kBwrapBin),
+        "bwrap",
         "--json-status-fd",
         "3",
         "--die-with-parent",
@@ -353,8 +360,8 @@ spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const B
         paths.crashpadDir,
         "--chdir",
         paths.rootDir,
-        std::string(kBashBin),
-        std::string(kBrowserSandboxScriptPath),
+        "bash",
+        "browser_sandbox.sh",
         paths.proxySocketPath,
         paths.cdpSocketPath,
         paths.websocketPathFilePath,
@@ -367,14 +374,12 @@ spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const B
 
     auto args = std::vector<std::string>{
         "-c",
-        std::string(kBwrapStatusWrapperScript),
-        std::string(kBashBin),
+        kBwrapStatusWrapperScript,
+        "bash",
         paths.bwrapStatusFilePath,
     };
     args.insert(std::end(args), std::begin(bwrapArgs), std::end(bwrapArgs));
-    return spawnProcess(
-        processStarter, std::string(kBashBin), args, paths.stdoutLogPath, paths.stderrLogPath
-    );
+    return spawnProcess(processStarter, "bash", args, paths.stdoutLogPath, paths.stderrLogPath);
 }
 
 template <typename Process> void stopProcess(Process &process, chrono::milliseconds timeout)
@@ -457,32 +462,8 @@ public:
         if (paths.rootDir.empty())
             return {};
 
-        const auto targetRoot = std::string(kBrowserFailuresRoot);
-        us::fs::blocking::CreateDirectories(targetRoot);
-
-        const auto targetDir = fmt::format(
-            "{}/browser-failure-{}", targetRoot, gBrowserFailureSequence.fetch_add(1) + 1
-        );
-        us::fs::blocking::CreateDirectories(targetDir);
-
-        using ArtifactFile = std::pair<const std::string *, std::string_view>;
-        const auto artifactFiles = std::array<ArtifactFile, 8>{{
-            ArtifactFile{&paths.stdoutLogPath, "/stdout.log"},
-            ArtifactFile{&paths.stderrLogPath, "/stderr.log"},
-            ArtifactFile{&paths.chromiumStderrLogPath, "/chromium-stderr.log"},
-            ArtifactFile{&paths.bwrapStatusFilePath, "/bwrap-status.jsonl"},
-            ArtifactFile{&paths.phaseFilePath, "/phase.txt"},
-            ArtifactFile{&paths.netlogPath, "/netlog.json"},
-            ArtifactFile{&paths.cdpTracePath, "/cdp-trace.jsonl"},
-            ArtifactFile{&paths.websocketPathFilePath, "/websocket_path.txt"},
-        }};
-        for (const auto &[sourcePath, suffix] : artifactFiles) {
-            auto destPath = targetDir;
-            destPath += suffix;
-            copyFileIfExists(*sourcePath, destPath);
-        }
-
-        preservedFailureDir = targetDir;
+        preserveRunDir = true;
+        preservedFailureDir = paths.rootDir;
         return preservedFailureDir;
     }
 
@@ -543,8 +524,8 @@ public:
 
         stopProcess(process, chrono::milliseconds(1500));
         stopProcess(proxyBridge, chrono::milliseconds(500));
-        if (!paths.rootDir.empty())
-            std::move(paths.tempDir).Remove();
+        if (!paths.rootDir.empty() && !preserveRunDir)
+            removeBrowserRunDirNoThrow(paths.rootDir);
     }
 
 private:
@@ -593,6 +574,7 @@ private:
     std::optional<us::engine::subprocess::ChildProcess> process;
     String websocketPath;
     std::optional<std::string> preservedFailureDir;
+    bool preserveRunDir{false};
     bool closed{false};
 };
 

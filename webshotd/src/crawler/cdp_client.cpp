@@ -6,7 +6,6 @@
 #include <array>
 #include <cctype>
 #include <chrono>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
@@ -306,8 +305,9 @@ void validateHandshakeResponse(const HandshakeResponse &response, std::string_vi
 
 } // namespace
 
-CdpClient::CdpClient(std::string socketPathIn, String websocketPathIn, std::string tracePath)
-    : socketPath(std::move(socketPathIn)), websocketPath(std::move(websocketPathIn))
+CdpClient::CdpClient(std::string socketPathIn, String websocketPathIn, std::string tracePathIn)
+    : socketPath(std::move(socketPathIn)), websocketPath(std::move(websocketPathIn)),
+      tracePath(std::move(tracePathIn))
 {
     auto socket = us::engine::io::Socket{
         us::engine::io::AddrDomain::kUnix, us::engine::io::SocketType::kStream
@@ -343,9 +343,20 @@ CdpClient::CdpClient(std::string socketPathIn, String websocketPathIn, std::stri
         std::move(connectionSocket), std::move(address), {}
     );
 
-    traceStream.open(tracePath, std::ios::out | std::ios::app);
-    if (!traceStream.is_open())
-        throw std::runtime_error(fmt::format("failed to open cdp trace file: {}", tracePath));
+    UINVARIANT(!tracePath.empty(), "cdp trace path must not be empty");
+    try {
+        traceFile = us::fs::blocking::FileDescriptor::Open(
+            tracePath, us::fs::blocking::OpenMode{
+                           us::fs::blocking::OpenFlag::kWrite,
+                           us::fs::blocking::OpenFlag::kCreateIfNotExists,
+                           us::fs::blocking::OpenFlag::kAppend,
+                       }
+        );
+    } catch (const std::exception &e) {
+        throw std::runtime_error(
+            fmt::format("failed to open cdp trace file: {} ({})", tracePath, e.what())
+        );
+    }
 }
 
 CdpClient::~CdpClient() noexcept { closeNoThrow(); }
@@ -566,10 +577,15 @@ std::string CdpClient::makeEndpointPath() const
 
 void CdpClient::writeTraceLine(const json::Value &value)
 {
-    traceStream << json::ToString(value) << '\n';
-    traceStream.flush();
-    if (!traceStream)
-        throw std::runtime_error("failed to write cdp trace");
+    auto line = json::ToString(value);
+    line.push_back('\n');
+    try {
+        traceFile.Write(line);
+    } catch (const std::exception &e) {
+        throw std::runtime_error(
+            fmt::format("failed to write cdp trace to {} ({})", tracePath, e.what())
+        );
+    }
 }
 
 void CdpClient::traceCommand(

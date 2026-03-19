@@ -4,7 +4,6 @@
 #include "schema/cdp.hpp"
 #include "text.hpp"
 
-#include <fstream>
 #include <functional>
 #include <optional>
 #include <string>
@@ -15,6 +14,7 @@
 #include <userver/engine/deadline.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
+#include <userver/fs/blocking/file_descriptor.hpp>
 #include <userver/websocket/connection.hpp>
 
 namespace us = userver;
@@ -32,7 +32,7 @@ public:
     using ListenerId = int64_t;
     using EventListener = std::function<void(CdpEvent)>;
 
-    CdpClient(std::string socketPath, String websocketPath, std::string tracePath);
+    CdpClient(std::string socketPath, String websocketPath, std::string tracePathIn);
 
     ~CdpClient() noexcept;
 
@@ -116,7 +116,8 @@ private:
     std::unordered_map<ListenerId, EventListener> listeners;
     std::unordered_map<int64_t, us::formats::json::Value> pendingResults;
     std::unordered_map<int64_t, PendingRequestTrace> pendingRequests;
-    std::ofstream traceStream;
+    std::string tracePath;
+    us::fs::blocking::FileDescriptor traceFile;
     ListenerId nextListenerId{1};
     int64_t nextRequestId{1};
     bool closed{false};

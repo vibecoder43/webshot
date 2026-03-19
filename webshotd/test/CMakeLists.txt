@@ -145,8 +145,10 @@ if(USERVER_FEATURE_TESTSUITE)
     $<$<BOOL:WEBSHOT_ENABLE_SQL_COVERAGE>:SQL_LIBRARY>
     $<$<BOOL:WEBSHOT_ENABLE_SQL_COVERAGE>:${PROJECT_NAME}_sql>
     WORKING_DIRECTORY
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}
     PYTEST_ARGS
+    -c
+    ${CMAKE_CURRENT_SOURCE_DIR}/pytest.ini
     --service-config=${CMAKE_SOURCE_DIR}/config/static_config.yaml
     --service-config-vars=${CMAKE_SOURCE_DIR}/config/config_vars.testsuite.yaml
     --service-binary=${CMAKE_INSTALL_PREFIX}/webshotd/webshotd
