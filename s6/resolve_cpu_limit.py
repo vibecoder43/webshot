@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 
 from s6.common import ToolError, die
@@ -149,7 +150,7 @@ def main() -> int:
         return 0
     except ToolError as e:
         if e.message:
-            print(e.message, file=os.sys.stderr)
+            print(e.message, file=sys.stderr)
         return e.exit_code
 
 

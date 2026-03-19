@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ def format_cmd(cmd: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in cmd)
 
 
-def die(message: str, *, exit_code: int = 2) -> None:
+def die(message: str, *, exit_code: int = 2) -> NoReturn:
     raise ToolError(message=message, exit_code=exit_code)
 
 

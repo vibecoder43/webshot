@@ -151,4 +151,12 @@ in {
     // {
       showOutput = true;
     };
+
+  tasks."webshot:ty" = {
+    cwd = config.devenv.root;
+    exec = ''
+      set -euo pipefail
+      ty check --no-progress
+    '';
+  };
 }

@@ -57,5 +57,14 @@ in {
       language = "system";
       files = "\\.sql$";
     };
+
+    ty = {
+      enable = true;
+      entry = "ty check --no-progress";
+      package = common.pkgsWithOverlay.ty;
+      language = "system";
+      types = ["python"];
+      pass_filenames = false;
+    };
   };
 }

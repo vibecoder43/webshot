@@ -12,6 +12,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlsplit
 
 import yaml
@@ -139,16 +140,20 @@ def _require_cmake_cache_string(path: Path, key: str) -> str:
 
 def _require_yaml_path(raw: dict[str, object], key: str, *, source: Path) -> Path:
     value = raw.get(key)
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str):
         die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    return Path(value)
+    if not value:
+        die(f"Missing required config var '{key}' in {source}", exit_code=2)
+    return Path(cast(str, value))
 
 
 def _require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> str:
     value = raw.get(key)
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str):
         die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    return value
+    if not value:
+        die(f"Missing required config var '{key}' in {source}", exit_code=2)
+    return cast(str, value)
 
 
 def _database_name_from_dsn(dsn: str, *, key: str, source: Path) -> str:
