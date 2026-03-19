@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <array>
 #include <boost/uuid/uuid_io.hpp>
-#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <exception>
@@ -30,6 +29,8 @@
 #include <vector>
 
 #include <fmt/format.h>
+
+#include <absl/strings/ascii.h>
 
 #include <userver/crypto/base64.hpp>
 #include <userver/engine/deadline.hpp>
@@ -74,15 +75,6 @@ const std::string kBwrapStatusWrapperScript = R"(exec 3>"$1"; shift; exec "$@")"
     return fmt::format("{}/browser_runs", root);
 }
 
-[[nodiscard]] std::string lowerAscii(std::string_view text)
-{
-    std::string out(text);
-    std::transform(std::begin(out), std::end(out), std::begin(out), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return out;
-}
-
 [[nodiscard]] String currentTimestamp()
 {
     return String::fromBytesThrow(
@@ -97,7 +89,7 @@ normalizeHeaders(const dto::CdpHeaders &headers)
 {
     std::unordered_map<std::string, std::string> out;
     for (const auto &[name, value] : headers.extra)
-        out.emplace(lowerAscii(name), value);
+        out.emplace(absl::AsciiStrToLower(std::string_view{name}), value);
     return out;
 }
 
@@ -239,8 +231,6 @@ void writePhaseMarker(const std::string &path, std::string_view phase)
     return value;
 }
 
-[[nodiscard]] std::string formatBool(bool value) { return value ? "true" : "false"; }
-
 [[nodiscard]] bool isProcessRunning(std::optional<us::engine::subprocess::ChildProcess> &process)
 {
     return process && !process->WaitFor(chrono::milliseconds(0));
@@ -290,8 +280,7 @@ void removeBrowserRunDirNoThrow(const std::string &path) noexcept
     if (!us::fs::blocking::FileExists(path))
         return {};
     auto value = us::fs::blocking::ReadFileContents(path);
-    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
-        value.pop_back();
+    absl::StripTrailingAsciiWhitespace(&value);
     if (value.empty())
         return {};
     return String::fromBytesThrow(value);
@@ -501,21 +490,22 @@ public:
                 appendDiagnosticField(diagnostics, "websocket_path", websocketPath->view());
             appendDiagnosticField(
                 diagnostics, "websocket_path_file_exists",
-                formatBool(us::fs::blocking::FileExists(paths.websocketPathFilePath))
+                us::fs::blocking::FileExists(paths.websocketPathFilePath) ? "true" : "false"
             );
             appendDiagnosticField(
                 diagnostics, "netlog_exists",
-                formatBool(us::fs::blocking::FileExists(paths.netlogPath))
+                us::fs::blocking::FileExists(paths.netlogPath) ? "true" : "false"
             );
             appendDiagnosticField(
-                diagnostics, "browser_process_running", formatBool(isProcessRunning(process))
+                diagnostics, "browser_process_running", isProcessRunning(process) ? "true" : "false"
             );
             appendDiagnosticField(
                 diagnostics, "cdp_socket_exists",
-                formatBool(us::fs::blocking::FileExists(paths.cdpSocketPath))
+                us::fs::blocking::FileExists(paths.cdpSocketPath) ? "true" : "false"
             );
             appendDiagnosticField(
-                diagnostics, "proxy_bridge_running", formatBool(isProcessRunning(proxyBridge))
+                diagnostics, "proxy_bridge_running",
+                isProcessRunning(proxyBridge) ? "true" : "false"
             );
             if (preservedDir)
                 appendDiagnosticField(diagnostics, "preserved_browser_dir", preservedDir.value());
@@ -1325,10 +1315,6 @@ void runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, chrono::m
     static_cast<void>(cdp.send<json::Value>("Runtime.evaluate", params, sessionId));
 }
 
-struct [[nodiscard]] CaptureResult {
-    crawler::CapturedExchange exchange;
-};
-
 class [[nodiscard]] CaptureSession final {
 public:
     CaptureSession(
@@ -1341,7 +1327,7 @@ public:
     {
     }
 
-    [[nodiscard]] CaptureResult capture()
+    [[nodiscard]] crawler::CapturedExchange capture()
     {
         try {
             launch();
@@ -1407,7 +1393,7 @@ private:
         });
     }
 
-    [[nodiscard]] CaptureResult captureAttachedTarget()
+    [[nodiscard]] crawler::CapturedExchange captureAttachedTarget()
     {
         browser.markPhase("enable_page");
         static_cast<void>(
@@ -1548,7 +1534,7 @@ private:
         LOG_INFO() << fmt::format("captureViaProxy closing browser for {}", run.seedUrl);
         browser.close();
         LOG_INFO() << fmt::format("captureViaProxy returning capture for {}", run.seedUrl);
-        return {std::move(exchange)};
+        return exchange;
     }
 
     void detachTarget()
@@ -1638,7 +1624,7 @@ private:
     std::optional<crawler::CdpClient::ListenerId> listenerId;
 };
 
-[[nodiscard]] CaptureResult captureViaProxy(
+[[nodiscard]] crawler::CapturedExchange captureViaProxy(
     us::engine::subprocess::ProcessStarter &processStarter, const std::string &browserRunsRoot,
     const crawler::RunRequest &run
 )
@@ -1650,66 +1636,55 @@ private:
     return session.capture();
 }
 
-struct [[nodiscard]] RunExecutionResult {
-    i64 exitCode;
-    std::optional<crawler::SeedPageProbe> seedProbe;
-    std::optional<String> failureDetail;
-    std::string stdoutLog;
-    std::string stderrLog;
-    std::optional<std::string> wacz;
-    std::optional<std::string> pages;
-};
-
-[[nodiscard]] RunExecutionResult executeRun(
+[[nodiscard]] CrawlerRunArtifacts executeRun(
     us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
     const std::string &browserRunsRoot, const crawler::RunRequest &run
 )
 {
     static_cast<void>(httpClient);
+    CrawlerRunArtifacts out;
+    out.attempt.exited = true;
     try {
         LOG_INFO() << fmt::format("crawler executeRun starting for {}", run.seedUrl);
-        auto capture = captureViaProxy(processStarter, browserRunsRoot, run);
+        auto exchange = captureViaProxy(processStarter, browserRunsRoot, run);
         LOG_INFO() << fmt::format(
             "crawler captureViaProxy finished for {} with status={}", run.seedUrl,
-            capture.exchange.statusCode
+            exchange.statusCode
         );
-        auto pages = crawler::buildPagesJsonl(capture.exchange);
+        auto pages = crawler::buildPagesJsonl(exchange);
         LOG_INFO() << fmt::format("crawler buildPagesJsonl finished for {}", run.seedUrl);
-        auto stdoutLog = crawler::buildSuccessStdoutLog(run, capture.exchange, 0_i64, false);
-        std::string stderrLog;
-        auto warc = crawler::buildWarc(capture.exchange);
+        out.stdoutLog = crawler::buildSuccessStdoutLog(run, exchange, 0_i64, false);
+        out.stderrLog.clear();
+        auto warc = crawler::buildWarc(exchange);
         LOG_INFO() << fmt::format("crawler buildWarc finished for {}", run.seedUrl);
-        auto wacz = crawler::buildWacz(run, pages, warc, stdoutLog, stderrLog);
+        auto wacz = crawler::buildWacz(run, pages, warc, out.stdoutLog, out.stderrLog);
         LOG_INFO() << fmt::format(
             "crawler buildWacz finished for {} (wacz_bytes={}, pages_bytes={})", run.seedUrl,
             wacz.size(), pages.size()
         );
 
-        const auto retainedBytes = i64(wacz.size()) + i64(pages.size()) + i64(stdoutLog.size()) +
-                                   i64(stderrLog.size());
+        const auto retainedBytes = i64(wacz.size()) + i64(pages.size()) +
+                                   i64(out.stdoutLog.size()) + i64(out.stderrLog.size());
         if (retainedBytes > kMaxBodyBytes) {
             const auto detail = text::format(
                 "retained artifact bytes {} exceeded size limit {}", retainedBytes, kMaxBodyBytes
             );
-            auto limitStderr = stderrLog;
-            limitStderr += std::string(detail.view()) + "\n";
-            return {
-                14_i64,
-                crawler::SeedPageProbe{capture.exchange.statusCode, 0_i64},
-                detail,
-                std::move(stdoutLog),
-                std::move(limitStderr),
-                {},
-                {},
+            out.attempt.exitCode = 14;
+            out.attempt.waczExists = false;
+            out.attempt.seedProbe = crawler::SeedPageProbe{
+                numericCast<int64_t>(exchange.statusCode), 0
             };
+            out.attempt.failureDetail = detail;
+            out.wacz.reset();
+            out.pagesJsonl.reset();
+            out.stderrLog += std::string(detail.view()) + "\n";
+            return out;
         }
 
-        auto exitCode = capture.exchange.statusCode >= 400_i64 ? 9_i64 : 0_i64;
-        auto loadState = exitCode != 0_i64 || capture.exchange.statusCode >= 400_i64 ? 0_i64
-                                                                                     : 2_i64;
-        std::optional<String> failureDetail;
-        if (capture.exchange.statusCode >= 400_i64) {
-            failureDetail = text::format("seed returned HTTP {}", capture.exchange.statusCode);
+        const auto exitCode = exchange.statusCode >= 400_i64 ? 9_i64 : 0_i64;
+        const auto loadState = exitCode != 0_i64 || exchange.statusCode >= 400_i64 ? 0_i64 : 2_i64;
+        if (exchange.statusCode >= 400_i64) {
+            out.attempt.failureDetail = text::format("seed returned HTTP {}", exchange.statusCode);
         }
 
         LOG_INFO() << fmt::format(
@@ -1717,24 +1692,34 @@ struct [[nodiscard]] RunExecutionResult {
             exitCode
         );
 
-        return {
-            exitCode,
-            crawler::SeedPageProbe{capture.exchange.statusCode, loadState},
-            failureDetail,
-            std::move(stdoutLog),
-            std::move(stderrLog),
-            std::move(wacz),
-            std::move(pages),
+        out.attempt.exitCode = numericCast<int>(exitCode);
+        out.attempt.waczExists = true;
+        out.attempt.seedProbe = crawler::SeedPageProbe{
+            numericCast<int64_t>(exchange.statusCode), numericCast<int64_t>(loadState)
         };
+        out.wacz = std::move(wacz);
+        out.pagesJsonl = std::move(pages);
+        return out;
     } catch (const CaptureFailure &e) {
-        return {
-            9_i64, e.seedProbe, String::fromBytesThrow(e.what()), {}, std::string(e.what()) + "\n",
-            {},    {},
-        };
+        out.attempt.exitCode = 9;
+        out.attempt.waczExists = false;
+        out.attempt.seedProbe = e.seedProbe;
+        out.attempt.failureDetail = String::fromBytesThrow(e.what());
+        out.stdoutLog.clear();
+        out.stderrLog = std::string(e.what()) + "\n";
+        out.wacz.reset();
+        out.pagesJsonl.reset();
+        return out;
     } catch (const std::exception &e) {
-        return {
-            9_i64, {}, String::fromBytesThrow(e.what()), {}, std::string(e.what()) + "\n", {}, {},
-        };
+        out.attempt.exitCode = 9;
+        out.attempt.waczExists = false;
+        out.attempt.seedProbe.reset();
+        out.attempt.failureDetail = String::fromBytesThrow(e.what());
+        out.stdoutLog.clear();
+        out.stderrLog = std::string(e.what()) + "\n";
+        out.wacz.reset();
+        out.pagesJsonl.reset();
+        return out;
     }
 }
 
@@ -1752,26 +1737,10 @@ CrawlerRunner::CrawlerRunner(
 
 CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
 {
-    auto result = executeRun(
+    return executeRun(
         httpClient, processStarter, browserRunsRoot,
         crawler::RunRequest{seedUrl, runTimeoutSec * 1000_i64}
     );
-
-    CrawlerRunArtifacts out;
-    out.attempt.exited = true;
-    out.attempt.exitCode = numericCast<int>(result.exitCode);
-    out.attempt.waczExists = result.wacz.has_value();
-    out.attempt.seedProbe = result.seedProbe;
-    if (result.failureDetail)
-        out.attempt.failureDetail = result.failureDetail.value();
-
-    out.stdoutLog = result.stdoutLog;
-    out.stderrLog = result.stderrLog;
-    if (result.wacz)
-        out.wacz = result.wacz.value();
-    if (result.pages)
-        out.pagesJsonl = result.pages.value();
-    return out;
 }
 
 } // namespace v1

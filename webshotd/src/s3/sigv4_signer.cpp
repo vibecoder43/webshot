@@ -5,7 +5,6 @@
  */
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <sstream>
 
@@ -30,21 +29,8 @@ inline bool isUnreserved(char c)
 /** Collapse runs of spaces and trim at both ends. */
 std::string trimSpaces(const std::string &s)
 {
-    absl::string_view trimmed = absl::StripAsciiWhitespace(absl::string_view{s});
-    std::string out;
-    out.reserve(trimmed.size());
-    bool inSpace = false;
-    for (char c : trimmed) {
-        if (std::isspace(static_cast<unsigned char>(c))) {
-            if (!inSpace) {
-                out.push_back(' ');
-                inSpace = true;
-            }
-        } else {
-            out.push_back(c);
-            inSpace = false;
-        }
-    }
+    auto out = std::string(s);
+    absl::RemoveExtraAsciiWhitespace(&out);
     return out;
 }
 
@@ -202,11 +188,7 @@ prepareSignedHeaders(std::string host, const userver::clients::http::Headers &ex
     v.reserve(extra.size() + 1);
     v.emplace_back("host", std::move(host));
     for (const auto &kv : extra) {
-        std::string keyLower;
-        keyLower.reserve(kv.first.size());
-        for (char c : kv.first)
-            keyLower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        v.emplace_back(std::move(keyLower), kv.second);
+        v.emplace_back(absl::AsciiStrToLower(std::string_view{kv.first}), kv.second);
     }
     std::sort(std::begin(v), std::end(v), [](const auto &a, const auto &b) {
         return a.first < b.first;

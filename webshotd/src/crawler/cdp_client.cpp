@@ -15,6 +15,9 @@
 
 #include <fmt/format.h>
 
+#include <absl/strings/ascii.h>
+#include <absl/strings/match.h>
+
 #include <userver/crypto/base64.hpp>
 #include <userver/crypto/hash.hpp>
 #include <userver/crypto/random.hpp>
@@ -68,43 +71,18 @@ struct HandshakeResponse final {
     return "cdp command failed"_t;
 }
 
-[[nodiscard]] std::string lowerAscii(std::string_view value)
-{
-    std::string out(value);
-    for (auto &ch : out)
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    return out;
-}
-
-[[nodiscard]] std::string trimAscii(std::string_view value)
-{
-    size_t start = 0;
-    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
-        ++start;
-    }
-
-    size_t end = value.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
-        --end;
-    }
-
-    return std::string(value.substr(start, end - start));
-}
-
 [[nodiscard]] bool containsHeaderToken(std::string_view value, std::string_view token)
 {
-    const auto loweredValue = lowerAscii(value);
-    const auto loweredToken = lowerAscii(token);
-
     size_t start = 0;
-    while (start <= loweredValue.size()) {
-        const auto commaPos = loweredValue.find(',', start);
-        const auto part = commaPos == std::string::npos
-                              ? std::string_view(loweredValue).substr(start)
-                              : std::string_view(loweredValue).substr(start, commaPos - start);
-        if (trimAscii(part) == loweredToken)
+    while (start <= value.size()) {
+        const auto commaPos = value.find(',', start);
+        const auto part = commaPos == std::string_view::npos
+                              ? value.substr(start)
+                              : value.substr(start, commaPos - start);
+        const auto trimmedPart = absl::StripAsciiWhitespace(part);
+        if (absl::EqualsIgnoreCase(trimmedPart, token))
             return true;
-        if (commaPos == std::string::npos)
+        if (commaPos == std::string_view::npos)
             break;
         start = commaPos + 1;
     }
@@ -147,9 +125,8 @@ parseHandshakeHeaders(std::string_view headersBlock)
             break;
         const auto colonPos = line.find(':');
         if (colonPos != std::string::npos) {
-            headers.emplace(
-                lowerAscii(line.substr(0, colonPos)), trimAscii(line.substr(colonPos + 1))
-            );
+            const auto trimmed = absl::StripAsciiWhitespace(line.substr(colonPos + 1));
+            headers.emplace(absl::AsciiStrToLower(line.substr(0, colonPos)), std::string(trimmed));
         }
 
         if (lineEnd == std::string::npos)
@@ -259,7 +236,8 @@ void validateHandshakeResponse(const HandshakeResponse &response, std::string_vi
     }
 
     const auto upgradeIt = response.headers.find("upgrade");
-    if (upgradeIt == std::end(response.headers) || lowerAscii(upgradeIt->second) != "websocket") {
+    if (upgradeIt == std::end(response.headers) ||
+        !absl::EqualsIgnoreCase(std::string_view(upgradeIt->second), "websocket")) {
         throw std::runtime_error(
             fmt::format(
                 "websocket handshake missing header: upgrade ({})",

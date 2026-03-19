@@ -682,7 +682,7 @@ Crud::Impl::persistMetadataForContext(const CrawlContext &ctx)
 {
     const auto prefixKey = prefix::makePrefixKey(ctx.link);
     const auto prefixTree = prefix::makePrefixTree(prefixKey);
-    const auto host = ctx.link.host();
+    const auto host = ctx.link.url.hostname();
 
     if (!denylist.isAllowedPrefix(prefixKey)) {
         try {

@@ -18,6 +18,8 @@
 
 #include <fmt/format.h>
 
+#include <absl/strings/match.h>
+
 #include <userver/crypto/hash.hpp>
 
 #include <userver/clients/http/client.hpp>
@@ -126,15 +128,12 @@ S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &reques
     resp->raise_for_status();
     HeadersDataResponse out;
     if (request.need_meta) {
+        static constexpr std::string_view kMetaPrefix = "x-amz-meta-";
         out.meta.emplace();
         for (const auto &kv : resp->headers()) {
             const auto &name = kv.first;
-            if (name.size() > 11 &&
-                std::equal(
-                    std::begin(name), std::begin(name) + 11, "x-amz-meta-",
-                    [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == b; }
-                )) {
-                out.meta->emplace(name.substr(11), kv.second);
+            if (absl::StartsWithIgnoreCase(std::string_view{name}, kMetaPrefix)) {
+                out.meta->emplace(name.substr(kMetaPrefix.size()), kv.second);
             }
         }
     }

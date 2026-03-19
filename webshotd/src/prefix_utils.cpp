@@ -30,7 +30,7 @@ void appendEncodedSegment(std::string &out, std::string_view bytes)
 
 [[nodiscard]] String makePrefixKey(const Link &link)
 {
-    auto host = link.host();
+    auto host = link.url.hostname();
     auto hostView = host.view();
     std::string hostStr(hostView);
     std::vector<std::string> labels;

@@ -85,14 +85,14 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
         LOG_INFO() << fmt::format("invalid host: {}", e.what());
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     }
-    LOG_INFO() << fmt::format("invoked for: {}", link->host());
+    LOG_INFO() << fmt::format("invoked for: {}", link->url.hostname());
     try {
         auto prefixKey = prefix::makePrefixKey(link.value());
         crud.disallowAndPurgePrefix(prefixKey);
         response.SetStatus(kAccepted);
         return {};
     } catch (const std::exception &e) {
-        LOG_CRITICAL() << fmt::format("failed for {}: {}", link->host(), e.what());
+        LOG_CRITICAL() << fmt::format("failed for {}: {}", link->url.hostname(), e.what());
         us::utils::AbortWithStacktrace("disallowing host failed");
     }
 }

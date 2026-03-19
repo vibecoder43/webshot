@@ -9,37 +9,25 @@
 #include "ip_utils.hpp"
 #include "text.hpp"
 
-#include <cctype>
 #include <string>
 #include <string_view>
 
 #include <absl/strings/ascii.h>
+#include <absl/strings/strip.h>
 
 #include <fmt/format.h>
 
 namespace {
 
-/** ASCII letter check without locale side effects. */
-static bool isAsciiAlpha(char c) noexcept
-{
-    const unsigned char u = static_cast<unsigned char>(c);
-    return u < 0x80 && std::isalpha(u) != 0;
-}
-/** ASCII alnum check without locale side effects. */
-static bool isAsciiAlnum(char c) noexcept
-{
-    const unsigned char u = static_cast<unsigned char>(c);
-    return u < 0x80 && std::isalnum(u) != 0;
-}
-
 /** RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) */
 static bool isValidScheme(std::string_view sv) noexcept
 {
-    if (sv.empty() || !isAsciiAlpha(sv.front()))
+    if (sv.empty() || !absl::ascii_isalpha(static_cast<unsigned char>(sv.front())))
         return false;
     for (size_t i = 1; i < sv.size(); i++) {
         const char c = sv[i];
-        if (!(isAsciiAlnum(c) || c == '+' || c == '-' || c == '.'))
+        if (!(absl::ascii_isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' ||
+              c == '.'))
             return false;
     }
     return true;
@@ -47,16 +35,16 @@ static bool isValidScheme(std::string_view sv) noexcept
 
 std::string serializeHref(const ada::url_aggregator &url)
 {
-    const auto href = url.get_href();
-    if (!href.empty() && href.back() == '/') {
-        return std::string(std::begin(href), std::end(href) - 1);
-    }
+    auto href = std::string_view(url.get_href());
+    absl::ConsumeSuffix(&href, "/");
     return std::string(href);
 }
 
 } // namespace
 
 namespace v1 {
+
+namespace {
 
 Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort, bool stripQuery)
 {
@@ -102,6 +90,8 @@ Link fromTextImpl(const String &text, size_t queryPartLengthMax, bool stripPort,
 
     return {Url::fromParsed(std::move(url.value()))};
 }
+
+} // namespace
 
 Link Link::fromTextStripPort(const String &text, size_t queryPartLengthMax)
 {

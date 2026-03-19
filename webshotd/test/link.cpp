@@ -44,7 +44,7 @@ UTEST(LinkFromText, AcceptsHttpsWithHostname)
     if (!text)
         return;
     const auto link = Link::fromText(text.value(), kQueryPartLengthMax);
-    EXPECT_EQ(std::string(link.host().view()), std::string{"example.com"});
+    EXPECT_EQ(std::string(link.url.hostname().view()), std::string{"example.com"});
     EXPECT_EQ(std::string(link.httpUrl().view()), std::string{"http://example.com"});
     EXPECT_EQ(std::string(link.normalized().view()), std::string{"example.com"});
 }
@@ -203,7 +203,7 @@ UTEST(LinkMembers, HostAndHttpUrlNormalized)
     if (!text)
         return;
     const auto link = Link::fromTextStripPort(text.value(), kQueryPartLengthMax);
-    EXPECT_EQ(std::string(link.host().view()), std::string{"example.com"});
+    EXPECT_EQ(std::string(link.url.hostname().view()), std::string{"example.com"});
     EXPECT_EQ(std::string(link.httpUrl().view()), std::string{"http://example.com/Path"});
     EXPECT_EQ(std::string(link.normalized().view()), std::string{"example.com/Path"});
 }

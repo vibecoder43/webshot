@@ -29,23 +29,6 @@ constexpr size_t kProcessOutputCharsMax = 240UL;
     return String::fromBytesThrow(escaped);
 }
 
-[[nodiscard]] String appendAttemptContextPieces(const AttemptSummary &attempt)
-{
-    String msg;
-    if (attempt.seedProbe) {
-        msg = text::format(
-            "seedProbe status={} loadState={}", attempt.seedProbe->status.value_or(0),
-            attempt.seedProbe->loadState.value_or(-1)
-        );
-    }
-    if (attempt.failureDetail) {
-        if (!msg.empty())
-            msg += ", "_t;
-        msg += attempt.failureDetail.value();
-    }
-    return msg;
-}
-
 [[nodiscard]] std::optional<String> readSanitizedProcessOutput(const std::string &path)
 {
     try {
@@ -134,7 +117,19 @@ summarizeProcessOutputs(const std::string &stdoutPath, const std::string &stderr
 
 String formatAttemptContext(const AttemptSummary &attempt)
 {
-    return appendAttemptContextPieces(attempt);
+    String msg;
+    if (attempt.seedProbe) {
+        msg = text::format(
+            "seedProbe status={} loadState={}", attempt.seedProbe->status.value_or(0),
+            attempt.seedProbe->loadState.value_or(-1)
+        );
+    }
+    if (attempt.failureDetail) {
+        if (!msg.empty())
+            msg += ", "_t;
+        msg += attempt.failureDetail.value();
+    }
+    return msg;
 }
 
 String formatAttemptStatus(std::string_view label, const AttemptSummary &attempt)
@@ -150,7 +145,7 @@ String formatAttemptStatus(std::string_view label, const AttemptSummary &attempt
         );
     }
 
-    const auto context = appendAttemptContextPieces(attempt);
+    const auto context = formatAttemptContext(attempt);
     if (!context.empty())
         msg += ", "_t + context;
     return msg;
