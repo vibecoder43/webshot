@@ -547,10 +547,10 @@ void CdpClient::handleMessage(const std::string &payload)
 
 std::string CdpClient::makeEndpointPath() const
 {
-    const auto path = websocketPath.view();
-    if (path.empty())
+    if (websocketPath.empty())
         return "/";
-    if (path.front() == '/')
+    const auto path = websocketPath.view();
+    if (websocketPath.startsWith('/'))
         return std::string(path);
     return "/" + std::string(path);
 }

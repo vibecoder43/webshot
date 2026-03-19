@@ -505,11 +505,8 @@ WarcBuildOutput buildWarc(const CapturedExchange &exchange)
         offset += i64(responseBytes.size() + requestBytes.size());
     }
 
-    const auto pageInfoUrl = String::fromBytesThrow(
-        fmt::format(
-            "urn:pageinfo:{}",
-            std::string((exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view())
-        )
+    const auto pageInfoUrl = text::format(
+        "urn:pageinfo:{}", exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl
     );
     auto pageInfoHeaders = std::unordered_map<std::string, std::string>{
         {"content-type", "application/json"},

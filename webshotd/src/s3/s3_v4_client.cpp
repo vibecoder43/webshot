@@ -401,7 +401,7 @@ detail::BuiltUrl S3V4Client::makeVirtualHostUrl(String path, String protocol) co
         url.set_hostname(fmt::format("{}.{}", bucketName.view(), endpoint.hostname.view())),
         "bad hostname"
     );
-    if (!endpoint.port.view().empty())
+    if (!endpoint.port.empty())
         UINVARIANT(url.set_port(std::string(endpoint.port.view())), "bad port");
     else
         url.set_port("");

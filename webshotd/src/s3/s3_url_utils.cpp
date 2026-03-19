@@ -10,11 +10,10 @@ namespace v1::s3v4 {
 std::vector<std::pair<String, String>> decodeQueryString(String search)
 {
     std::vector<std::pair<String, String>> query;
-    const std::string_view searchView = search.view();
-    if (searchView.empty())
+    if (search.empty())
         return query;
 
-    std::string searchCopy(searchView);
+    std::string searchCopy(search.view());
     if (!searchCopy.empty() && searchCopy.front() == '?')
         searchCopy.erase(searchCopy.begin());
 

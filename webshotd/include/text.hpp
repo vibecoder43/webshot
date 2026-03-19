@@ -64,6 +64,31 @@ public:
         return std::equal(std::begin(prefix.data), std::end(prefix.data), std::begin(data));
     }
 
+    [[nodiscard]] constexpr bool startsWith(std::string_view prefix) const noexcept
+    {
+        return data.starts_with(prefix);
+    }
+
+    [[nodiscard]] constexpr bool startsWith(char prefix) const noexcept
+    {
+        return data.starts_with(prefix);
+    }
+
+    [[nodiscard]] constexpr bool endsWith(std::string_view suffix) const noexcept
+    {
+        return data.ends_with(suffix);
+    }
+
+    [[nodiscard]] constexpr bool endsWith(char suffix) const noexcept
+    {
+        return data.ends_with(suffix);
+    }
+
+    [[nodiscard]] constexpr bool endsWith(const String &suffix) const noexcept
+    {
+        return data.ends_with(std::string_view{suffix.data});
+    }
+
     constexpr String &operator+=(const String &rhs)
     {
         if (rhs.data.empty())

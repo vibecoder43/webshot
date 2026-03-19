@@ -115,6 +115,29 @@ UTEST(TextString, SizeAndEmptyConsistency)
     EXPECT_EQ(value.sizeBytes(), numericCast<size_t>(3));
 }
 
+UTEST(TextString, StartsWithEndsWithOverloads)
+{
+    String empty;
+    EXPECT_FALSE(empty.startsWith('/'));
+    EXPECT_FALSE(empty.endsWith('/'));
+    EXPECT_TRUE(empty.startsWith(""));
+    EXPECT_TRUE(empty.endsWith(""));
+
+    const auto value = "hello"_t;
+    EXPECT_TRUE(value.startsWith("he"));
+    EXPECT_FALSE(value.startsWith("ha"));
+    EXPECT_TRUE(value.startsWith('h'));
+    EXPECT_FALSE(value.startsWith('e'));
+
+    EXPECT_TRUE(value.endsWith("lo"));
+    EXPECT_FALSE(value.endsWith("la"));
+    EXPECT_TRUE(value.endsWith('o'));
+    EXPECT_FALSE(value.endsWith('l'));
+
+    EXPECT_TRUE(value.endsWith("lo"_t));
+    EXPECT_FALSE(value.endsWith("he"_t));
+}
+
 UTEST(TextString, PlusConcatenatesAscii)
 {
     const auto lhs = "foo"_t;

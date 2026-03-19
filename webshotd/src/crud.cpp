@@ -332,8 +332,8 @@ struct [[nodiscard]] CrawlContext {
     CrawlContext(Uuid idIn, Link linkIn, const Config &cfg)
         : link(std::move(linkIn)), id(idIn),
           keyOnly(String::fromBytesThrow(us::utils::ToString(id))),
-          s3Key(String::fromBytesThrow(fmt::format("{}/{}", cfg.s3Bucket(), keyOnly))),
-          location(String::fromBytesThrow(fmt::format("{}/{}", cfg.publicBaseUrl(), keyOnly)))
+          s3Key(text::format("{}/{}", cfg.s3Bucket(), keyOnly)),
+          location(text::format("{}/{}", cfg.publicBaseUrl(), keyOnly))
     {
     }
 };

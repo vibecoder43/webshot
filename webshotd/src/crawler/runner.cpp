@@ -601,7 +601,7 @@ struct [[nodiscard]] RetainedBodyBudget {
 
 [[nodiscard]] bool responseCanHaveBody(const String &method, i64 statusCode)
 {
-    if (method.view() == "HEAD")
+    if (method == "HEAD"_t)
         return false;
     return (statusCode < 100_i64 || statusCode >= 200_i64) && statusCode != 204_i64 &&
            statusCode != 304_i64;
@@ -615,9 +615,7 @@ struct [[nodiscard]] RetainedBodyBudget {
     if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
         return {};
 
-    return String::fromBytesThrow(
-        fmt::format("{}://{}", maybeUrl->isHttps() ? "https" : "http", maybeUrl->host())
-    );
+    return text::format("{}://{}", maybeUrl->isHttps() ? "https" : "http", maybeUrl->host());
 }
 
 [[nodiscard]] String resolveRedirectTargetUrl(
@@ -641,25 +639,21 @@ struct [[nodiscard]] RetainedBodyBudget {
     if (!origin)
         return requestUrl;
 
-    if (location.view().starts_with("//")) {
+    if (location.startsWith("//")) {
         const auto maybeBaseUrl = Url::fromText(baseUrl);
         if (!maybeBaseUrl)
             return requestUrl;
-        return String::fromBytesThrow(
-            fmt::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", location)
-        );
+        return text::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", location);
     }
 
-    if (location.view().starts_with("/"))
-        return String::fromBytesThrow(fmt::format("{}{}", origin.value(), location));
+    if (location.startsWith('/'))
+        return text::format("{}{}", origin.value(), location);
 
-    if (location.view().starts_with("?")) {
+    if (location.startsWith('?')) {
         const auto maybeBaseUrl = Url::fromText(baseUrl);
         if (!maybeBaseUrl)
             return requestUrl;
-        return String::fromBytesThrow(
-            fmt::format("{}{}{}", origin.value(), maybeBaseUrl->pathname(), location)
-        );
+        return text::format("{}{}{}", origin.value(), maybeBaseUrl->pathname(), location);
     }
 
     return requestUrl;
@@ -737,8 +731,8 @@ public:
             if (event.params) {
                 const auto reason = event.params->extra["reason"];
                 if (!reason.IsMissing()) {
-                    mainRequestFailure = String::fromBytesThrow(
-                        fmt::format("inspector detached: {}", reason.As<std::string>())
+                    mainRequestFailure = text::format(
+                        "inspector detached: {}", reason.As<std::string>()
                     );
                     return;
                 }
@@ -1067,13 +1061,12 @@ private:
             if (mainLoaderId && !matchesTrackedMainLoader(requestWillBeSent.loaderId))
                 return;
             if (!mainLoaderId && !mainRequestId && seedNavigationUrl) {
-                const auto seedView = seedNavigationUrl->view();
-                const auto rawView = rawRequestUrl.view();
                 const auto matchesExact = rawRequestUrl == seedNavigationUrl.value();
-                const auto matchesTrailingSlash = !seedView.ends_with('/') &&
-                                                  rawView.size() == seedView.size() + 1 &&
-                                                  rawView.starts_with(seedView) &&
-                                                  rawView.back() == '/';
+                const auto matchesTrailingSlash =
+                    !seedNavigationUrl->endsWith('/') &&
+                    rawRequestUrl.sizeBytes() == seedNavigationUrl->sizeBytes() + 1 &&
+                    rawRequestUrl.startsWith(seedNavigationUrl.value()) &&
+                    rawRequestUrl.endsWith('/');
                 if (!matchesExact && !matchesTrailingSlash)
                     return;
             }
