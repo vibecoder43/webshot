@@ -45,9 +45,16 @@ using v1::Expected;
 
 namespace {
 
-constexpr chrono::seconds kHandshakeTimeoutDuration{10};
 constexpr size_t kMaxHandshakeResponseBytes = 16UL * 1024UL;
 constexpr std::string_view kWebsocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+[[nodiscard]] us::engine::Deadline
+pickEarlierReachableDeadline(us::engine::Deadline a, us::engine::Deadline b)
+{
+    UINVARIANT(a.IsReachable(), "deadline must be reachable");
+    UINVARIANT(b.IsReachable(), "deadline must be reachable");
+    return a.TimeLeft() <= b.TimeLeft() ? a : b;
+}
 
 [[nodiscard]] std::string currentTraceTimestamp()
 {
@@ -211,20 +218,27 @@ validateHandshakeResponse(const HandshakeResponse &response, std::string_view se
 CdpClient::CdpClient(
     std::string socketPathIn, String websocketPathIn,
     std::shared_ptr<us::websocket::WebSocketConnection> connectionIn, std::string tracePathIn,
-    us::fs::blocking::FileDescriptor traceFileIn
+    us::fs::blocking::FileDescriptor traceFileIn, us::engine::Deadline overallDeadlineIn,
+    chrono::seconds commandTimeoutIn, chrono::milliseconds waitPollIntervalIn
 )
     : socketPath(std::move(socketPathIn)), websocketPath(std::move(websocketPathIn)),
       connection(std::move(connectionIn)), tracePath(std::move(tracePathIn)),
-      traceFile(std::move(traceFileIn))
+      traceFile(std::move(traceFileIn)), overallDeadline(overallDeadlineIn),
+      commandTimeout(commandTimeoutIn), waitPollInterval(waitPollIntervalIn)
 {
 }
 
-Expected<std::unique_ptr<CdpClient>, CdpFailure>
-CdpClient::connect(std::string socketPath, String websocketPath, std::string tracePath)
+Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
+    std::string socketPath, String websocketPath, std::string tracePath,
+    us::engine::Deadline overallDeadline, chrono::seconds handshakeTimeout,
+    chrono::seconds commandTimeout, chrono::milliseconds waitPollInterval
+)
 {
     using enum CdpError;
 
     UINVARIANT(!tracePath.empty(), "cdp trace path must not be empty");
+    UINVARIANT(overallDeadline.IsReachable(), "cdp overall deadline must be reachable");
+
     us::fs::blocking::FileDescriptor traceFd;
     try {
         traceFd = us::fs::blocking::FileDescriptor::Open(
@@ -241,10 +255,12 @@ CdpClient::connect(std::string socketPath, String websocketPath, std::string tra
     auto socket = us::engine::io::Socket{
         us::engine::io::AddrDomain::kUnix, us::engine::io::SocketType::kStream
     };
-    const auto deadline = us::engine::Deadline::FromDuration(kHandshakeTimeoutDuration);
+    const auto handshakeDeadline = pickEarlierReachableDeadline(
+        overallDeadline, us::engine::Deadline::FromDuration(handshakeTimeout)
+    );
     auto address = us::engine::io::Sockaddr::MakeUnixSocketAddress(socketPath);
     try {
-        socket.Connect(address, deadline);
+        socket.Connect(address, handshakeDeadline);
     } catch (const us::utils::TracefulException &) {
         return std::unexpected(CdpFailure{.code = kSocketConnectFailed, .detail = {}});
     }
@@ -270,12 +286,12 @@ CdpClient::connect(std::string socketPath, String websocketPath, std::string tra
         secWebsocketKey
     );
     try {
-        static_cast<void>(socket.SendAll(request.data(), request.size(), deadline));
+        static_cast<void>(socket.SendAll(request.data(), request.size(), handshakeDeadline));
     } catch (const us::utils::TracefulException &) {
         return std::unexpected(CdpFailure{.code = kTransport, .detail = {}});
     }
 
-    auto response = readHandshakeResponse(socket, deadline);
+    auto response = readHandshakeResponse(socket, handshakeDeadline);
     if (!response)
         return std::unexpected(response.error());
     auto parsedResponse = parseHandshakeResponse(grabValueOf(response));
@@ -297,7 +313,7 @@ CdpClient::connect(std::string socketPath, String websocketPath, std::string tra
 
     return std::unique_ptr<CdpClient>(new CdpClient(
         std::move(socketPath), std::move(websocketPath), std::move(ws), std::move(tracePath),
-        std::move(traceFd)
+        std::move(traceFd), overallDeadline, commandTimeout, waitPollInterval
     ));
 }
 
@@ -334,9 +350,11 @@ Expected<json::Value, CdpFailure> CdpClient::sendRaw(
         return std::unexpected(CdpFailure{.code = kTransport, .detail = {}});
     }
 
+    const auto deadline = pickEarlierReachableDeadline(
+        overallDeadline, us::engine::Deadline::FromDuration(commandTimeout)
+    );
     auto waited = waitUntil(
-        [this, id]() { return pendingResults.contains(id); },
-        us::engine::Deadline::FromDuration(chrono::seconds(10)),
+        [this, id]() { return pendingResults.contains(id); }, deadline,
         "timed out waiting for cdp response"
     );
     if (!waited) {

@@ -5,6 +5,7 @@
 #include "crawler/limits.hpp"
 #include "integers.hpp"
 
+#include <chrono>
 #include <optional>
 #include <string>
 
@@ -17,10 +18,20 @@ namespace v1 {
 namespace crawler {
 
 struct [[nodiscard]] CaptureTimings {
-    i64 postLoadDelaySec;
-    i64 netIdleWaitSec;
-    i64 pageExtraDelaySec;
-    i64 behaviorTimeoutSec;
+    std::chrono::seconds postLoadDelay;
+    std::chrono::seconds netIdleWait;
+    std::chrono::seconds pageExtraDelay;
+    std::chrono::seconds behaviorTimeout;
+};
+
+struct [[nodiscard]] CrawlerTunables {
+    std::chrono::seconds devtoolsStartupTimeout;
+    std::chrono::seconds cdpHandshakeTimeout;
+    std::chrono::seconds cdpCommandTimeout;
+    std::chrono::milliseconds devtoolsPollInterval;
+    std::chrono::milliseconds cdpWaitPollInterval;
+    std::chrono::milliseconds browserStopTimeout;
+    std::chrono::milliseconds proxyStopTimeout;
 };
 
 } // namespace crawler
@@ -37,9 +48,9 @@ class [[nodiscard]] CrawlerRunner final {
 public:
     CrawlerRunner(
         us::clients::http::Client &httpClient,
-        us::engine::subprocess::ProcessStarter &processStarter, i64 runTimeoutSec,
+        us::engine::subprocess::ProcessStarter &processStarter, std::chrono::seconds runTimeout,
         std::string stateDir, std::optional<crawler::CgroupLimits> limits,
-        crawler::CaptureTimings timings
+        crawler::CaptureTimings timings, crawler::CrawlerTunables tunables
     );
 
     [[nodiscard]] CrawlerRunArtifacts run(const String &seedUrl) const;
@@ -47,11 +58,12 @@ public:
 private:
     us::clients::http::Client &httpClient;
     us::engine::subprocess::ProcessStarter &processStarter;
-    i64 runTimeoutSec;
+    std::chrono::seconds runTimeout;
     std::string browserRunsRoot;
     std::string cgroupRootPath;
     std::optional<crawler::CgroupLimits> cgroupLimits;
     crawler::CaptureTimings timings;
+    crawler::CrawlerTunables tunables;
 };
 
 } // namespace v1

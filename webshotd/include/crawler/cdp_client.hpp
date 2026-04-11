@@ -62,8 +62,11 @@ public:
     using ListenerId = int64_t;
     using EventListener = std::function<void(CdpEvent)>;
 
-    [[nodiscard]] static Expected<std::unique_ptr<CdpClient>, CdpFailure>
-    connect(std::string socketPath, String websocketPath, std::string tracePath);
+    [[nodiscard]] static Expected<std::unique_ptr<CdpClient>, CdpFailure> connect(
+        std::string socketPath, String websocketPath, std::string tracePath,
+        us::engine::Deadline overallDeadline, std::chrono::seconds handshakeTimeout,
+        std::chrono::seconds commandTimeout, std::chrono::milliseconds waitPollInterval
+    );
 
     ~CdpClient() noexcept;
 
@@ -135,7 +138,6 @@ public:
     waitUntil(Predicate &&predicate, us::engine::Deadline deadline, std::string_view timeoutMessage)
     {
         using enum CdpError;
-        static_cast<void>(timeoutMessage);
         while (!std::invoke(std::forward<Predicate>(predicate))) {
             auto pumped = tryPumpOnce();
             if (!pumped)
@@ -143,8 +145,13 @@ public:
             if (pumped.value())
                 continue;
             if (deadline.IsReachable() && deadline.IsReached())
-                return std::unexpected(CdpFailure{.code = kTimeout, .detail = {}});
-            us::engine::SleepFor(std::chrono::milliseconds(10));
+                return std::unexpected(
+                    CdpFailure{
+                        .code = kTimeout,
+                        .detail = std::optional<String>{String::fromBytes(timeoutMessage).expect()},
+                    }
+                );
+            us::engine::SleepFor(waitPollInterval);
         }
         return {};
     }
@@ -155,7 +162,8 @@ private:
     CdpClient(
         std::string socketPath, String websocketPath,
         std::shared_ptr<us::websocket::WebSocketConnection> connection, std::string tracePath,
-        us::fs::blocking::FileDescriptor traceFile
+        us::fs::blocking::FileDescriptor traceFile, us::engine::Deadline overallDeadline,
+        std::chrono::seconds commandTimeout, std::chrono::milliseconds waitPollInterval
     );
 
     struct [[nodiscard]] PendingRequestTrace {
@@ -189,6 +197,9 @@ private:
     std::unordered_map<int64_t, PendingRequestTrace> pendingRequests;
     std::string tracePath;
     us::fs::blocking::FileDescriptor traceFile;
+    us::engine::Deadline overallDeadline;
+    std::chrono::seconds commandTimeout;
+    std::chrono::milliseconds waitPollInterval;
     ListenerId nextListenerId{1};
     int64_t nextRequestId{1};
     bool closed{false};

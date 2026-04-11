@@ -160,6 +160,34 @@ properties:
         type: integer
         minimum: 0
         description: 'Upper bound for running site behavior JS in seconds; 0 disables'
+    crawler_devtools_startup_timeout_sec:
+        type: integer
+        minimum: 1
+        description: 'How long to wait for Chromium to expose devtools socket and websocket path in seconds'
+    crawler_cdp_handshake_timeout_sec:
+        type: integer
+        minimum: 1
+        description: 'Upper bound for devtools websocket handshake in seconds'
+    crawler_cdp_command_timeout_sec:
+        type: integer
+        minimum: 1
+        description: 'Upper bound for a single CDP command round-trip in seconds'
+    crawler_devtools_poll_interval_ms:
+        type: integer
+        minimum: 1
+        description: 'Polling interval for devtools socket/path discovery in milliseconds'
+    crawler_cdp_wait_poll_interval_ms:
+        type: integer
+        minimum: 1
+        description: 'Polling interval for CDP response wait loop in milliseconds'
+    crawler_browser_stop_timeout_ms:
+        type: integer
+        minimum: 1
+        description: 'Grace timeout after SIGTERM before SIGKILL for the Chromium process in milliseconds'
+    crawler_proxy_stop_timeout_ms:
+        type: integer
+        minimum: 1
+        description: 'Grace timeout after SIGTERM before SIGKILL for the proxy bridge process in milliseconds'
     s3_credentials_endpoint:
         type: string
         description: 'STS url used to obtain temporary S3 credentials; S3 data url s3_endpoint (in config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
@@ -217,6 +245,13 @@ public:
     const i64 crawlerNetIdleWaitSec;
     const i64 crawlerPageExtraDelaySec;
     const i64 crawlerBehaviorTimeoutSec;
+    const i64 crawlerDevtoolsStartupTimeoutSec;
+    const i64 crawlerCdpHandshakeTimeoutSec;
+    const i64 crawlerCdpCommandTimeoutSec;
+    const i64 crawlerDevtoolsPollIntervalMs;
+    const i64 crawlerCdpWaitPollIntervalMs;
+    const i64 crawlerBrowserStopTimeoutMs;
+    const i64 crawlerProxyStopTimeoutMs;
     const i64 linkCooldownSec;
     const i64 crawlJobRetentionSec;
     const i64 crawlJobCleanupIntervalSec;
@@ -289,6 +324,15 @@ public:
           crawlerNetIdleWaitSec(cfg["crawler_net_idle_wait_sec"].As<int64_t>()),
           crawlerPageExtraDelaySec(cfg["crawler_page_extra_delay_sec"].As<int64_t>()),
           crawlerBehaviorTimeoutSec(cfg["crawler_behavior_timeout_sec"].As<int64_t>()),
+          crawlerDevtoolsStartupTimeoutSec(
+              cfg["crawler_devtools_startup_timeout_sec"].As<int64_t>()
+          ),
+          crawlerCdpHandshakeTimeoutSec(cfg["crawler_cdp_handshake_timeout_sec"].As<int64_t>()),
+          crawlerCdpCommandTimeoutSec(cfg["crawler_cdp_command_timeout_sec"].As<int64_t>()),
+          crawlerDevtoolsPollIntervalMs(cfg["crawler_devtools_poll_interval_ms"].As<int64_t>()),
+          crawlerCdpWaitPollIntervalMs(cfg["crawler_cdp_wait_poll_interval_ms"].As<int64_t>()),
+          crawlerBrowserStopTimeoutMs(cfg["crawler_browser_stop_timeout_ms"].As<int64_t>()),
+          crawlerProxyStopTimeoutMs(cfg["crawler_proxy_stop_timeout_ms"].As<int64_t>()),
           linkCooldownSec(cfg["link_cooldown_sec"].As<int64_t>()),
           crawlJobRetentionSec(cfg["crawl_job_retention_sec"].As<int64_t>()),
           crawlJobCleanupIntervalSec(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>()),
@@ -309,13 +353,23 @@ public:
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
           processStarter(ctx.FindComponent<us::components::ProcessStarter>().Get()),
           crawlerRunner(
-              httpClient, processStarter, crawlerRunTimeoutSec, std::string(svcCfg.stateDir()),
+              httpClient, processStarter, chrono::seconds{crawlerRunTimeoutSec},
+              std::string(svcCfg.stateDir()),
               computeCrawlerLimits(crawlerCpuCores, crawlerMemoryGib),
               crawler::CaptureTimings{
-                  crawlerPostLoadDelaySec,
-                  crawlerNetIdleWaitSec,
-                  crawlerPageExtraDelaySec,
-                  crawlerBehaviorTimeoutSec,
+                  chrono::seconds{crawlerPostLoadDelaySec},
+                  chrono::seconds{crawlerNetIdleWaitSec},
+                  chrono::seconds{crawlerPageExtraDelaySec},
+                  chrono::seconds{crawlerBehaviorTimeoutSec},
+              },
+              crawler::CrawlerTunables{
+                  chrono::seconds{crawlerDevtoolsStartupTimeoutSec},
+                  chrono::seconds{crawlerCdpHandshakeTimeoutSec},
+                  chrono::seconds{crawlerCdpCommandTimeoutSec},
+                  chrono::milliseconds{crawlerDevtoolsPollIntervalMs},
+                  chrono::milliseconds{crawlerCdpWaitPollIntervalMs},
+                  chrono::milliseconds{crawlerBrowserStopTimeoutMs},
+                  chrono::milliseconds{crawlerProxyStopTimeoutMs},
               }
           ),
           denylist(ctx.FindComponent<Denylist>()),

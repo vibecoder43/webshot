@@ -64,7 +64,6 @@ using v1::Expected;
 
 constexpr auto kMaxBodyBytes = 50_i64 * 1024_i64 * 1024_i64;
 constexpr size_t kMaxLogBytes = 64UL * 1024UL;
-constexpr auto kBrowserDevtoolsStartupTimeout = chrono::seconds(15);
 
 [[nodiscard]] const std::string &browserSandboxScript()
 {
@@ -487,11 +486,13 @@ class [[nodiscard]] BrowserInstance final {
 public:
     BrowserInstance(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
-        std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn
+        std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
+        crawler::CrawlerTunables tunablesIn
     )
         : processStarter(processStarter),
           browserRunsRoot(normalizeDirPath(std::move(browserRunsRootIn))),
-          cgroupRootPath(std::move(cgroupRootPathIn)), cgroupLimits(std::move(cgroupLimitsIn))
+          cgroupRootPath(std::move(cgroupRootPathIn)), cgroupLimits(std::move(cgroupLimitsIn)),
+          tunables(std::move(tunablesIn))
     {
     }
 
@@ -507,7 +508,7 @@ public:
         paths = createBrowserPaths(browserRunsRoot);
         markPhase("launch_browser");
         const auto devtoolsDeadline = us::engine::Deadline::FromDuration(
-            kBrowserDevtoolsStartupTimeout
+            tunables.devtoolsStartupTimeout
         );
         proxyBridge.emplace(spawnProxyBridge(processStarter, paths));
         process.emplace(spawnSandboxedBrowser(processStarter, paths, cgroupRootPath, cgroupLimits));
@@ -518,10 +519,12 @@ public:
         return {};
     }
 
-    [[nodiscard]] Expected<std::unique_ptr<crawler::CdpClient>, String> connectCdp() const
+    [[nodiscard]] Expected<std::unique_ptr<crawler::CdpClient>, String>
+    connectCdp(us::engine::Deadline overallDeadline) const
     {
         auto cdp = crawler::CdpClient::connect(
-            paths.cdpSocketPath, websocketPath, paths.cdpTracePath
+            paths.cdpSocketPath, websocketPath, paths.cdpTracePath, overallDeadline,
+            tunables.cdpHandshakeTimeout, tunables.cdpCommandTimeout, tunables.cdpWaitPollInterval
         );
         if (!cdp) {
             auto detail = describeCdpFailure("devtools websocket handshake failed"_t, cdp.error());
@@ -609,8 +612,8 @@ public:
             return;
         closed = true;
 
-        stopProcess(process, chrono::milliseconds(1500));
-        stopProcess(proxyBridge, chrono::milliseconds(500));
+        stopProcess(process, tunables.browserStopTimeout);
+        stopProcess(proxyBridge, tunables.proxyStopTimeout);
         if (!paths.rootDir.empty() && !preserveRunDir)
             removeBrowserRunDir(paths.rootDir);
     }
@@ -636,7 +639,7 @@ private:
             if (sawCdpSocket && websocketPathFromFile) {
                 return grabValueOf(websocketPathFromFile);
             }
-            us::engine::SleepFor(chrono::milliseconds(100));
+            us::engine::SleepFor(tunables.devtoolsPollInterval);
         }
         if (process && process->WaitFor(chrono::milliseconds(0))) {
             return std::unexpected(
@@ -659,6 +662,7 @@ private:
     std::string browserRunsRoot;
     std::string cgroupRootPath;
     std::optional<crawler::CgroupLimits> cgroupLimits;
+    crawler::CrawlerTunables tunables;
     BrowserPaths paths;
     std::optional<us::engine::subprocess::ChildProcess> proxyBridge;
     std::optional<us::engine::subprocess::ChildProcess> process;
@@ -910,7 +914,7 @@ public:
     }
 
     [[nodiscard]] Expected<void, String>
-    waitForIdle(crawler::CdpClient &cdp, chrono::milliseconds idle, us::engine::Deadline deadline)
+    waitForIdle(crawler::CdpClient &cdp, chrono::seconds idle, us::engine::Deadline deadline)
     {
         auto waited = cdp.waitUntil(
             [this, idle]() {
@@ -1481,8 +1485,14 @@ readDomState(crawler::CdpClient &cdp, const String &sessionId)
 }
 
 Expected<void, String>
-runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, chrono::milliseconds timeout)
+runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, us::engine::Deadline deadline)
 {
+    UINVARIANT(deadline.IsReachable(), "site behavior deadline must be reachable");
+    auto budgetExpected = timeLeftMs(deadline);
+    if (!budgetExpected)
+        return std::unexpected("timed out running site behavior"_t);
+    const auto budget = grabValueOf(budgetExpected);
+
     dto::RuntimeEvaluateParams params;
     params.expression = std::format(
         "(() => new Promise((resolve) => {{ const startedAt = Date.now(); const stepDelayMs = "
@@ -1493,7 +1503,7 @@ runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, chrono::millis
         "Date.now() - startedAt >= {0} || steps >= maxSteps; const stuck = root.scrollTop === "
         "previous; if (stuck || exhausted) {{ root.scrollTo(0, 0); resolve(true); return; }} "
         "setTimeout(tick, stepDelayMs); }}; tick(); }}))()",
-        timeout.count()
+        budget.count()
     );
     params.awaitPromise = true;
     params.returnByValue = true;
@@ -1508,13 +1518,13 @@ public:
     CaptureSession(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
-        crawler::CaptureTimings timingsIn, crawler::RunRequest runIn
+        crawler::CaptureTimings timingsIn, crawler::CrawlerTunables tunablesIn,
+        us::engine::Deadline deadlineIn, crawler::RunRequest runIn
     )
-        : timings(std::move(timingsIn)), run(std::move(runIn)),
-          deadline(us::engine::Deadline::FromDuration(chrono::milliseconds{raw(run.jobTimeoutMs)})),
+        : timings(std::move(timingsIn)), run(std::move(runIn)), deadline(deadlineIn),
           browser(
               processStarter, std::move(browserRunsRootIn), std::move(cgroupRootPathIn),
-              std::move(cgroupLimitsIn)
+              std::move(cgroupLimitsIn), std::move(tunablesIn)
           )
     {
     }
@@ -1580,7 +1590,7 @@ private:
         if (!launched)
             return std::unexpected(launched.error());
         browser.markPhase("connect_cdp");
-        auto connected = browser.connectCdp();
+        auto connected = browser.connectCdp(deadline);
         if (!connected)
             return std::unexpected(connected.error());
         cdp = grabValueOf(connected);
@@ -1688,47 +1698,43 @@ private:
         browser.markPhase("wait_for_load");
         if (auto waited = pageTracker().waitForLoad(cdpClient(), deadline); !waited)
             return std::unexpected(waited.error());
-        if (timings.postLoadDelaySec > 0_i64) {
+        if (timings.postLoadDelay > chrono::seconds::zero()) {
             browser.markPhase("post_load_delay");
-            const auto ok = sleepWithinDeadline(
-                deadline, chrono::milliseconds{timings.postLoadDelaySec * 1000_i64}
+            const auto phaseDeadline = pickEarlierDeadline(
+                deadline, us::engine::Deadline::FromDuration(timings.postLoadDelay)
             );
+            const auto ok = sleepUntilDeadline(phaseDeadline);
             if (!ok)
                 return std::unexpected("timed out waiting for post-load delay"_t);
             browser.markPhase("post_load_delay_done");
         }
-        if (timings.behaviorTimeoutSec > 0_i64) {
+        if (timings.behaviorTimeout > chrono::seconds::zero()) {
             browser.markPhase("run_site_behavior");
             browser.markPhase("run_site_behavior_runtime_evaluate");
-            auto behaviorBudgetExpected = timeLeftMs(deadline);
-            if (!behaviorBudgetExpected)
-                return std::unexpected("timed out running site behavior"_t);
-            const auto behaviorBudget = grabValueOf(behaviorBudgetExpected);
+            const auto behaviorDeadline = pickEarlierDeadline(
+                deadline, us::engine::Deadline::FromDuration(timings.behaviorTimeout)
+            );
             auto ranSiteBehavior = runSiteBehavior(
-                cdpClient(), attachedSessionId(),
-                std::min(
-                    chrono::milliseconds{timings.behaviorTimeoutSec * 1000_i64}, behaviorBudget
-                )
+                cdpClient(), attachedSessionId(), behaviorDeadline
             );
             if (!ranSiteBehavior)
                 return std::unexpected(ranSiteBehavior.error());
             browser.markPhase("run_site_behavior_done");
         }
-        if (timings.netIdleWaitSec > 0_i64) {
+        if (timings.netIdleWait > chrono::seconds::zero()) {
             browser.markPhase("wait_for_idle");
             browser.markPhase("wait_for_idle_wait");
-            auto waited = pageTracker().waitForIdle(
-                cdpClient(), chrono::milliseconds{timings.netIdleWaitSec * 1000_i64}, deadline
-            );
+            auto waited = pageTracker().waitForIdle(cdpClient(), timings.netIdleWait, deadline);
             if (!waited)
                 return std::unexpected(waited.error());
             browser.markPhase("wait_for_idle_done");
         }
-        if (timings.pageExtraDelaySec > 0_i64) {
+        if (timings.pageExtraDelay > chrono::seconds::zero()) {
             browser.markPhase("page_extra_delay");
-            const auto ok = sleepWithinDeadline(
-                deadline, chrono::milliseconds{timings.pageExtraDelaySec * 1000_i64}
+            const auto phaseDeadline = pickEarlierDeadline(
+                deadline, us::engine::Deadline::FromDuration(timings.pageExtraDelay)
             );
+            const auto ok = sleepUntilDeadline(phaseDeadline);
             if (!ok)
                 return std::unexpected("timed out waiting for extra page delay"_t);
             browser.markPhase("page_extra_delay_done");
@@ -1884,13 +1890,14 @@ private:
 [[nodiscard]] Expected<crawler::CapturedExchange, CaptureFailure> captureViaProxy(
     us::engine::subprocess::ProcessStarter &processStarter, const std::string &browserRunsRoot,
     const std::string &cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
-    crawler::CaptureTimings timings, const crawler::RunRequest &run
+    crawler::CaptureTimings timings, const crawler::CrawlerTunables &tunables,
+    us::engine::Deadline deadline, const crawler::RunRequest &run
 )
 {
     auto session = CaptureSession(
         processStarter, std::string(browserRunsRoot), std::string(cgroupRootPath),
-        std::move(cgroupLimits), std::move(timings),
-        crawler::RunRequest{.seedUrl = run.seedUrl, .jobTimeoutMs = run.jobTimeoutMs}
+        std::move(cgroupLimits), std::move(timings), tunables, deadline,
+        crawler::RunRequest{.seedUrl = run.seedUrl}
     );
     return session.capture();
 }
@@ -1899,6 +1906,7 @@ private:
     us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
     const std::string &browserRunsRoot, const std::string &cgroupRootPath,
     std::optional<crawler::CgroupLimits> cgroupLimits, const crawler::CaptureTimings &timings,
+    const crawler::CrawlerTunables &tunables, us::engine::Deadline deadline,
     const crawler::RunRequest &run
 )
 {
@@ -1929,7 +1937,8 @@ private:
         };
 
         auto exchange = captureViaProxy(
-            processStarter, browserRunsRoot, cgroupRootPath, std::move(cgroupLimits), timings, run
+            processStarter, browserRunsRoot, cgroupRootPath, std::move(cgroupLimits), timings,
+            tunables, deadline, run
         );
         if (!exchange) {
             out.attempt.exitCode = 9;
@@ -2031,23 +2040,24 @@ private:
 
 CrawlerRunner::CrawlerRunner(
     us::clients::http::Client &httpClientIn,
-    us::engine::subprocess::ProcessStarter &processStarterIn, i64 runTimeoutSecIn,
+    us::engine::subprocess::ProcessStarter &processStarterIn, chrono::seconds runTimeoutIn,
     std::string stateDir, std::optional<crawler::CgroupLimits> limitsIn,
-    crawler::CaptureTimings timingsIn
+    crawler::CaptureTimings timingsIn, crawler::CrawlerTunables tunablesIn
 )
-    : httpClient(httpClientIn), processStarter(processStarterIn), runTimeoutSec(runTimeoutSecIn),
+    : httpClient(httpClientIn), processStarter(processStarterIn), runTimeout(runTimeoutIn),
       browserRunsRoot(buildBrowserRunsRoot(std::move(stateDir))),
       cgroupRootPath(limitsIn ? resolveDelegatedCgroupRootPath() : std::string()),
-      timings(std::move(timingsIn))
+      timings(std::move(timingsIn)), tunables(std::move(tunablesIn))
 {
     cgroupLimits = std::move(limitsIn);
 }
 
 CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
 {
+    const auto deadline = us::engine::Deadline::FromDuration(runTimeout);
     return executeRun(
         httpClient, processStarter, browserRunsRoot, cgroupRootPath, cgroupLimits, timings,
-        crawler::RunRequest{.seedUrl = seedUrl, .jobTimeoutMs = runTimeoutSec * 1000_i64}
+        tunables, deadline, crawler::RunRequest{.seedUrl = seedUrl}
     );
 }
 

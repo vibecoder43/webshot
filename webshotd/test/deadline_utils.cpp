@@ -34,6 +34,13 @@ UTEST(DeadlineUtils, SleepWithinDeadlineExpiredThrows)
     EXPECT_EQ(slept.error(), v1::DeadlineError::kTimeout);
 }
 
+UTEST(DeadlineUtils, SleepUntilDeadlineExpiredThrows)
+{
+    const auto slept = v1::sleepUntilDeadline(Deadline::Passed());
+    ASSERT_FALSE(slept);
+    EXPECT_EQ(slept.error(), v1::DeadlineError::kTimeout);
+}
+
 UTEST(DeadlineUtils, ChoosesExpiredOverFuture)
 {
     const auto expired = Deadline::Passed();

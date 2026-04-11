@@ -153,6 +153,13 @@ components_manager:
       crawler_net_idle_wait_sec: $crawler_net_idle_wait_sec
       crawler_page_extra_delay_sec: $crawler_page_extra_delay_sec
       crawler_behavior_timeout_sec: $crawler_behavior_timeout_sec
+      crawler_devtools_startup_timeout_sec: $crawler_devtools_startup_timeout_sec
+      crawler_cdp_handshake_timeout_sec: $crawler_cdp_handshake_timeout_sec
+      crawler_cdp_command_timeout_sec: $crawler_cdp_command_timeout_sec
+      crawler_devtools_poll_interval_ms: $crawler_devtools_poll_interval_ms
+      crawler_cdp_wait_poll_interval_ms: $crawler_cdp_wait_poll_interval_ms
+      crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
+      crawler_proxy_stop_timeout_ms: $crawler_proxy_stop_timeout_ms
       link_cooldown_sec: $link_cooldown_sec
       crawl_job_retention_sec: 604800
       crawl_job_cleanup_interval_sec: 3600

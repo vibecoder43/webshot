@@ -11,6 +11,13 @@ crawler_post_load_delay_sec: 1
 crawler_net_idle_wait_sec: 0
 crawler_page_extra_delay_sec: 1
 crawler_behavior_timeout_sec: 1
+crawler_devtools_startup_timeout_sec: 15
+crawler_cdp_handshake_timeout_sec: 10
+crawler_cdp_command_timeout_sec: 10
+crawler_devtools_poll_interval_ms: 100
+crawler_cdp_wait_poll_interval_ms: 10
+crawler_browser_stop_timeout_ms: 1500
+crawler_proxy_stop_timeout_ms: 500
 link_cooldown_sec: 0
 secdist_path: secret/test_secdist.json
 crawler_cpu_cores: 1

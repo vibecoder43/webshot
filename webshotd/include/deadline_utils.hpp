@@ -94,4 +94,21 @@ sleepWithinDeadline(userver::engine::Deadline deadline, std::chrono::millisecond
     return {};
 }
 
+[[nodiscard]] inline Expected<void, DeadlineError>
+sleepUntilDeadline(userver::engine::Deadline deadline)
+{
+    using namespace std::chrono_literals;
+
+    UINVARIANT(deadline.IsReachable(), "sleepUntilDeadline requires a reachable deadline");
+
+    const auto remaining = timeLeftMs(deadline);
+    if (!remaining)
+        return std::unexpected(remaining.error());
+    if (remaining.value() <= 0ms)
+        return std::unexpected(DeadlineError::kTimeout);
+
+    userver::engine::SleepFor(remaining.value());
+    return {};
+}
+
 } // namespace v1

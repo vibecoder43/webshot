@@ -66,7 +66,6 @@ struct [[nodiscard]] CapturedExchange {
 
 struct [[nodiscard]] RunRequest {
     String seedUrl;
-    i64 jobTimeoutMs;
 };
 
 struct [[nodiscard]] WarcCdxRecord {
