@@ -342,8 +342,7 @@ async def test_capture_fails_on_proxy_denied_seed(service_client, pgsql):
     assert "started_at" in job
     assert "finished_at" in job
     _assert_missing_job_fields(job, "result", "result_created_at")
-    assert job["error"]["error"]["message"] != "internal crawler error"
-    assert job["error"]["error"]["message"].startswith("Failed to crawl ")
+    assert job["error"]["error"]["message"] == "capture failed"
     with db.cursor() as cur:
         cur.execute("select 1 from capture where id = %s", (uuid.UUID(job_id),))
         assert cur.fetchone() is None

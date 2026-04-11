@@ -624,8 +624,19 @@ Expected<std::optional<dto::CaptureJob>, PgError> Crud::Impl::loadJob(Uuid id)
         job.result_created_at = us::utils::datetime::TimePointTz(
             static_cast<system_clock::time_point>(row.resultCreatedAt.value())
         );
-    if (job.status == dto::CaptureJob::Status::kFailed && row.errorMessage) {
-        dto::ErrorEnvelope::Error err{row.errorMessage.value()};
+    if (job.status == dto::CaptureJob::Status::kFailed) {
+        // Never expose internal diagnostics (crawler details, exception text, etc) to API clients.
+        std::string message = "internal server error";
+        if (row.errorCategory) {
+            if (row.errorCategory.value() == "size_limit") {
+                message = "capture exceeded archive size limit";
+            } else if (row.errorCategory.value() == "crawler_failed") {
+                message = "capture failed";
+            } else if (row.errorCategory.value() == "internal_server_error") {
+                message = "internal server error";
+            }
+        }
+        dto::ErrorEnvelope::Error err{std::move(message)};
         job.error = dto::ErrorEnvelope{err};
     }
     if (job.status == dto::CaptureJob::Status::kSucceeded && job.result_created_at)
