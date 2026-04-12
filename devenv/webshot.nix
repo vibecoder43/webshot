@@ -147,9 +147,7 @@
       }
       trap cleanup EXIT
       ${upCmd}
-      export LD_LIBRARY_PATH=${common.lib.escapeShellArg runtimeLdLibraryPath}
-      cd ${common.lib.escapeShellArg cfg.buildDir}
-      ctest --progress --output-on-failure -V
+      ${common.testSan}/bin/test_san
     '';
   };
 

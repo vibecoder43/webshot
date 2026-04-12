@@ -25,7 +25,7 @@ in {
       common.pgmigratePkgs.default
     ]
     ++ common.userverDeps
-    ++ [common.webshotTestSan common.webshotTestCov]
+    ++ [common.testSan common.testCov]
     ++ (with common.pkgsWithOverlay; [
       git
       gdb

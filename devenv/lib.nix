@@ -57,14 +57,36 @@
 
   testLibs = userverDeps ++ [pkgsWithOverlay.libarchive pkgsWithOverlay.stdenv.cc.cc];
 
-  webshotTestSan = pkgsWithOverlay.writeShellScriptBin "webshot_test_san" ''
+  asanUcontextWarningSedScript = "/WARNING: ASan doesn't fully support makecontext\\/swapcontext functions and may produce false positives in some cases!/d";
+
+  ctestVerboseWithAsanUcontextWarningFiltered = ''
+    set +e
+    ctest --progress --output-on-failure -V "$@" 2>&1 \
+      | ${pkgsWithOverlay.gnused}/bin/sed -e "${asanUcontextWarningSedScript}"
+    ctest_exit_code=$?
+    set -e
+
+    # CTest logs are written before stdout filtering; scrub them too so CI
+    # artifacts (Testing/Temporary/LastTest.log) are clean.
+    shopt -s nullglob
+    for log in Testing/Last*.log* Testing/Temporary/Last*.log*; do
+      if [[ -f "$log" ]]; then
+        ${pkgsWithOverlay.gnused}/bin/sed -i -e "${asanUcontextWarningSedScript}" "$log"
+      fi
+    done
+    shopt -u nullglob
+
+    exit "$ctest_exit_code"
+  '';
+
+  testSan = pkgsWithOverlay.writeShellScriptBin "test_san" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
     cd ${buildDirs.san}
-    ctest --progress --output-on-failure -V
+    ${ctestVerboseWithAsanUcontextWarningFiltered}
   '';
 
-  webshotTestCov = pkgsWithOverlay.writeShellScriptBin "webshot_test_cov" ''
+  testCov = pkgsWithOverlay.writeShellScriptBin "test_cov" ''
     set -euo pipefail
     export LD_LIBRARY_PATH='${lib.makeLibraryPath testLibs}'
     cmake --build ${buildDirs.cov} --target coverage-html
@@ -344,8 +366,8 @@ in
       userverDeps
       userverHelperPython
       userverPkgs
-      webshotTestCov
-      webshotTestSan
+      testCov
+      testSan
       yttsPkgs
       ;
   }
