@@ -63,8 +63,8 @@ struct [[nodiscard]] S3Credentials {
 class [[nodiscard]] S3V4Client final : public userver::s3api::Client {
 public:
     S3V4Client(
-        userver::clients::http::Client &http, S3V4Config cfg, S3Credentials creds,
-        String defaultBucket
+        userver::clients::http::Client &httpClient, S3V4Config config, S3Credentials creds,
+        String bucketName
     );
 
     std::string PutObject(

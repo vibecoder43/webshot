@@ -216,15 +216,15 @@ validateHandshakeResponse(const HandshakeResponse &response, std::string_view se
 } // namespace
 
 CdpClient::CdpClient(
-    std::string socketPathIn, String websocketPathIn,
-    std::shared_ptr<us::websocket::WebSocketConnection> connectionIn, std::string tracePathIn,
-    us::fs::blocking::FileDescriptor traceFileIn, us::engine::Deadline overallDeadlineIn,
-    chrono::seconds commandTimeoutIn, chrono::milliseconds waitPollIntervalIn
+    std::string socketPath, String websocketPath,
+    std::shared_ptr<us::websocket::WebSocketConnection> connection, std::string tracePath,
+    us::fs::blocking::FileDescriptor traceFile, us::engine::Deadline overallDeadline,
+    chrono::seconds commandTimeout, chrono::milliseconds waitPollInterval
 )
-    : socketPath(std::move(socketPathIn)), websocketPath(std::move(websocketPathIn)),
-      connection(std::move(connectionIn)), tracePath(std::move(tracePathIn)),
-      traceFile(std::move(traceFileIn)), overallDeadline(overallDeadlineIn),
-      commandTimeout(commandTimeoutIn), waitPollInterval(waitPollIntervalIn)
+    : socketPath(std::move(socketPath)), websocketPath(std::move(websocketPath)),
+      connection(std::move(connection)), tracePath(std::move(tracePath)),
+      traceFile(std::move(traceFile)), overallDeadline(overallDeadline),
+      commandTimeout(commandTimeout), waitPollInterval(waitPollInterval)
 {
 }
 

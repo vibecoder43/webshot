@@ -491,8 +491,8 @@ struct [[nodiscard]] CrawlContext {
     String location;
     std::optional<String> failureMessage;
 
-    CrawlContext(Uuid idIn, Link linkIn, const Config &cfg)
-        : link(std::move(linkIn)), id(idIn), keyOnly(text::format("{}", id)),
+    CrawlContext(Uuid id, Link link, const Config &cfg)
+        : link(std::move(link)), id(id), keyOnly(text::format("{}", id)),
           s3Key(text::format("{}/{}", cfg.s3Bucket(), keyOnly)),
           location(text::format("{}/{}", cfg.publicBaseUrl(), keyOnly))
     {

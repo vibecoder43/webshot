@@ -486,13 +486,13 @@ class [[nodiscard]] BrowserInstance final {
 public:
     BrowserInstance(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
-        std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
-        crawler::CrawlerTunables tunablesIn
+        std::string cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
+        crawler::CrawlerTunables tunables
     )
         : processStarter(processStarter),
           browserRunsRoot(normalizeDirPath(std::move(browserRunsRootIn))),
-          cgroupRootPath(std::move(cgroupRootPathIn)), cgroupLimits(std::move(cgroupLimitsIn)),
-          tunables(std::move(tunablesIn))
+          cgroupRootPath(std::move(cgroupRootPath)), cgroupLimits(std::move(cgroupLimits)),
+          tunables(std::move(tunables))
     {
     }
 
@@ -769,9 +769,8 @@ struct [[nodiscard]] TrackedRequest {
 
 class [[nodiscard]] PageTracker final {
 public:
-    PageTracker(String sessionIdIn, String targetIdIn)
-        : sessionId(std::move(sessionIdIn)), targetId(std::move(targetIdIn)),
-          pageId(generatePageId())
+    PageTracker(String sessionId, String targetId)
+        : sessionId(std::move(sessionId)), targetId(std::move(targetId)), pageId(generatePageId())
     {
     }
 
@@ -1518,10 +1517,10 @@ public:
     CaptureSession(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
-        crawler::CaptureTimings timingsIn, crawler::CrawlerTunables tunablesIn,
-        us::engine::Deadline deadlineIn, crawler::RunRequest runIn
+        crawler::CaptureTimings timings, crawler::CrawlerTunables tunablesIn,
+        us::engine::Deadline deadline, crawler::RunRequest run
     )
-        : timings(std::move(timingsIn)), run(std::move(runIn)), deadline(deadlineIn),
+        : timings(std::move(timings)), run(std::move(run)), deadline(deadline),
           browser(
               processStarter, std::move(browserRunsRootIn), std::move(cgroupRootPathIn),
               std::move(cgroupLimitsIn), std::move(tunablesIn)
@@ -2039,17 +2038,16 @@ private:
 } // namespace
 
 CrawlerRunner::CrawlerRunner(
-    us::clients::http::Client &httpClientIn,
-    us::engine::subprocess::ProcessStarter &processStarterIn, chrono::seconds runTimeoutIn,
-    std::string stateDir, std::optional<crawler::CgroupLimits> limitsIn,
-    crawler::CaptureTimings timingsIn, crawler::CrawlerTunables tunablesIn
+    us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
+    chrono::seconds runTimeout, std::string stateDir, std::optional<crawler::CgroupLimits> limits,
+    crawler::CaptureTimings timings, crawler::CrawlerTunables tunables
 )
-    : httpClient(httpClientIn), processStarter(processStarterIn), runTimeout(runTimeoutIn),
+    : httpClient(httpClient), processStarter(processStarter), runTimeout(runTimeout),
       browserRunsRoot(buildBrowserRunsRoot(std::move(stateDir))),
-      cgroupRootPath(limitsIn ? resolveDelegatedCgroupRootPath() : std::string()),
-      timings(std::move(timingsIn)), tunables(std::move(tunablesIn))
+      cgroupRootPath(limits ? resolveDelegatedCgroupRootPath() : std::string()),
+      timings(std::move(timings)), tunables(std::move(tunables))
 {
-    cgroupLimits = std::move(limitsIn);
+    cgroupLimits = std::move(limits);
 }
 
 CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const

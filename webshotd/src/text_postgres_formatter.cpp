@@ -4,7 +4,7 @@
 
 namespace userver::storages::postgres::io {
 
-BufferFormatter<String>::BufferFormatter(const String &val) : value(val) {}
+BufferFormatter<String>::BufferFormatter(const String &value) : value(value) {}
 
 void BufferFormatter<String>::operator()(const UserTypes &, std::vector<char> &buf) const
 {
@@ -20,7 +20,7 @@ void BufferFormatter<String>::operator()(const UserTypes &, std::string &buf) co
     CharFormatter::WriteN(buf, sv.data(), sv.size());
 }
 
-BufferParser<String>::BufferParser(String &val) : value(val) {}
+BufferParser<String>::BufferParser(String &value) : value(value) {}
 
 void BufferParser<String>::operator()(const FieldBuffer &buffer)
 {

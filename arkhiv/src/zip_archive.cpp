@@ -279,9 +279,9 @@ std::optional<std::string> ZipArchiveBuilder::finish(ZipArchiveError &errorOut) 
 }
 
 ZipArchive::ZipArchive(
-    std::map<std::string, std::string, std::less<>> filesIn, std::vector<std::string> pathsIn
+    std::map<std::string, std::string, std::less<>> files, std::vector<std::string> paths
 )
-    : files(std::move(filesIn)), paths(std::move(pathsIn))
+    : files(std::move(files)), paths(std::move(paths))
 {
 }
 

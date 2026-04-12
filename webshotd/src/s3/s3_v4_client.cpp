@@ -54,10 +54,10 @@ EndpointParts parseEndpoint(const String &ep)
 } // namespace detail
 
 S3V4Client::S3V4Client(
-    http::Client &http, S3V4Config cfg, S3Credentials creds, String defaultBucket
+    http::Client &httpClient, S3V4Config config, S3Credentials creds, String bucketName
 )
-    : httpClient(http), config(std::move(cfg)), creds(std::move(creds)),
-      bucketName(std::move(defaultBucket)), endpoint(detail::parseEndpoint(config.endpoint))
+    : httpClient(httpClient), config(std::move(config)), creds(std::move(creds)),
+      bucketName(std::move(bucketName)), endpoint(detail::parseEndpoint(this->config.endpoint))
 {
 }
 

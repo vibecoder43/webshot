@@ -21,7 +21,7 @@ namespace userver::storages::postgres::io {
 template <> struct BufferFormatter<String> {
     const String &value;
 
-    explicit BufferFormatter(const String &val);
+    explicit BufferFormatter(const String &value);
 
     void operator()(const UserTypes &userTypes, std::vector<char> &buf) const;
     void operator()(const UserTypes &userTypes, std::string &buf) const;
@@ -30,7 +30,7 @@ template <> struct BufferFormatter<String> {
 template <> struct BufferParser<String> {
     String &value;
 
-    explicit BufferParser(String &val);
+    explicit BufferParser(String &value);
 
     void operator()(const FieldBuffer &buffer);
 };

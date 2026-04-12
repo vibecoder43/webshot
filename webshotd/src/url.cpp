@@ -5,7 +5,7 @@
 
 namespace v1 {
 
-Url::Url(ada::url_aggregator url) : adaUrl(std::move(url)) {}
+Url::Url(ada::url_aggregator adaUrl) : adaUrl(std::move(adaUrl)) {}
 
 std::optional<Url> Url::fromText(const String &text)
 {

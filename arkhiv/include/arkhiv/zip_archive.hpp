@@ -62,7 +62,7 @@ public:
 
 private:
     ZipArchive(
-        std::map<std::string, std::string, std::less<>> filesIn, std::vector<std::string> pathsIn
+        std::map<std::string, std::string, std::less<>> files, std::vector<std::string> paths
     );
 
     std::map<std::string, std::string, std::less<>> files;

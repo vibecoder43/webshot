@@ -33,7 +33,7 @@ public:
     [[nodiscard]] ada::url_aggregator copyParsed() const;
 
 private:
-    explicit Url(ada::url_aggregator url);
+    explicit Url(ada::url_aggregator adaUrl);
 
     ada::url_aggregator adaUrl;
 };

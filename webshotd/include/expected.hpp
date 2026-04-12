@@ -58,9 +58,9 @@ public:
     constexpr Expected &operator=(Expected &&) noexcept = default;
     constexpr ~Expected() = default;
 
-    constexpr Expected(const T &value) : inner(value) {}
-    constexpr Expected(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>)
-        : inner(std::move(value))
+    constexpr Expected(const T &inner) : inner(inner) {}
+    constexpr Expected(T &&inner) noexcept(std::is_nothrow_move_constructible_v<T>)
+        : inner(std::move(inner))
     {
     }
 
@@ -75,18 +75,16 @@ public:
     {
     }
 
-    constexpr Expected(
-        std::unexpected<E> unexpected
-    ) noexcept(std::is_nothrow_move_constructible_v<E>)
-        : inner(std::move(unexpected))
+    constexpr Expected(std::unexpected<E> inner) noexcept(std::is_nothrow_move_constructible_v<E>)
+        : inner(std::move(inner))
     {
     }
 
-    constexpr Expected(const StdExpected &expected) : inner(expected) {}
+    constexpr Expected(const StdExpected &inner) : inner(inner) {}
     constexpr Expected(
-        StdExpected &&expected
+        StdExpected &&inner
     ) noexcept(std::is_nothrow_move_constructible_v<StdExpected>)
-        : inner(std::move(expected))
+        : inner(std::move(inner))
     {
     }
 
@@ -364,18 +362,16 @@ public:
     constexpr Expected &operator=(Expected &&) noexcept = default;
     constexpr ~Expected() = default;
 
-    constexpr Expected(
-        std::unexpected<E> unexpected
-    ) noexcept(std::is_nothrow_move_constructible_v<E>)
-        : inner(std::move(unexpected))
+    constexpr Expected(std::unexpected<E> inner) noexcept(std::is_nothrow_move_constructible_v<E>)
+        : inner(std::move(inner))
     {
     }
 
-    constexpr Expected(const StdExpected &expected) : inner(expected) {}
+    constexpr Expected(const StdExpected &inner) : inner(inner) {}
     constexpr Expected(
-        StdExpected &&expected
+        StdExpected &&inner
     ) noexcept(std::is_nothrow_move_constructible_v<StdExpected>)
-        : inner(std::move(expected))
+        : inner(std::move(inner))
     {
     }
 
