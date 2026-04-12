@@ -72,12 +72,12 @@ set(${PROJECT_NAME}_headers
     include/denylist_check_handler.hpp
     include/docs_handler.hpp
     include/crud.hpp
-	    include/crawler/runner.hpp
-	    include/crawler/artifacts.hpp
-	    include/crawler/browser_sandbox.hpp
-	    include/crawler/limits.hpp
-	    include/crawler/launch_policy.hpp
-	    include/crawler/cdp_client.hpp
+	include/crawler/runner.hpp
+	include/crawler/artifacts.hpp
+	include/crawler/browser_sandbox.hpp
+	include/crawler/limits.hpp
+	include/crawler/launch_policy.hpp
+	include/crawler/cdp_client.hpp
     include/config.hpp
     include/crawler/failure.hpp
     include/crawler/fallback.hpp
@@ -230,7 +230,6 @@ target_link_libraries(${PROJECT_NAME}_objs
                       PUBLIC userver::core userver::postgresql userver::s3api
                              )
 
-# Metrics uses jemalloc mallctl; jemalloc is guaranteed in our environment.
 target_link_libraries(${PROJECT_NAME} PRIVATE ${jemalloc_LIBRARIES_jemalloc})
 
 if(CMAKE_CXX_INCLUDE_WHAT_YOU_USE)

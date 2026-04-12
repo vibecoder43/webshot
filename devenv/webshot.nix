@@ -39,7 +39,32 @@
     cwd = config.devenv.root;
     exec = ''
       set -euo pipefail
-      ${mkBuildCommandsForMode mode}
+      build_dir=${common.lib.escapeShellArg modeConfigs.${mode}.buildDir}
+      before_log=$(mktemp /tmp/webshot_build_times_before.XXXXXX)
+      started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      started_ms=$(date +%s%3N)
+      if [[ -f "$build_dir/.ninja_log" ]]; then
+        cp "$build_dir/.ninja_log" "$before_log"
+      else
+        : > "$before_log"
+      fi
+      ${common.mkConfigureTaskCommands modeConfigs.${mode}.buildDir modeConfigs.${mode}.clangdConfig modeConfigs.${mode}.buildVariant}
+      build_status=success
+      cmake --build "$build_dir" || build_status=failure
+      finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      finished_ms=$(date +%s%3N)
+      wall_time_ms=$((finished_ms - started_ms))
+      python3 webshotd/collect_build_times.py \
+        --build-dir "$build_dir" \
+        --before-log "$before_log" \
+        --after-log "$build_dir/.ninja_log" \
+        --output build/webshotd/san/latest_build_times.json \
+        --status "$build_status" \
+        --started-at "$started_at" \
+        --finished-at "$finished_at" \
+        --wall-time-ms "$wall_time_ms"
+      rm -f "$before_log"
+      [[ "$build_status" == success ]]
     '';
   };
 

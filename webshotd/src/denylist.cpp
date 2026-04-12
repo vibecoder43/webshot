@@ -117,7 +117,7 @@ Denylist::insertPrefix(const String &prefixKey, const String &reason) noexcept
         LOG_CRITICAL() << std::format(
             "denylist insert failed for {}: {}", prefixKey, inserted.error().what
         );
-        return std::unexpected(DenylistError::kDbFailure);
+        us::utils::AbortWithStacktrace("denylist insert failed");
     }
     return {};
 }
