@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import binascii
+import inspect
 from typing import TYPE_CHECKING
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
@@ -10,15 +14,61 @@ from mitmproxy import ctx, exceptions, http
 if TYPE_CHECKING:
     from mitmproxy.proxy import server_hooks
 
-DENYLIST_TIMEOUT_SEC = 5.0
+DENYLIST_TIMEOUT_SEC = 5
 LOCAL_HOSTS = frozenset({"test-target", "asset.test-target"})
 LOCAL_HTTP_PORTS = frozenset({80, 18080})
 LOCAL_HTTPS_PORTS = frozenset({443, 18443})
 LOCAL_HTTP_ADDRESS = ("127.0.0.1", 18080)
 LOCAL_HTTPS_ADDRESS = ("127.0.0.1", 18443)
 
+MAX_RUN_ID_BYTES = 128
+
+
+def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return value
+    return None
+
+
+class _BudgetedWriter:
+    def __init__(self, inner, proxy: WebshotProxy, client_id: str) -> None:
+        self.inner = inner
+        self.proxy = proxy
+        self.clientId = client_id
+
+    def write(self, data: bytes) -> None:
+        limited = self.proxy._limit_client_write(self.clientId, data)
+        if not limited:
+            return
+        self.inner.write(limited)
+
+    async def drain(self) -> None:
+        maybe = _maybe_await(self.inner.drain())
+        if maybe is not None:
+            await maybe
+
+    def close(self) -> None:
+        self.inner.close()
+
+    def is_closing(self) -> bool:
+        return self.inner.is_closing()
+
+    def write_eof(self) -> None:
+        self.inner.write_eof()
+
+    def __getattr__(self, name: str):
+        return getattr(self.inner, name)
+
 
 class WebshotProxy:
+    def __init__(self) -> None:
+        self.wrappedClientIds: set[str] = set()
+        self.clientIdToRunId: dict[str, str] = {}
+        self.runIdToClientIds: dict[str, set[str]] = {}
+        self.runIdRemainingBytes: dict[str, int] = {}
+        self.runIdTimers: dict[str, asyncio.Handle] = {}
+        self.runIdClosed: set[str] = set()
+
     def load(self, loader) -> None:
         loader.add_option(
             name="webshot_mode",
@@ -32,20 +82,77 @@ class WebshotProxy:
             default="http://127.0.0.1:8080/v1/denylist/check",
             help="denylist authority URL",
         )
+        loader.add_option(
+            name="crawler_size_limit_mib",
+            typespec=int,
+            default=0,
+            help="Max browser downstream bytes (MiB) per crawl run, enforced at mitmproxy",
+        )
+        loader.add_option(
+            name="crawler_run_timeout_sec",
+            typespec=int,
+            default=0,
+            help="Max wall-time (sec) per crawl run, enforced at mitmproxy",
+        )
 
     def configure(self, updates) -> None:
         if "webshot_mode" in updates and ctx.options.webshot_mode not in {"dev", "prodlike"}:
             raise exceptions.OptionsError("webshot_mode must be dev or prodlike")
         if "webshot_denylist_url" in updates and ctx.options.webshot_denylist_url.strip() == "":
             raise exceptions.OptionsError("webshot_denylist_url must not be empty")
+        # These limits are mandatory; fail hard if left unset or invalid.
+        if ctx.options.crawler_size_limit_mib <= 0:
+            raise exceptions.OptionsError("crawler_size_limit_mib must be positive")
+        if ctx.options.crawler_run_timeout_sec <= 0:
+            raise exceptions.OptionsError("crawler_run_timeout_sec must be positive")
+
+    def client_connected(self, client) -> None:
+        proxyserver = ctx.master.addons.get("proxyserver")
+        if proxyserver is None:
+            return
+        handler = proxyserver.connections.get(client.id)
+        if handler is None:
+            return
+        conn_io = handler.transports.get(handler.client)
+        if conn_io is None:
+            return
+        writer = conn_io.writer
+        if writer is None:
+            return
+        if client.id in self.wrappedClientIds:
+            return
+        conn_io.writer = _BudgetedWriter(writer, self, client.id)
+        self.wrappedClientIds.add(client.id)
+
+    def client_disconnected(self, client) -> None:
+        self.wrappedClientIds.discard(client.id)
+        run_id = self.clientIdToRunId.pop(client.id, None)
+        if run_id is None:
+            return
+        client_ids = self.runIdToClientIds.get(run_id)
+        if client_ids is not None:
+            client_ids.discard(client.id)
+            if not client_ids:
+                self.runIdToClientIds.pop(run_id, None)
+                self.runIdRemainingBytes.pop(run_id, None)
+                self.runIdClosed.discard(run_id)
+                timer = self.runIdTimers.pop(run_id, None)
+                if timer is not None:
+                    timer.cancel()
 
     def requestheaders(self, flow: http.HTTPFlow) -> None:
         self._normalize_local_request(flow)
         self._rewrite_local_upstream(flow)
+        if flow.response is not None:
+            return
+        self._ensure_client_wrapped(flow.client_conn.id)
+        self._attach_run_budget_or_challenge(flow)
 
     def request(self, flow: http.HTTPFlow) -> None:
         self._normalize_local_request(flow)
         self._rewrite_local_upstream(flow)
+        if flow.response is not None:
+            return
         self._enforce_denylist(flow)
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
@@ -122,6 +229,142 @@ class WebshotProxy:
             return server_sni
 
         return None
+
+    def _attach_run_budget_or_challenge(self, flow: http.HTTPFlow) -> None:
+        run_id = self._extract_run_id_from_proxy_auth(flow)
+        if run_id is None:
+            flow.response = http.Response.make(
+                407,
+                b"Proxy authentication required\n",
+                {
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "Proxy-Authenticate": 'Basic realm="webshot"',
+                },
+            )
+            return
+        self._attach_client_to_run(flow.client_conn.id, run_id)
+
+    def _ensure_client_wrapped(self, client_id: str) -> None:
+        if client_id in self.wrappedClientIds:
+            return
+        proxyserver = ctx.master.addons.get("proxyserver")
+        if proxyserver is None:
+            return
+        handler = proxyserver.connections.get(client_id)
+        if handler is None:
+            return
+        conn_io = handler.transports.get(handler.client)
+        if conn_io is None:
+            return
+        writer = conn_io.writer
+        if writer is None:
+            return
+        conn_io.writer = _BudgetedWriter(writer, self, client_id)
+        self.wrappedClientIds.add(client_id)
+
+    def _extract_run_id_from_proxy_auth(self, flow: http.HTTPFlow) -> str | None:
+        header = flow.request.headers.get("proxy-authorization")
+        if header is None:
+            header = flow.request.headers.get("Proxy-Authorization")
+        if not header:
+            return None
+
+        parts = header.split(" ", 1)
+        if len(parts) != 2 or parts[0].lower() != "basic":
+            return None
+        try:
+            raw = base64.b64decode(parts[1], validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if len(raw) > MAX_RUN_ID_BYTES + 64:
+            return None
+        try:
+            decoded = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        username, sep, _password = decoded.partition(":")
+        if sep != ":":
+            return None
+        username = username.strip()
+        if not username:
+            return None
+        if len(username.encode("utf-8")) > MAX_RUN_ID_BYTES:
+            return None
+        return username
+
+    def _attach_client_to_run(self, client_id: str, run_id: str) -> None:
+        previous = self.clientIdToRunId.get(client_id)
+        if previous == run_id:
+            return
+
+        if previous is not None:
+            old_set = self.runIdToClientIds.get(previous)
+            if old_set is not None:
+                old_set.discard(client_id)
+
+        self.clientIdToRunId[client_id] = run_id
+        self.runIdToClientIds.setdefault(run_id, set()).add(client_id)
+        if run_id not in self.runIdRemainingBytes:
+            self.runIdRemainingBytes[run_id] = ctx.options.crawler_size_limit_mib * 1024 * 1024
+        if run_id not in self.runIdTimers:
+            loop = asyncio.get_running_loop()
+            timeout_sec = ctx.options.crawler_run_timeout_sec
+            self.runIdTimers[run_id] = loop.call_later(
+                timeout_sec, lambda: self._close_run(run_id, "run timeout exceeded")
+            )
+
+    def _limit_client_write(self, client_id: str, data: bytes) -> bytes:
+        run_id = self.clientIdToRunId.get(client_id)
+        if run_id is None:
+            return data
+        if run_id in self.runIdClosed:
+            return b""
+
+        remaining = self.runIdRemainingBytes.get(run_id)
+        if remaining is None:
+            remaining = ctx.options.crawler_size_limit_mib * 1024 * 1024
+            self.runIdRemainingBytes[run_id] = remaining
+        if remaining <= 0:
+            self._close_run(run_id, "crawler_size_limit_mib exceeded")
+            return b""
+
+        size = len(data)
+        if size <= remaining:
+            self.runIdRemainingBytes[run_id] = remaining - size
+            return data
+
+        allowed = data[:remaining]
+        self.runIdRemainingBytes[run_id] = 0
+        self._close_run(run_id, "crawler_size_limit_mib exceeded")
+        return allowed
+
+    def _close_run(self, run_id: str, reason: str) -> None:
+        if run_id in self.runIdClosed:
+            return
+        self.runIdClosed.add(run_id)
+        client_ids = self.runIdToClientIds.get(run_id)
+        if not client_ids:
+            return
+
+        proxyserver = ctx.master.addons.get("proxyserver")
+        if proxyserver is None:
+            return
+        for client_id in list(client_ids):
+            handler = proxyserver.connections.get(client_id)
+            if handler is None:
+                continue
+            conn_io = handler.transports.get(handler.client)
+            if conn_io is None:
+                continue
+            writer = conn_io.writer
+            task = conn_io.handler
+            if task is not None:
+                task.cancel(reason)
+            try:
+                if writer is not None and not writer.is_closing():
+                    writer.close()
+            except OSError:
+                pass
 
     def _rewrite_local_fixture_port_in_url(self, url: str) -> str:
         try:

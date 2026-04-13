@@ -1,11 +1,13 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace v1::crawler {
 
-[[nodiscard]] std::vector<std::string>
-buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath);
+[[nodiscard]] std::vector<std::string> buildChromiumArgs(
+    const std::string &userDataDir, const std::string &netlogPath, std::string_view runId
+);
 
 } // namespace v1::crawler

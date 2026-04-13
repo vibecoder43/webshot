@@ -170,6 +170,13 @@ def _require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> s
     return cast(str, value)
 
 
+def _require_yaml_int(raw: dict[str, object], key: str, *, source: Path) -> int:
+    value = raw.get(key)
+    if not isinstance(value, int):
+        die(f"Missing required config var '{key}' in {source}", exit_code=2)
+    return cast(int, value)
+
+
 def _database_name_from_dsn(dsn: str, *, key: str, source: Path) -> str:
     parsed = urlsplit(dsn)
     db_name = parsed.path.lstrip("/")
@@ -822,6 +829,23 @@ def _render_service_tree(ctx: RuntimeUpContext) -> list[ServiceSpec]:
         proxy_service / "data/check",
         f"#!/bin/sh\nexec {python_exe} -m s6.check_tcp_ready 127.0.0.1 3128\n",
     )
+    raw_vars = _read_yaml(ctx.config_vars_source)
+    crawler_size_limit_mib = _require_yaml_int(
+        raw_vars, "crawler_size_limit_mib", source=ctx.config_vars_source
+    )
+    crawler_run_timeout_sec = _require_yaml_int(
+        raw_vars, "crawler_run_timeout_sec", source=ctx.config_vars_source
+    )
+    if crawler_size_limit_mib <= 0:
+        die(
+            f"Config var 'crawler_size_limit_mib' in {ctx.config_vars_source} must be positive",
+            exit_code=2,
+        )
+    if crawler_run_timeout_sec <= 0:
+        die(
+            f"Config var 'crawler_run_timeout_sec' in {ctx.config_vars_source} must be positive",
+            exit_code=2,
+        )
     proxy_cmd: list[str | Path] = [
         "mitmdump",
         "--mode",
@@ -844,6 +868,10 @@ def _render_service_tree(ctx: RuntimeUpContext) -> list[ServiceSpec]:
         f"webshot_mode={ctx.mode}",
         "--set",
         "webshot_denylist_url=http://127.0.0.1:8080/v1/denylist/check",
+        "--set",
+        f"crawler_size_limit_mib={crawler_size_limit_mib}",
+        "--set",
+        f"crawler_run_timeout_sec={crawler_run_timeout_sec}",
         "-s",
         ctx.repo_root / "s6/mitm_addon.py",
     ]

@@ -395,7 +395,9 @@ spawnProxyBridge(us::engine::subprocess::ProcessStarter &processStarter, const B
     const auto memoryBytes = cgroupLimits ? cgroupLimits->memoryBytes : 0_i64;
     const auto cgroupName = std::format("webshotd_crawler_{}", paths.runId);
 
-    auto chromiumArgs = crawler::buildChromiumArgs(paths.userDataDir, paths.netlogPath);
+    auto chromiumArgs = crawler::buildChromiumArgs(
+        paths.userDataDir, paths.netlogPath, paths.runId
+    );
     auto bwrapArgs = std::vector<std::string>{
         "bwrap",
         "--json-status-fd",
