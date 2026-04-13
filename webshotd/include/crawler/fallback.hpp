@@ -103,7 +103,7 @@ isNoResponseSeedFailure(const std::optional<SeedPageProbe> &probe) noexcept
 
     switch (code) {
     case UnderlyingValue(kSizeLimit):
-        return "crawler hit Browsertrix sizeLimit (max WARC size)"_t;
+        return "crawler exceeded configured archive size limit"_t;
     case UnderlyingValue(kTimeLimit):
         return "crawler hit Browsertrix timeLimit (max crawl duration)"_t;
     case UnderlyingValue(kDiskUtilization):

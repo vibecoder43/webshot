@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <format>
+#include <limits>
 #include <string_view>
 #include <type_traits>
 
@@ -61,6 +62,18 @@ using i64 =
     boost::safe_numerics::safe<int64_t, boost::safe_numerics::native, integers_detail::AbortPolicy>;
 using usize =
     boost::safe_numerics::safe<size_t, boost::safe_numerics::native, integers_detail::AbortPolicy>;
+
+static_assert(std::numeric_limits<u32>::is_specialized);
+static_assert(std::numeric_limits<i32>::is_specialized);
+static_assert(std::numeric_limits<u64>::is_specialized);
+static_assert(std::numeric_limits<i64>::is_specialized);
+static_assert(std::numeric_limits<usize>::is_specialized);
+
+static_assert(std::is_same_v<decltype(std::numeric_limits<u32>::max()), u32>);
+static_assert(std::is_same_v<decltype(std::numeric_limits<i32>::max()), i32>);
+static_assert(std::is_same_v<decltype(std::numeric_limits<u64>::max()), u64>);
+static_assert(std::is_same_v<decltype(std::numeric_limits<i64>::max()), i64>);
+static_assert(std::is_same_v<decltype(std::numeric_limits<usize>::max()), usize>);
 
 namespace integers {
 

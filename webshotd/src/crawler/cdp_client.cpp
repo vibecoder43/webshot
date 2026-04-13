@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
@@ -33,6 +34,7 @@
 #include <userver/utils/assert.hpp>
 #include <userver/utils/datetime.hpp>
 #include <userver/utils/traceful_exception.hpp>
+#include <userver/utils/underlying_value.hpp>
 #include <userver/websocket/connection.hpp>
 namespace chrono = std::chrono;
 
@@ -228,13 +230,14 @@ CdpClient::CdpClient(
 Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
     std::string socketPath, String websocketPath, std::string tracePath,
     us::engine::Deadline overallDeadline, chrono::seconds handshakeTimeout,
-    chrono::seconds commandTimeout, chrono::milliseconds waitPollInterval
+    chrono::seconds commandTimeout, chrono::milliseconds waitPollInterval, i64 maxRemotePayloadBytes
 )
 {
     using enum CdpError;
 
     UINVARIANT(!tracePath.empty(), "cdp trace path must not be empty");
     UINVARIANT(overallDeadline.IsReachable(), "cdp overall deadline must be reachable");
+    UINVARIANT(maxRemotePayloadBytes > 0_i64, "cdp max remote payload must be positive");
 
     us::fs::blocking::FileDescriptor traceFd;
     try {
@@ -301,8 +304,12 @@ Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
     std::shared_ptr<us::websocket::WebSocketConnection> ws;
     try {
         auto connectionSocket = std::make_unique<us::engine::io::Socket>(std::move(socket));
+        us::websocket::Config wsConfig;
+        wsConfig.max_remote_payload = numericCast<decltype(wsConfig.max_remote_payload)>(
+            maxRemotePayloadBytes
+        );
         ws = us::websocket::MakeClientWebSocketConnection(
-            std::move(connectionSocket), std::move(address), {}
+            std::move(connectionSocket), std::move(address), wsConfig
         );
     } catch (const us::utils::TracefulException &) {
         return std::unexpected(CdpFailure{.code = kTransport, .detail = {}});
@@ -393,8 +400,16 @@ Expected<bool, CdpFailure> CdpClient::tryPumpOnce()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", numericCast<int>(message.close_status.value()));
-        return std::unexpected(CdpFailure{.code = kSocketClosed, .detail = {}});
+        traceClose("in", us::utils::UnderlyingValue(message.close_status.value()));
+        return std::unexpected(
+            CdpFailure{
+                .code = kSocketClosed,
+                .detail = text::format(
+                    "websocket close status {}",
+                    us::utils::UnderlyingValue(message.close_status.value())
+                ),
+            }
+        );
     }
     auto ok = handleMessage(message.data);
     if (!ok)
@@ -433,8 +448,16 @@ Expected<void, CdpFailure> CdpClient::pumpOne()
     }
     if (message.close_status) {
         closed = true;
-        traceClose("in", numericCast<int>(message.close_status.value()));
-        return std::unexpected(CdpFailure{.code = kSocketClosed, .detail = {}});
+        traceClose("in", us::utils::UnderlyingValue(message.close_status.value()));
+        return std::unexpected(
+            CdpFailure{
+                .code = kSocketClosed,
+                .detail = text::format(
+                    "websocket close status {}",
+                    us::utils::UnderlyingValue(message.close_status.value())
+                ),
+            }
+        );
     }
     return handleMessage(message.data);
 }

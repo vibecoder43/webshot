@@ -213,6 +213,7 @@ def service_config_path_temp(
         cmake_cache_path, "WEBSHOT_RAPIDOC_ASSETS_DIR"
     )
     config_vars["openapi_dir"] = str(service_source_dir.parent / "schema")
+    config_vars["web_ui_dir"] = str(service_binary.parent / "web_ui")
     config_vars["state_dir"] = "/tmp/webshot/testsuite/webshotd"
 
     components = config_yaml["components_manager"]["components"]

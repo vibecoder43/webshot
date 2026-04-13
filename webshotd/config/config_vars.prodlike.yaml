@@ -18,6 +18,7 @@ crawler_behavior_timeout_sec: 1
 crawler_devtools_startup_timeout_sec: 15
 crawler_cdp_handshake_timeout_sec: 10
 crawler_cdp_command_timeout_sec: 10
+crawler_size_limit_mib: 50
 crawler_devtools_poll_interval_ms: 100
 crawler_cdp_wait_poll_interval_ms: 10
 crawler_browser_stop_timeout_ms: 1500

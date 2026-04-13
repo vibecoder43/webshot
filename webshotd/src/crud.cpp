@@ -101,7 +101,7 @@ struct [[nodiscard]] PgError final {
         return {};
 
     UINVARIANT(cpuCores > 0_i64 && memoryGib > 0_i64, "crawler limits must be both > 0 or both 0");
-    const auto maxI64 = i64(std::numeric_limits<int64_t>::max());
+    const auto maxI64 = std::numeric_limits<i64>::max();
     const auto maxMemoryGib = maxI64 / kGiB;
     UINVARIANT(memoryGib <= maxMemoryGib, "memory GiB limit is too large");
     const auto maxCpuCores = maxI64 / kCpuMaxPeriodUs;
@@ -174,6 +174,10 @@ properties:
         type: integer
         minimum: 1
         description: 'Upper bound for a single CDP command round-trip in seconds'
+    crawler_size_limit_mib:
+        type: integer
+        minimum: 1
+        description: 'Max WACZ archive size limit in MiB per capture'
     crawler_devtools_poll_interval_ms:
         type: integer
         minimum: 1
@@ -251,6 +255,7 @@ public:
     const i64 crawlerDevtoolsStartupTimeoutSec;
     const i64 crawlerCdpHandshakeTimeoutSec;
     const i64 crawlerCdpCommandTimeoutSec;
+    const i64 crawlerSizeLimitMiB;
     const i64 crawlerDevtoolsPollIntervalMs;
     const i64 crawlerCdpWaitPollIntervalMs;
     const i64 crawlerBrowserStopTimeoutMs;
@@ -332,6 +337,7 @@ public:
           ),
           crawlerCdpHandshakeTimeoutSec(cfg["crawler_cdp_handshake_timeout_sec"].As<int64_t>()),
           crawlerCdpCommandTimeoutSec(cfg["crawler_cdp_command_timeout_sec"].As<int64_t>()),
+          crawlerSizeLimitMiB(cfg["crawler_size_limit_mib"].As<int64_t>()),
           crawlerDevtoolsPollIntervalMs(cfg["crawler_devtools_poll_interval_ms"].As<int64_t>()),
           crawlerCdpWaitPollIntervalMs(cfg["crawler_cdp_wait_poll_interval_ms"].As<int64_t>()),
           crawlerBrowserStopTimeoutMs(cfg["crawler_browser_stop_timeout_ms"].As<int64_t>()),
@@ -359,6 +365,7 @@ public:
               httpClient, processStarter, chrono::seconds{crawlerRunTimeoutSec},
               std::string(svcCfg.stateDir()),
               computeCrawlerLimits(crawlerCpuCores, crawlerMemoryGib),
+              crawlerSizeLimitMiB * 1024_i64 * 1024_i64,
               crawler::CaptureTimings{
                   chrono::seconds{crawlerPostLoadDelaySec},
                   chrono::seconds{crawlerNetIdleWaitSec},
@@ -397,6 +404,7 @@ public:
         UINVARIANT(
             crawlJobCleanupIntervalSec > 0_i64, "crawl_job_cleanup_interval_sec must be positive"
         );
+        UINVARIANT(crawlerSizeLimitMiB > 0_i64, "crawler_size_limit_mib must be positive");
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
         UINVARIANT(

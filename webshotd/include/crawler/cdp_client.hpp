@@ -64,7 +64,8 @@ public:
     [[nodiscard]] static Expected<std::unique_ptr<CdpClient>, CdpFailure> connect(
         std::string socketPath, String websocketPath, std::string tracePath,
         us::engine::Deadline overallDeadline, std::chrono::seconds handshakeTimeout,
-        std::chrono::seconds commandTimeout, std::chrono::milliseconds waitPollInterval
+        std::chrono::seconds commandTimeout, std::chrono::milliseconds waitPollInterval,
+        i64 maxRemotePayloadBytes
     );
 
     ~CdpClient() noexcept;

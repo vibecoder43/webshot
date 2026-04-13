@@ -929,6 +929,7 @@ def _render_service_tree(ctx: RuntimeUpContext) -> list[ServiceSpec]:
                 {
                     "rapidoc_assets_dir": rapidoc_assets_dir,
                     "openapi_dir": str(ctx.repo_root / "schema"),
+                    "web_ui_dir": str(ctx.binary_path.parent / "web_ui"),
                     "state_dir": str(ctx.state_dir / "webshotd"),
                 },
                 sort_keys=True,

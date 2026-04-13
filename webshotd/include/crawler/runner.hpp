@@ -49,7 +49,7 @@ public:
     CrawlerRunner(
         us::clients::http::Client &httpClient,
         us::engine::subprocess::ProcessStarter &processStarter, std::chrono::seconds runTimeout,
-        std::string stateDir, std::optional<crawler::CgroupLimits> limits,
+        std::string stateDir, std::optional<crawler::CgroupLimits> limits, i64 maxArchiveBytes,
         crawler::CaptureTimings timings, crawler::CrawlerTunables tunables
     );
 
@@ -62,6 +62,7 @@ private:
     std::string browserRunsRoot;
     std::string cgroupRootPath;
     std::optional<crawler::CgroupLimits> cgroupLimits;
+    i64 maxArchiveBytes;
     crawler::CaptureTimings timings;
     crawler::CrawlerTunables tunables;
 };

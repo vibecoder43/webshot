@@ -153,6 +153,7 @@
     "-DUSERVER_DEBUG_INFO_COMPRESSION=z"
     "-DWEBSHOT_ENABLE_SQL_COVERAGE=OFF"
     "-DWEBSHOT_RAPIDOC_ASSETS_DIR=${rapidocAssets}"
+    "-DWEBSHOT_WEB_UI_VENDOR_DIR=${webUiVendor}"
   ];
 
   cmakeBool = value:
@@ -339,6 +340,80 @@
     installPhase = ''
       mkdir -p "$out"
       cp package/dist/rapidoc-min.js "$out/rapidoc-min.js"
+    '';
+  };
+
+  webUiVendor = pkgsWithOverlay.stdenvNoCC.mkDerivation {
+    pname = "web-ui-vendor";
+    version = "0";
+
+    nativeBuildInputs = with pkgsWithOverlay; [gnutar gzip];
+    dontUnpack = true;
+    dontConfigure = true;
+    dontBuild = true;
+
+    installPhase = let
+      htmxVersion = "2.0.8";
+      htmxSrc = pkgsWithOverlay.fetchurl {
+        url = "https://registry.npmjs.org/htmx.org/-/htmx.org-${htmxVersion}.tgz";
+        hash = "sha512-fm297iru0iWsNJlBrjvtN7V9zjaxd+69Oqjh4F/Vq9Wwi2kFisLcrLCiv5oBX0KLfOX/zG8AUo9ROMU5XUB44Q==";
+      };
+
+      jsonEncVersion = "2.0.3";
+      jsonEncSrc = pkgsWithOverlay.fetchurl {
+        url = "https://registry.npmjs.org/htmx-ext-json-enc/-/htmx-ext-json-enc-${jsonEncVersion}.tgz";
+        hash = "sha512-8Oc6MNOvhSXR78dY7CoiYU3ZgaCPNfE9UHXbHg4g6pd+8fqbZIVFxg9XVijxtGYoF/irf3eTOnEgIPV0KVX7Iw==";
+      };
+
+      clientSideTemplatesVersion = "2.0.2";
+      clientSideTemplatesSrc = pkgsWithOverlay.fetchurl {
+        url = "https://registry.npmjs.org/htmx-ext-client-side-templates/-/htmx-ext-client-side-templates-${clientSideTemplatesVersion}.tgz";
+        hash = "sha512-d2dA5HOJuMPN+QmAa4MtriTc1OZaaidG/UK/uwDsKJzstMFae2M7tFgykFXOjuFoV2XNCcexr3p+a9p5Jb54Dg==";
+      };
+
+      responseTargetsVersion = "2.0.4";
+      responseTargetsSrc = pkgsWithOverlay.fetchurl {
+        url = "https://registry.npmjs.org/htmx-ext-response-targets/-/htmx-ext-response-targets-${responseTargetsVersion}.tgz";
+        hash = "sha512-Q/yfH0N2A40j903mr6ldGV3qLWMQeufROylYIbYQLBGrCpmydflxXmQwDOEhEWdPnBTgiHofkAo0gQ3S1BmyxQ==";
+      };
+
+      nunjucksVersion = "3.2.4";
+      nunjucksSrc = pkgsWithOverlay.fetchurl {
+        url = "https://registry.npmjs.org/nunjucks/-/nunjucks-${nunjucksVersion}.tgz";
+        hash = "sha512-26XRV6BhkgK0VOxfbU5cQI+ICFUtMLixv1noZn1tGU38kQH5A5nmmbk/O45xdyBhD1esk47nKrY0mvQpZIhRjQ==";
+      };
+    in ''
+      set -euo pipefail
+      mkdir -p "$out"
+
+      tmp=$(mktemp -d)
+      mkdir -p "$tmp/htmx" "$tmp/json_enc" "$tmp/cst" "$tmp/rt" "$tmp/nunjucks"
+
+      tar -xzf "${htmxSrc}" -C "$tmp/htmx"
+      tar -xzf "${jsonEncSrc}" -C "$tmp/json_enc"
+      tar -xzf "${clientSideTemplatesSrc}" -C "$tmp/cst"
+      tar -xzf "${responseTargetsSrc}" -C "$tmp/rt"
+      tar -xzf "${nunjucksSrc}" -C "$tmp/nunjucks"
+
+      cp "$tmp/htmx/package/dist/htmx.min.js" "$out/htmx.min.js"
+      cp "$tmp/json_enc/package/dist/json-enc.min.js" "$out/json-enc.min.js"
+      cp "$tmp/cst/package/dist/client-side-templates.min.js" "$out/client-side-templates.min.js"
+      cp "$tmp/rt/package/dist/response-targets.min.js" "$out/response-targets.min.js"
+      cp "$tmp/nunjucks/package/browser/nunjucks.min.js" "$out/nunjucks.min.js"
+
+      # Optional source maps reduce noisy devtools warnings when serving the UI locally.
+      for f in \
+        "$tmp/htmx/package/dist/htmx.min.js.map" \
+        "$tmp/json_enc/package/dist/json-enc.min.js.map" \
+        "$tmp/cst/package/dist/client-side-templates.min.js.map" \
+        "$tmp/rt/package/dist/response-targets.min.js.map" \
+        "$tmp/nunjucks/package/browser/nunjucks.min.js.map"; do
+        if [[ -f "$f" ]]; then
+          cp "$f" "$out/$(basename "$f")"
+        fi
+      done
+
+      rm -rf "$tmp"
     '';
   };
 in

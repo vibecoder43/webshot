@@ -32,6 +32,10 @@ set(WEBSHOT_RAPIDOC_ASSETS_DIR
     ""
     CACHE STRING
           "Absolute path to pinned RapiDoc assets")
+set(WEBSHOT_WEB_UI_VENDOR_DIR
+    ""
+    CACHE STRING
+          "Absolute path to pinned web UI vendor assets (htmx + extensions)")
 set(WEBSHOT_RUNTIME_EXTRA_PATH
     ""
     CACHE STRING
@@ -71,6 +75,7 @@ set(${PROJECT_NAME}_headers
     include/disallow_and_purge_handler.hpp
     include/denylist_check_handler.hpp
     include/docs_handler.hpp
+    include/ui_redirect_handler.hpp
     include/crud.hpp
 	include/crawler/runner.hpp
 	include/crawler/artifacts.hpp
@@ -102,6 +107,7 @@ add_library(
   src/disallow_and_purge_handler.cpp
   src/denylist_check_handler.cpp
   src/docs_handler.cpp
+  src/ui_redirect_handler.cpp
   src/crud.cpp
   src/metrics.cpp
   src/url.cpp
@@ -178,6 +184,18 @@ file(
 add_custom_target(
   ${PROJECT_NAME}_stage_runtime_layout ALL
   COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_INSTALL_PREFIX}/webshotd"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui/vendor"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui/vendor"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different "${WEBSHOT_REPO_ROOT}/web_ui/index.html"
+    "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui/index.html"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different "${WEBSHOT_REPO_ROOT}/web_ui/style.css"
+    "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui/style.css"
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_directory "${WEBSHOT_WEB_UI_VENDOR_DIR}"
+    "${CMAKE_INSTALL_PREFIX}/webshotd/web_ui/vendor"
   COMMAND
     ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${PROJECT_NAME}>
     "${CMAKE_INSTALL_PREFIX}/webshotd/webshotd_bin"
@@ -188,11 +206,18 @@ add_custom_target(
     ${CMAKE_COMMAND} -E copy_if_different
     "${CMAKE_BINARY_DIR}/CMakeCache.txt"
     "${CMAKE_INSTALL_PREFIX}/webshotd/CMakeCache.txt"
-  DEPENDS ${PROJECT_NAME} "${CMAKE_BINARY_DIR}/CMakeCache.txt"
+  DEPENDS
+    ${PROJECT_NAME}
+    "${CMAKE_BINARY_DIR}/CMakeCache.txt"
+    "${WEBSHOT_REPO_ROOT}/web_ui/index.html"
+    "${WEBSHOT_REPO_ROOT}/web_ui/style.css"
   VERBATIM)
 
 if(WEBSHOT_RAPIDOC_ASSETS_DIR STREQUAL "")
   message(FATAL_ERROR "WEBSHOT_RAPIDOC_ASSETS_DIR must be configured")
+endif()
+if(WEBSHOT_WEB_UI_VENDOR_DIR STREQUAL "")
+  message(FATAL_ERROR "WEBSHOT_WEB_UI_VENDOR_DIR must be configured")
 endif()
 
 target_precompile_headers(${PROJECT_NAME}_objs PRIVATE include/webshotd_pch.hpp)

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Webshot UI</title>
+    <link rel="stylesheet" href="/ui/style.css" />
+    <script src="/ui/vendor/htmx.min.js"></script>
+    <script src="/ui/vendor/response-targets.min.js"></script>
+    <script src="/ui/vendor/json-enc.min.js"></script>
+    <script src="/ui/vendor/client-side-templates.min.js"></script>
+    <script src="/ui/vendor/nunjucks.min.js"></script>
+    <script>
+      // Ensure user-controlled strings (e.g. link) are escaped in templates by default.
+      nunjucks.configure({ autoescape: true });
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Webshot UI</h1>
+      <nav class="links">
+        <a href="/rapidoc">API Docs</a>
+        <a href="/openapi/webshot.yaml">OpenAPI</a>
+      </nav>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2>Capture</h2>
+        <form
+          id="capture-form"
+          hx-post="/v1/capture"
+          hx-ext="response-targets, client-side-templates, json-enc"
+          nunjucks-template="tpl_capture_job"
+          hx-target="#capture-result"
+          hx-target-error="#errors"
+          hx-swap="innerHTML"
+        >
+          <label>
+            Link
+            <input name="link" type="text" placeholder="example.com/a" required />
+          </label>
+          <div class="row">
+            <button type="submit">Capture</button>
+          </div>
+        </form>
+        <div id="capture-result" class="result"></div>
+      </section>
+
+      <section class="card">
+        <h2>Search (Exact)</h2>
+        <form
+          id="search-url-form"
+          hx-get="/v1/capture"
+          hx-ext="response-targets, client-side-templates"
+          nunjucks-template="tpl_search_url"
+          hx-target="#search-url-result"
+          hx-target-error="#errors"
+          hx-swap="innerHTML"
+        >
+          <label>
+            Link
+            <input name="link" type="text" placeholder="example.com/a" required />
+          </label>
+          <div class="row">
+            <button type="submit">Search</button>
+          </div>
+        </form>
+        <div id="search-url-result" class="result"></div>
+      </section>
+
+      <section class="card">
+        <h2>Search (Prefix)</h2>
+        <form
+          id="search-prefix-form"
+          hx-get="/v1/capture/prefix"
+          hx-ext="response-targets, client-side-templates"
+          nunjucks-template="tpl_search_prefix"
+          hx-target="#search-prefix-result"
+          hx-target-error="#errors"
+          hx-swap="innerHTML"
+        >
+          <label>
+            Prefix
+            <input name="prefix" type="text" placeholder="example.com/a" required />
+          </label>
+          <div class="row">
+            <button type="submit">Search</button>
+          </div>
+        </form>
+        <div id="search-prefix-result" class="result"></div>
+      </section>
+
+      <section class="card errors">
+        <h2>Errors</h2>
+        <div id="errors" class="result"></div>
+      </section>
+    </main>
+
+    <!-- Capture job response: start polling job status -->
+    <template id="tpl_capture_job">
+      {% if error and error.message %}
+      <div class="error">
+        <pre class="pre">{{ error.message }}</pre>
+      </div>
+      {% else %}
+      <div class="job">
+        <div class="job-meta">
+          <div><span class="k">Job</span> <span class="v mono">{{ uuid }}</span></div>
+          <div><span class="k">Link</span> <span class="v">{{ link }}</span></div>
+          <div><span class="k">Status</span> <span class="v">{{ status }}</span></div>
+        </div>
+        <div
+          class="job-status"
+          hx-get="/v1/capture/jobs/{{ uuid }}"
+          hx-trigger="load, every 1s"
+          hx-target="this"
+          hx-swap="outerHTML"
+          hx-ext="response-targets, client-side-templates"
+          nunjucks-template="tpl_job_status"
+          hx-target-error="this"
+        >
+          Polling...
+        </div>
+      </div>
+      {% endif %}
+    </template>
+
+    <!-- Job status response (CaptureJob): keep polling while pending/running -->
+    <template id="tpl_job_status">
+      {% if error and error.message %}
+      <div class="job-status terminal">
+        <span class="badge failed">error</span>
+        <pre class="pre">{{ error.message }}</pre>
+      </div>
+      {% elif status == "pending" or status == "running" %}
+      <div
+        class="job-status"
+        hx-get="/v1/capture/jobs/{{ uuid }}"
+        hx-trigger="every 1s"
+        hx-target="this"
+        hx-swap="outerHTML"
+        hx-ext="response-targets, client-side-templates"
+        nunjucks-template="tpl_job_status"
+        hx-target-error="this"
+      >
+        <span class="badge {{ status }}">{{ status }}</span>
+        <span class="mono">{{ uuid }}</span>
+      </div>
+      {% elif status == "succeeded" %}
+      <div class="job-status terminal">
+        <span class="badge {{ status }}">{{ status }}</span>
+        {% if result and result.uuid %}
+        <a class="mono" href="/v1/capture/{{ result.uuid }}">capture {{ result.uuid }}</a>
+        {% else %}
+        <span class="mono">{{ uuid }}</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="job-status terminal">
+        <span class="badge {{ status }}">{{ status }}</span>
+        <span class="mono">{{ uuid }}</span>
+        {% if error and error.error and error.error.message %}
+        <pre class="pre">{{ error.error.message }}</pre>
+        {% endif %}
+      </div>
+      {% endif %}
+    </template>
+
+    <!-- Exact search response: PagedFindCapturesByUrlResponse -->
+    <template id="tpl_search_url">
+      {% if error and error.message %}
+      <div class="error">
+        <pre class="pre">{{ error.message }}</pre>
+      </div>
+      {% else %}
+      <div class="table">
+        <div class="thead">
+          <div>UUID</div>
+          <div>Created</div>
+        </div>
+        {% for item in items %}
+        <div class="trow">
+          <div><a class="mono" href="/v1/capture/{{ item.uuid }}">{{ item.uuid }}</a></div>
+          <div class="mono">{{ item.created_at }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if next_page_token %}
+      <div class="row">
+        <button
+          type="button"
+          hx-get="/v1/capture"
+          hx-ext="response-targets, client-side-templates"
+          nunjucks-template="tpl_search_url"
+          hx-target="#search-url-result"
+          hx-target-error="#errors"
+          hx-swap="innerHTML"
+          hx-include="#search-url-form"
+          hx-vals='{"page_token":"{{ next_page_token }}"}'
+        >
+          Next page
+        </button>
+      </div>
+      {% endif %}
+      {% endif %}
+    </template>
+
+    <!-- Prefix search response: PagedFindCapturesByPrefixResponse -->
+    <template id="tpl_search_prefix">
+      {% if error and error.message %}
+      <div class="error">
+        <pre class="pre">{{ error.message }}</pre>
+      </div>
+      {% else %}
+      <div class="table">
+        <div class="thead">
+          <div>Link</div>
+          <div>UUID</div>
+          <div>Created</div>
+        </div>
+        {% for item in items %}
+        <div class="trow">
+          <div class="mono">{{ item.link }}</div>
+          <div><a class="mono" href="/v1/capture/{{ item.uuid }}">{{ item.uuid }}</a></div>
+          <div class="mono">{{ item.created_at }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if next_page_token %}
+      <div class="row">
+        <button
+          type="button"
+          hx-get="/v1/capture/prefix"
+          hx-ext="response-targets, client-side-templates"
+          nunjucks-template="tpl_search_prefix"
+          hx-target="#search-prefix-result"
+          hx-target-error="#errors"
+          hx-swap="innerHTML"
+          hx-include="#search-prefix-form"
+          hx-vals='{"page_token":"{{ next_page_token }}"}'
+        >
+          Next page
+        </button>
+      </div>
+      {% endif %}
+      {% endif %}
+    </template>
+
+    <!-- Error envelope response -->
+    <template id="tpl_error">
+      <div class="error">
+        {% if error and error.message %}
+        <pre class="pre">{{ error.message }}</pre>
+        {% else %}
+        <pre class="pre">request failed</pre>
+        {% endif %}
+      </div>
+    </template>
+  </body>
+</html>

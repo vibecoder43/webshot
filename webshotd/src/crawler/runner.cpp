@@ -59,8 +59,14 @@ namespace {
 
 using v1::Expected;
 
-constexpr auto kMaxBodyBytes = 50_i64 * 1024_i64 * 1024_i64;
 constexpr auto kMaxLogBytes = 64_i64 * 1024_i64;
+constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
+
+[[nodiscard]] i64 computeCdpMaxRemotePayloadBytes(i64 maxArchiveBytes)
+{
+    UINVARIANT(maxArchiveBytes > 0_i64, "max archive bytes must be positive");
+    return (maxArchiveBytes * 4_i64) / 3_i64 + kCdpWsPayloadSlackBytes;
+}
 
 [[nodiscard]] const std::string &browserSandboxScript()
 {
@@ -485,13 +491,14 @@ public:
     BrowserInstance(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
-        crawler::CrawlerTunables tunables
+        crawler::CrawlerTunables tunables, i64 cdpMaxRemotePayloadBytes
     )
         : processStarter(processStarter),
           browserRunsRoot(normalizeDirPath(std::move(browserRunsRootIn))),
           cgroupRootPath(std::move(cgroupRootPath)), cgroupLimits(std::move(cgroupLimits)),
-          tunables(std::move(tunables))
+          tunables(std::move(tunables)), cdpMaxRemotePayloadBytes(cdpMaxRemotePayloadBytes)
     {
+        UINVARIANT(cdpMaxRemotePayloadBytes > 0_i64, "cdp max remote payload must be positive");
     }
 
     ~BrowserInstance() { close(); }
@@ -522,7 +529,8 @@ public:
     {
         auto cdp = crawler::CdpClient::connect(
             paths.cdpSocketPath, websocketPath, paths.cdpTracePath, overallDeadline,
-            tunables.cdpHandshakeTimeout, tunables.cdpCommandTimeout, tunables.cdpWaitPollInterval
+            tunables.cdpHandshakeTimeout, tunables.cdpCommandTimeout, tunables.cdpWaitPollInterval,
+            cdpMaxRemotePayloadBytes
         );
         if (!cdp) {
             auto detail = describeCdpFailure("devtools websocket handshake failed"_t, cdp.error());
@@ -594,7 +602,7 @@ public:
             us::fs::blocking::FileExists(paths.cdpSocketPath) ? "true" : "false"
         );
         appendDiagnosticField(
-            diagnostics, "proxy_bridge_running", isProcessRunning(proxyBridge) ? "true" : "false"
+            diagnostics, "proxy_running", isProcessRunning(proxyBridge) ? "true" : "false"
         );
         if (preservedDir)
             appendDiagnosticField(diagnostics, "preserved_browser_dir", preservedDir.value());
@@ -661,6 +669,7 @@ private:
     std::string cgroupRootPath;
     std::optional<crawler::CgroupLimits> cgroupLimits;
     crawler::CrawlerTunables tunables;
+    i64 cdpMaxRemotePayloadBytes;
     BrowserPaths paths;
     std::optional<us::engine::subprocess::ChildProcess> proxyBridge;
     std::optional<us::engine::subprocess::ChildProcess> process;
@@ -682,7 +691,8 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
     if (nextRetainedBytes > budget.maxBytes)
         return std::unexpected(
             text::format(
-                "retained body bytes {} exceeded size limit {}", nextRetainedBytes, budget.maxBytes
+                "size_limit: retained body bytes {} exceeded size limit {}", nextRetainedBytes,
+                budget.maxBytes
             )
         );
     budget.retainedBytes = nextRetainedBytes;
@@ -879,10 +889,13 @@ public:
             [this]() { return loaded || mainRequestFailure.has_value(); }, deadline,
             "timed out waiting for page load"
         );
-        if (!waited)
-            return std::unexpected(
-                describeCdpFailure("timed out waiting for page load"_t, waited.error())
-            );
+        if (!waited) {
+            using enum crawler::CdpError;
+            const auto action = waited.error().code == kTimeout
+                                    ? "timed out waiting for page load"_t
+                                    : "failed while waiting for page load"_t;
+            return std::unexpected(describeCdpFailure(action, waited.error()));
+        }
         if (mainRequestFailure)
             return std::unexpected(mainRequestFailure.value());
         return {};
@@ -901,10 +914,13 @@ public:
             },
             deadline, "timed out waiting for main document response"
         );
-        if (!waited)
-            return std::unexpected(
-                describeCdpFailure("timed out waiting for main document response"_t, waited.error())
-            );
+        if (!waited) {
+            using enum crawler::CdpError;
+            const auto action = waited.error().code == kTimeout
+                                    ? "timed out waiting for main document response"_t
+                                    : "failed while waiting for main document response"_t;
+            return std::unexpected(describeCdpFailure(action, waited.error()));
+        }
         if (mainRequestFailure)
             return std::unexpected(mainRequestFailure.value());
         return {};
@@ -919,10 +935,13 @@ public:
             },
             deadline, "timed out waiting for network idle"
         );
-        if (!waited)
-            return std::unexpected(
-                describeCdpFailure("timed out waiting for network idle"_t, waited.error())
-            );
+        if (!waited) {
+            using enum crawler::CdpError;
+            const auto action = waited.error().code == kTimeout
+                                    ? "timed out waiting for network idle"_t
+                                    : "failed while waiting for network idle"_t;
+            return std::unexpected(describeCdpFailure(action, waited.error()));
+        }
         return {};
     }
 
@@ -1475,7 +1494,7 @@ readDomState(crawler::CdpClient &cdp, const String &sessionId)
         return std::unexpected("Runtime.evaluate returned invalid finalUrl"_t);
     return DomState{
         .finalUrl = grabValueOf(finalUrl),
-        .title = title.value_or(std::optional<String>{}),
+        .title = title.value_or(std::nullopt),
         .html = value.html,
     };
 }
@@ -1514,13 +1533,15 @@ public:
     CaptureSession(
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
-        crawler::CaptureTimings timings, crawler::CrawlerTunables tunablesIn,
+        crawler::CaptureTimings timings, crawler::CrawlerTunables tunablesIn, i64 maxArchiveBytesIn,
         us::engine::Deadline deadline, crawler::RunRequest run
     )
         : timings(std::move(timings)), run(std::move(run)), deadline(deadline),
+          maxArchiveBytes(maxArchiveBytesIn),
           browser(
               processStarter, std::move(browserRunsRootIn), std::move(cgroupRootPathIn),
-              std::move(cgroupLimitsIn), std::move(tunablesIn)
+              std::move(cgroupLimitsIn), std::move(tunablesIn),
+              computeCdpMaxRemotePayloadBytes(maxArchiveBytesIn)
           )
     {
     }
@@ -1747,7 +1768,7 @@ private:
         if (!domState)
             return std::unexpected(domState.error());
         browser.markPhase("read_dom_state_done");
-        RetainedBodyBudget budget{kMaxBodyBytes, 0_i64};
+        RetainedBodyBudget budget{maxArchiveBytes, 0_i64};
         browser.markPhase("read_main_body");
         auto body = pageTracker().readBody(
             cdpClient(), attachedSessionId(), budget, domState->html
@@ -1874,6 +1895,7 @@ private:
     crawler::CaptureTimings timings;
     crawler::RunRequest run;
     us::engine::Deadline deadline;
+    i64 maxArchiveBytes;
     BrowserInstance browser;
     std::unique_ptr<crawler::CdpClient> cdp;
     std::unique_ptr<PageTracker> tracker;
@@ -1886,13 +1908,13 @@ private:
 [[nodiscard]] Expected<crawler::CapturedExchange, CaptureFailure> captureViaProxy(
     us::engine::subprocess::ProcessStarter &processStarter, const std::string &browserRunsRoot,
     const std::string &cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
-    crawler::CaptureTimings timings, const crawler::CrawlerTunables &tunables,
+    crawler::CaptureTimings timings, const crawler::CrawlerTunables &tunables, i64 maxArchiveBytes,
     us::engine::Deadline deadline, const crawler::RunRequest &run
 )
 {
     auto session = CaptureSession(
         processStarter, std::string(browserRunsRoot), std::string(cgroupRootPath),
-        std::move(cgroupLimits), std::move(timings), tunables, deadline,
+        std::move(cgroupLimits), std::move(timings), tunables, maxArchiveBytes, deadline,
         crawler::RunRequest{.seedUrl = run.seedUrl}
     );
     return session.capture();
@@ -1902,7 +1924,7 @@ private:
     us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
     const std::string &browserRunsRoot, const std::string &cgroupRootPath,
     std::optional<crawler::CgroupLimits> cgroupLimits, const crawler::CaptureTimings &timings,
-    const crawler::CrawlerTunables &tunables, us::engine::Deadline deadline,
+    const crawler::CrawlerTunables &tunables, i64 maxArchiveBytes, us::engine::Deadline deadline,
     const crawler::RunRequest &run
 )
 {
@@ -1915,16 +1937,14 @@ private:
         const auto failArtifact =
             [&out](const crawler::ArtifactFailure &failure) -> CrawlerRunArtifacts {
             auto failureDetailOpt = String::fromBytes(failure.detail)
-                                        .transform([](String s) {
-                                            return std::optional<String>{std::move(s)};
+                                        .transform([](String s) -> std::optional<String> {
+                                            return {std::move(s)};
                                         })
-                                        .valueOr(std::optional<String>{});
+                                        .valueOr(std::nullopt);
             out.attempt.exitCode = 9;
             out.attempt.waczExists = false;
             out.attempt.seedProbe.reset();
-            out.attempt.failureDetail = failureDetailOpt
-                                            ? std::optional<String>{grabValueOf(failureDetailOpt)}
-                                            : std::optional<String>{};
+            out.attempt.failureDetail = std::move(failureDetailOpt);
             out.stdoutLog.clear();
             out.stderrLog = failure.detail + "\n";
             out.wacz.reset();
@@ -1935,13 +1955,30 @@ private:
 
         auto exchange = captureViaProxy(
             processStarter, browserRunsRoot, cgroupRootPath, std::move(cgroupLimits), timings,
-            tunables, deadline, run
+            tunables, maxArchiveBytes, deadline, run
         );
         if (!exchange) {
-            out.attempt.exitCode = 9;
-            out.attempt.waczExists = false;
-            out.attempt.seedProbe = exchange.error().seedProbe;
-            out.attempt.failureDetail = exchange.error().detail;
+            constexpr std::string_view kSizeLimitPrefix = "size_limit:";
+            if (exchange.error().detail.startsWith(kSizeLimitPrefix)) {
+                auto detailText = exchange.error().detail.view();
+                detailText.remove_prefix(kSizeLimitPrefix.size());
+                if (!detailText.empty() && detailText.front() == ' ')
+                    detailText.remove_prefix(1);
+                auto parsed = String::fromBytes(std::string(detailText));
+                out.attempt.exitCode = us::utils::UnderlyingValue(
+                    crawler::CrawlerExitCode::kSizeLimit
+                );
+                out.attempt.waczExists = false;
+                out.attempt.seedProbe = exchange.error().seedProbe;
+                out.attempt.failureDetail.reset();
+                if (parsed)
+                    out.attempt.failureDetail = grabValueOf(parsed);
+            } else {
+                out.attempt.exitCode = 9;
+                out.attempt.waczExists = false;
+                out.attempt.seedProbe = exchange.error().seedProbe;
+                out.attempt.failureDetail = exchange.error().detail;
+            }
             out.stdoutLog.clear();
             out.stderrLog = std::string(exchange.error().detail.view()) + "\n";
             out.wacz.reset();
@@ -1977,13 +2014,13 @@ private:
             wacz->size(), pages.size()
         );
 
-        const auto retainedBytes = i64(wacz->size()) + i64(pages.size()) +
-                                   i64(out.stdoutLog.size()) + i64(out.stderrLog.size());
-        if (retainedBytes > kMaxBodyBytes) {
+        const auto waczBytes = i64(wacz->size());
+        if (waczBytes > maxArchiveBytes) {
+            const auto maxArchiveMiB = maxArchiveBytes / (1024_i64 * 1024_i64);
             const auto detail = text::format(
-                "retained artifact bytes {} exceeded size limit {}", retainedBytes, kMaxBodyBytes
+                "archive bytes {} exceeded size limit {} MiB", waczBytes, maxArchiveMiB
             );
-            out.attempt.exitCode = 14;
+            out.attempt.exitCode = us::utils::UnderlyingValue(crawler::CrawlerExitCode::kSizeLimit);
             out.attempt.waczExists = false;
             out.attempt.seedProbe = crawler::SeedPageProbe{
                 .status = numericCast<int64_t>(exchange->statusCode),
@@ -2042,13 +2079,14 @@ private:
 CrawlerRunner::CrawlerRunner(
     us::clients::http::Client &httpClient, us::engine::subprocess::ProcessStarter &processStarter,
     chrono::seconds runTimeout, std::string stateDir, std::optional<crawler::CgroupLimits> limits,
-    crawler::CaptureTimings timings, crawler::CrawlerTunables tunables
+    i64 maxArchiveBytes, crawler::CaptureTimings timings, crawler::CrawlerTunables tunables
 )
     : httpClient(httpClient), processStarter(processStarter), runTimeout(runTimeout),
       browserRunsRoot(buildBrowserRunsRoot(std::move(stateDir))),
       cgroupRootPath(limits ? resolveDelegatedCgroupRootPath() : std::string()),
-      timings(std::move(timings)), tunables(std::move(tunables))
+      maxArchiveBytes(maxArchiveBytes), timings(std::move(timings)), tunables(std::move(tunables))
 {
+    UINVARIANT(maxArchiveBytes > 0_i64, "max archive bytes must be positive");
     cgroupLimits = std::move(limits);
 }
 
@@ -2057,7 +2095,7 @@ CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
     const auto deadline = us::engine::Deadline::FromDuration(runTimeout);
     return executeRun(
         httpClient, processStarter, browserRunsRoot, cgroupRootPath, cgroupLimits, timings,
-        tunables, deadline, crawler::RunRequest{.seedUrl = seedUrl}
+        tunables, maxArchiveBytes, deadline, crawler::RunRequest{.seedUrl = seedUrl}
     );
 }
 

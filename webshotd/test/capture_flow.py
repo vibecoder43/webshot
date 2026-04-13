@@ -380,6 +380,38 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 
 
 @pytest.mark.asyncio
+async def test_capture_near_archive_limit_success(service_client, service_secdist_path):
+    limit_mib = 8
+    payload_mib = limit_mib - 3
+    mib = 1024 * 1024
+    payload_bytes = payload_mib * mib
+
+    import os
+    import pathlib
+
+    token = uuid.uuid4().hex
+    payload_dir = pathlib.Path("/tmp/webshot/testsuite/nginx_payloads")
+    payload_dir.mkdir(parents=True, exist_ok=True)
+    payload_path = payload_dir / f"{token}.bin"
+    try:
+        with payload_path.open("wb") as f:
+            remaining = payload_bytes
+            while remaining:
+                chunk = min(remaining, mib)
+                f.write(os.urandom(chunk))
+                remaining -= chunk
+
+        link = f"https://{TEST_HOST}/near-archive-limit?token={token}"
+        job_id, _job = await _capture_and_wait(service_client, link, attempts=240)
+
+        wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+        assert len(wacz) >= payload_mib * mib
+        assert len(wacz) < limit_mib * mib
+    finally:
+        payload_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
 async def test_capture_records_main_document_redirect_in_wacz(service_client, service_secdist_path):
     link = f"https://{TEST_HOST}/redirect-seed"
     job_id, _job = await _capture_and_wait(service_client, link)

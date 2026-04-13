@@ -144,6 +144,25 @@ components_manager:
       directory-file: ""
       not-found-file: ""
       expires: 0s
+    ui_redirect:
+      path: /ui
+      method: GET
+      task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
+    web_ui_cache:
+      dir: $web_ui_dir
+      update-period: 0s
+      fs-task-processor: fs-task-processor
+    web_ui_static:
+      path: /ui/*
+      method: GET
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: web_ui_cache
+      directory-file: index.html
+      not-found-file: ""
+      expires: 0s
     crud:
       snapshots_page_max: 2
       snapshots_per_link_max: 2
@@ -159,6 +178,7 @@ components_manager:
       crawler_devtools_startup_timeout_sec: $crawler_devtools_startup_timeout_sec
       crawler_cdp_handshake_timeout_sec: $crawler_cdp_handshake_timeout_sec
       crawler_cdp_command_timeout_sec: $crawler_cdp_command_timeout_sec
+      crawler_size_limit_mib: $crawler_size_limit_mib
       crawler_devtools_poll_interval_ms: $crawler_devtools_poll_interval_ms
       crawler_cdp_wait_poll_interval_ms: $crawler_cdp_wait_poll_interval_ms
       crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
