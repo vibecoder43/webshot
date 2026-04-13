@@ -72,7 +72,6 @@ constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
 
 [[nodiscard]] i64 computeCdpMaxRemotePayloadBytes(i64 maxArchiveBytes)
 {
-    UINVARIANT(maxArchiveBytes > 0_i64, "max archive bytes must be positive");
     return (maxArchiveBytes * 4_i64) / 3_i64 + kCdpWsPayloadSlackBytes;
 }
 
@@ -498,9 +497,6 @@ public:
           cgroupRootPath(std::move(cgroupRootPath)), cgroupLimits(std::move(cgroupLimits)),
           tunables(std::move(tunables)), cdpMaxRemotePayloadBytes(cdpMaxRemotePayloadBytes)
     {
-        UINVARIANT(cdpMaxRemotePayloadBytes > 0_i64, "cdp max remote payload must be positive");
-        UINVARIANT(urlBytesMax > 0_uz, "urlBytesMax must be positive");
-        UINVARIANT(proxyDownBytesMax > 0_i64, "proxyDownBytesMax must be positive");
     }
 
     ~BrowserInstance() { close(); }
@@ -2145,12 +2141,9 @@ private:
             return out;
         };
 
-        UINVARIANT(networkDownBytesRatioMax > 0_i64, "networkDownBytesRatioMax must be positive");
         const auto maxDownBytes = [&]() -> i64 {
             const auto max = maxArchiveBytes;
             const auto ratio = networkDownBytesRatioMax;
-            UINVARIANT(max > 0_i64, "max archive bytes must be positive");
-            UINVARIANT(ratio > 0_i64, "ratio must be positive");
             const auto maxI64 = std::numeric_limits<i64>::max();
             if (ratio > maxI64 / max)
                 return maxI64;
@@ -2335,8 +2328,6 @@ CrawlerRunner::CrawlerRunner(
       timings(std::move(timings)), tunables(std::move(tunables)),
       networkDownBytesRatioMax(networkDownBytesRatioMax)
 {
-    UINVARIANT(maxArchiveBytes > 0_i64, "max archive bytes must be positive");
-    UINVARIANT(networkDownBytesRatioMax > 0_i64, "networkDownBytesRatioMax must be positive");
 }
 
 CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const

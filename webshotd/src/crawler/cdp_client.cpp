@@ -234,7 +234,6 @@ Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
 
     UINVARIANT(!tracePath.empty(), "cdp trace path must not be empty");
     UINVARIANT(overallDeadline.IsReachable(), "cdp overall deadline must be reachable");
-    UINVARIANT(maxRemotePayloadBytes > 0_i64, "cdp max remote payload must be positive");
 
     us::fs::blocking::FileDescriptor traceFd;
     try {

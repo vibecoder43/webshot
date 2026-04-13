@@ -201,7 +201,7 @@ parseBasicAuthUser(std::string_view headerValue)
     const auto result = std::from_chars(begin, end, port);
     if (result.ec != std::errc{} || result.ptr != end)
         return {};
-    if (port == 0 || port > raw(65535_u16))
+    if (port == 0 || port > 65535)
         return {};
     return u16(port);
 }
@@ -866,8 +866,6 @@ EgressProxy::EgressProxy(EgressProxyConfig config) : impl(std::move(config))
 {
     UINVARIANT(!impl->config.socketPath.empty(), "proxy socket path must not be empty");
     UINVARIANT(!impl->config.runId.empty(), "proxy runId must not be empty");
-    UINVARIANT(impl->config.urlBytesMax > 0_uz, "proxy urlBytesMax must be positive");
-    UINVARIANT(impl->config.downBytesMax > 0_i64, "proxy downBytesMax must be positive");
 }
 
 EgressProxy::~EgressProxy() noexcept { close(); }
@@ -886,7 +884,7 @@ Expected<void, String> EgressProxy::start(dns::Resolver &resolver, engine::Deadl
         impl->listener.Bind(addr);
         impl->listener.Listen();
     } catch (const utils::TracefulException &e) {
-        return std::unexpected(text::format("proxy bind/listen failed: {}", e.what()));
+        return std::unexpected(text::format("proxy bind then listen failed: {}", e.what()));
     }
 
     impl->acceptTask = engine::AsyncNoSpan([this, &resolver, deadline]() noexcept {

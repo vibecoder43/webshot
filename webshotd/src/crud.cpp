@@ -418,15 +418,6 @@ public:
             s3CredentialsDurationSec > s3CredentialsRefreshMarginSec,
             "s3_credentials_duration_sec must be greater than s3_credentials_refresh_margin_sec"
         );
-        UINVARIANT(crawlJobRetentionSec > 0_i64, "crawl_job_retention_sec must be positive");
-        UINVARIANT(
-            crawlJobCleanupIntervalSec > 0_i64, "crawl_job_cleanup_interval_sec must be positive"
-        );
-        UINVARIANT(crawlerSizeLimitMiB > 0_i64, "crawler_size_limit_mib must be positive");
-        UINVARIANT(
-            crawlerNetworkDownBytesRatioMax > 0_i64,
-            "crawler_network_down_bytes_ratio_max must be positive"
-        );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
         UINVARIANT(
