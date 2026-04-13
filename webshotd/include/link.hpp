@@ -1,6 +1,7 @@
 #pragma once
 
 #include "expected.hpp"
+#include "integers.hpp"
 #include "url.hpp"
 
 #include <string>
@@ -76,7 +77,7 @@ struct [[nodiscard]] Link {
      * @return Normalized Link.
      */
     [[nodiscard]] static Expected<Link, LinkError>
-    fromText(const String &text, size_t urlBytesMax, FromTextOptions options);
+    fromText(const String &text, usize urlBytesMax, FromTextOptions options);
 
     /** @return Normalized, lower-cased host, punycode if applicable. */
     [[nodiscard]] String host() const;

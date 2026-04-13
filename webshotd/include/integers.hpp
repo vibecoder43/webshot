@@ -129,7 +129,17 @@ struct SSizeFn {
     }
 };
 
+struct USizeFn {
+    template <typename C>
+        requires requires(const C &c) { c.size(); }
+    [[nodiscard]] constexpr usize operator()(const C &c) const noexcept
+    {
+        return usize(c.size());
+    }
+};
+
 inline constexpr SSizeFn ssize{};
+inline constexpr USizeFn usz{};
 
 } // namespace integers
 
@@ -145,11 +155,17 @@ namespace integers::literals {
 
 [[nodiscard]] constexpr i64 operator""_i64(unsigned long long value) noexcept { return i64(value); }
 
+[[nodiscard]] constexpr usize operator""_uz(unsigned long long value) noexcept
+{
+    return usize(value);
+}
+
 } // namespace integers::literals
 
 using integers::numericCast;
 using integers::raw;
 using integers::ssize;
+using integers::usz;
 using namespace integers::literals;
 
 namespace std {

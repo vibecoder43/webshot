@@ -114,21 +114,19 @@ constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
 [[nodiscard]] std::string readSelfCgroupV2Path()
 {
     const auto raw = us::fs::blocking::ReadFileContents("/proc/self/cgroup");
-    size_t pos = 0;
-    while (pos <= raw.size()) {
-        const auto next = raw.find('\n', pos);
-        const auto line = raw.substr(
-            pos, next == std::string::npos ? std::string::npos : next - pos
-        );
+    auto remaining = std::string_view{raw};
+    while (true) {
+        const auto next = remaining.find('\n');
+        const auto line = next == std::string::npos ? remaining : remaining.substr(0, next);
         if (line.rfind("0::", 0) == 0) {
-            auto path = normalizeDirPath(line.substr(3));
+            auto path = normalizeDirPath(std::string(line.substr(3)));
             if (path.empty() || path.front() != '/')
                 abortCgroupConfig("invalid cgroup v2 path in /proc/self/cgroup");
             return path;
         }
         if (next == std::string::npos)
             break;
-        pos = next + 1;
+        remaining.remove_prefix(next + 1);
     }
     abortCgroupConfig("failed to locate cgroup v2 path in /proc/self/cgroup");
 }
@@ -489,7 +487,7 @@ template <typename Process> void stopProcess(Process &process, chrono::milliseco
 class [[nodiscard]] BrowserInstance final {
 public:
     BrowserInstance(
-        dns::Resolver &dnsResolver, size_t urlBytesMax, i64 proxyDownBytesMax,
+        dns::Resolver &dnsResolver, usize urlBytesMax, i64 proxyDownBytesMax,
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
         crawler::CrawlerTunables tunables, i64 cdpMaxRemotePayloadBytes
@@ -501,7 +499,7 @@ public:
           tunables(std::move(tunables)), cdpMaxRemotePayloadBytes(cdpMaxRemotePayloadBytes)
     {
         UINVARIANT(cdpMaxRemotePayloadBytes > 0_i64, "cdp max remote payload must be positive");
-        UINVARIANT(urlBytesMax > 0UL, "urlBytesMax must be positive");
+        UINVARIANT(urlBytesMax > 0_uz, "urlBytesMax must be positive");
         UINVARIANT(proxyDownBytesMax > 0_i64, "proxyDownBytesMax must be positive");
     }
 
@@ -693,7 +691,7 @@ private:
     }
 
     dns::Resolver &dnsResolver;
-    size_t urlBytesMax;
+    usize urlBytesMax;
     i64 proxyDownBytesMax;
     us::engine::subprocess::ProcessStarter &processStarter;
     std::string browserRunsRoot;
@@ -841,7 +839,7 @@ isAllowedByDenylist(Denylist &denylist, const Config &config, const String &requ
     return allowed.value();
 }
 
-[[nodiscard]] std::vector<dto::FetchHeaderEntry> buildBlockedFetchHeaders(size_t bodyBytes)
+[[nodiscard]] std::vector<dto::FetchHeaderEntry> buildBlockedFetchHeaders(usize bodyBytes)
 {
     std::vector<dto::FetchHeaderEntry> headers;
     headers.push_back(
@@ -1636,7 +1634,7 @@ runSiteBehavior(crawler::CdpClient &cdp, const String &sessionId, us::engine::De
 class [[nodiscard]] CaptureSession final {
 public:
     CaptureSession(
-        Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, size_t urlBytesMax,
+        Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, usize urlBytesMax,
         i64 proxyDownBytesMax, us::engine::subprocess::ProcessStarter &processStarter,
         std::string browserRunsRootIn, std::string cgroupRootPathIn,
         std::optional<crawler::CgroupLimits> cgroupLimitsIn, crawler::CaptureTimings timings,
@@ -2097,7 +2095,7 @@ private:
 };
 
 [[nodiscard]] Expected<CaptureWithNetwork, CaptureFailure> captureViaProxy(
-    Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, size_t urlBytesMax,
+    Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, usize urlBytesMax,
     i64 proxyDownBytesMax, us::engine::subprocess::ProcessStarter &processStarter,
     const std::string &browserRunsRoot, const std::string &cgroupRootPath,
     std::optional<crawler::CgroupLimits> cgroupLimits, crawler::CaptureTimings timings,

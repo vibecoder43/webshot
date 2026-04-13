@@ -6,7 +6,7 @@
 #include "link.hpp"
 
 namespace {
-constexpr size_t kUrlBytesMax = 4096UL;
+constexpr auto kUrlBytesMax = 4096_uz;
 
 using v1::Link;
 

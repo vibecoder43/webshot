@@ -87,18 +87,17 @@ struct HandshakeResponse final {
 
 [[nodiscard]] bool containsHeaderToken(std::string_view value, std::string_view token)
 {
-    size_t start = 0;
-    while (start <= value.size()) {
-        const auto commaPos = value.find(',', start);
-        const auto part = commaPos == std::string_view::npos
-                              ? value.substr(start)
-                              : value.substr(start, commaPos - start);
+    auto remaining = value;
+    while (true) {
+        const auto commaPos = remaining.find(',');
+        const auto part = commaPos == std::string_view::npos ? remaining
+                                                             : remaining.substr(0, commaPos);
         const auto trimmedPart = absl::StripAsciiWhitespace(part);
         if (absl::EqualsIgnoreCase(trimmedPart, token))
             return true;
         if (commaPos == std::string_view::npos)
             break;
-        start = commaPos + 1;
+        remaining.remove_prefix(commaPos + 1);
     }
 
     return false;
@@ -130,12 +129,10 @@ parseHandshakeHeaders(std::string_view headersBlock)
 {
     std::unordered_map<std::string, std::string> headers;
 
-    size_t lineStart = 0;
-    while (lineStart < headersBlock.size()) {
-        const auto lineEnd = headersBlock.find("\r\n", lineStart);
-        const auto line = lineEnd == std::string::npos
-                              ? headersBlock.substr(lineStart)
-                              : headersBlock.substr(lineStart, lineEnd - lineStart);
+    auto remaining = headersBlock;
+    while (!remaining.empty()) {
+        const auto lineEnd = remaining.find("\r\n");
+        const auto line = lineEnd == std::string::npos ? remaining : remaining.substr(0, lineEnd);
         if (line.empty())
             break;
         const auto colonPos = line.find(':');
@@ -146,7 +143,7 @@ parseHandshakeHeaders(std::string_view headersBlock)
 
         if (lineEnd == std::string::npos)
             break;
-        lineStart = lineEnd + 2;
+        remaining.remove_prefix(lineEnd + 2);
     }
 
     return headers;

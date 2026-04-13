@@ -23,8 +23,7 @@ static bool isValidScheme(std::string_view sv) noexcept
 {
     if (sv.empty() || !absl::ascii_isalpha(static_cast<unsigned char>(sv.front())))
         return false;
-    for (size_t i = 1; i < sv.size(); i++) {
-        const char c = sv[i];
+    for (const char c : sv.substr(1)) {
         if (!(absl::ascii_isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' ||
               c == '.'))
             return false;
@@ -46,7 +45,7 @@ namespace v1 {
 namespace {
 
 Expected<Link, LinkError>
-fromTextImpl(const String &text, size_t urlBytesMax, Link::FromTextOptions options)
+fromTextImpl(const String &text, usize urlBytesMax, Link::FromTextOptions options)
 {
     using enum Link::FromTextOptions;
     const bool stripPort = Link::hasOption(options, kStripPort);
@@ -65,7 +64,7 @@ fromTextImpl(const String &text, size_t urlBytesMax, Link::FromTextOptions optio
         if (!(scheme == "http" || scheme == "https"))
             return std::unexpected(LinkError{.code = LinkError::Code::kUnsupportedScheme});
     }
-    if (in.size() > urlBytesMax)
+    if (usz(in) > urlBytesMax)
         return std::unexpected(LinkError{.code = LinkError::Code::kUrlTooLong});
     auto url = ada::parse<ada::url_aggregator>(in);
     if (!url)
@@ -98,7 +97,7 @@ fromTextImpl(const String &text, size_t urlBytesMax, Link::FromTextOptions optio
 } // namespace
 
 Expected<Link, LinkError>
-Link::fromText(const String &text, size_t urlBytesMax, FromTextOptions options)
+Link::fromText(const String &text, usize urlBytesMax, FromTextOptions options)
 {
     return fromTextImpl(text, urlBytesMax, options);
 }

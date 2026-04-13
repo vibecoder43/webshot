@@ -1,10 +1,10 @@
 #pragma once
 
+#include "integers.hpp"
 #include "text.hpp"
 #include "userver_namespaces.hpp"
 
 #include <chrono>
-#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -29,7 +29,7 @@ public:
     [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 
     /** @return Maximum allowed URL length in bytes. */
-    [[nodiscard]] size_t urlBytesMax() const noexcept { return urlBytesMaxValue; }
+    [[nodiscard]] usize urlBytesMax() const noexcept { return urlBytesMaxValue; }
 
     /** @return Runner-owned state directory for webshotd instance. */
     [[nodiscard]] std::string_view stateDir() const noexcept { return stateDirValue; }
@@ -44,7 +44,7 @@ public:
     ///@}
 
 private:
-    size_t urlBytesMaxValue;
+    usize urlBytesMaxValue;
     std::string stateDirValue;
     String s3BucketName;
     String s3EndpointUrl;

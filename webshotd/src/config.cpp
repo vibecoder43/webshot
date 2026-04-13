@@ -15,7 +15,7 @@ Config::Config(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : us::components::ComponentBase(config, context),
-      urlBytesMaxValue(config["url_bytes_max"].As<size_t>()),
+      urlBytesMaxValue(usize{config["url_bytes_max"].As<size_t>()}),
       stateDirValue(config["state_dir"].As<std::string>()),
       s3BucketName(String::fromBytes(config["s3_bucket"].As<std::string>()).expect()),
       s3EndpointUrl(String::fromBytes(config["s3_endpoint"].As<std::string>()).expect()),

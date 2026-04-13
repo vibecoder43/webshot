@@ -17,7 +17,7 @@ namespace v1::crawler {
 struct [[nodiscard]] EgressProxyConfig final {
     std::string socketPath;
     std::string runId;
-    size_t urlBytesMax;
+    usize urlBytesMax;
     i64 downBytesMax;
     bool enableLocalFixtureRewrite;
 };
