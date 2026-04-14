@@ -5,9 +5,8 @@
 
 namespace v1::crawler {
 
-std::vector<std::string> buildChromiumArgs(
-    const std::string &userDataDir, const std::string &netlogPath, std::string_view runId
-)
+std::vector<std::string>
+buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
 {
     std::vector<std::string> args = {
         "--headless=new",
@@ -33,7 +32,7 @@ std::vector<std::string> buildChromiumArgs(
         "--user-data-dir=" + userDataDir,
         "--log-net-log=" + netlogPath,
         "--net-log-capture-mode=IncludeSensitive",
-        std::format("--proxy-server=http://{}:x@127.0.0.1:{}", runId, kProxyListenPort),
+        std::format("--proxy-server=http://127.0.0.1:{}", kProxyListenPort),
         "--proxy-bypass-list=<-loopback>",
         "--remote-debugging-address=127.0.0.1",
         std::format("--remote-debugging-port={}", kDevtoolsPort),

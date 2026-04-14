@@ -11,6 +11,8 @@
 #include "integers.hpp"
 #include "ip_utils.hpp"
 
+#include <sys/socket.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -34,7 +36,7 @@
 #include <userver/engine/deadline.hpp>
 #include <userver/engine/io/socket.hpp>
 #include <userver/engine/task/task_with_result.hpp>
-#include <userver/engine/wait_any.hpp>
+#include <userver/engine/wait_all_checked.hpp>
 #include <userver/utils/assert.hpp>
 #include <userver/utils/traceful_exception.hpp>
 
@@ -323,6 +325,8 @@ rewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host,
         return UpstreamTarget{.connectHost = "127.0.0.1", .connectPort = kLocalHttpPort};
     if (port == 443_u16)
         return UpstreamTarget{.connectHost = "127.0.0.1", .connectPort = kLocalHttpsPort};
+    if (port == kLocalHttpPort || port == kLocalHttpsPort)
+        return UpstreamTarget{.connectHost = "127.0.0.1", .connectPort = port};
     return UpstreamTarget{.connectHost = std::string(host), .connectPort = port};
 }
 
@@ -571,6 +575,13 @@ struct EgressProxy::Impl final {
         }
     }
 
+    void shutdownWriteQuietly(engine::io::Socket &sock) noexcept
+    {
+        if (!sock.IsValid())
+            return;
+        static_cast<void>(::shutdown(sock.Fd(), SHUT_WR));
+    }
+
     [[nodiscard]] Expected<engine::io::Socket, String> connectUpstream(
         dns::Resolver &resolver, std::string_view host, u16 port, engine::Deadline deadline
     ) noexcept
@@ -600,8 +611,10 @@ struct EgressProxy::Impl final {
                 const auto received = usize{
                     client.RecvSome(buffer.data(), buffer.size(), deadline)
                 };
-                if (received == 0_uz)
+                if (received == 0_uz) {
+                    shutdownWriteQuietly(upstream);
                     return;
+                }
                 if (!sendAll(
                         upstream, std::span<const char>{buffer.data(), raw(received)}, deadline
                     )) {
@@ -624,8 +637,10 @@ struct EgressProxy::Impl final {
                 const auto received = usize{
                     upstream.RecvSome(buffer.data(), buffer.size(), deadline)
                 };
-                if (received == 0_uz)
+                if (received == 0_uz) {
+                    shutdownWriteQuietly(client);
                     return;
+                }
 
                 auto pending = std::span<const char>{buffer.data(), raw(received)};
                 while (!pending.empty() && !isClosed()) {
@@ -651,10 +666,13 @@ struct EgressProxy::Impl final {
             copyUpstreamToClientBudgeted(upstream, client, deadline);
         });
 
-        auto waitAny = engine::MakeWaitAny(clientToUpstream, upstreamToClient);
-        static_cast<void>(waitAny.WaitUntil(deadline));
-        clientToUpstream.RequestCancel();
-        upstreamToClient.RequestCancel();
+        const auto status = engine::WaitAllCheckedUntil(
+            deadline, clientToUpstream, upstreamToClient
+        );
+        if (status != engine::FutureStatus::kReady) {
+            clientToUpstream.RequestCancel();
+            upstreamToClient.RequestCancel();
+        }
         static_cast<void>(clientToUpstream.WaitNothrow());
         static_cast<void>(upstreamToClient.WaitNothrow());
     }

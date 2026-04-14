@@ -341,6 +341,33 @@ components:
             $ref: "#/components/schemas/FetchRequestPattern"
         handleAuthRequests:
           type: boolean
+    FetchAuthChallenge:
+      type: object
+      additionalProperties: true
+      properties:
+        source:
+          type: string
+        origin:
+          type: string
+        scheme:
+          type: string
+        realm:
+          type: string
+    FetchAuthRequiredEvent:
+      type: object
+      additionalProperties: true
+      required: [requestId, request, authChallenge]
+      properties:
+        requestId:
+          type: string
+        request:
+          $ref: "#/components/schemas/NetworkRequest"
+        frameId:
+          type: string
+        resourceType:
+          type: string
+        authChallenge:
+          $ref: "#/components/schemas/FetchAuthChallenge"
     FetchRequestPausedEvent:
       type: object
       additionalProperties: true
@@ -386,6 +413,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FetchHeaderEntry"
+    FetchAuthChallengeResponse:
+      type: object
+      additionalProperties: false
+      required: [response]
+      properties:
+        response:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+    FetchContinueWithAuthParams:
+      type: object
+      additionalProperties: false
+      required: [requestId, authChallengeResponse]
+      properties:
+        requestId:
+          type: string
+        authChallengeResponse:
+          $ref: "#/components/schemas/FetchAuthChallengeResponse"
     FetchFulfillRequestParams:
       type: object
       additionalProperties: false

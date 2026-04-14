@@ -69,6 +69,10 @@ using v1::Expected;
 
 constexpr auto kMaxLogBytes = 64_i64 * 1024_i64;
 constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
+constexpr auto kLocalFixtureHttpPort = "18080";
+constexpr auto kLocalFixtureHttpsPort = "18443";
+const auto kLocalFixtureHostA = "test-target"_t;
+const auto kLocalFixtureHostB = "asset.test-target"_t;
 
 [[nodiscard]] i64 computeCdpMaxRemotePayloadBytes(i64 maxArchiveBytes)
 {
@@ -173,12 +177,74 @@ normalizeHeaders(const dto::CdpHeaders &headers)
     return out;
 }
 
+[[nodiscard]] bool isLocalFixtureHost(std::string_view host) noexcept
+{
+    return host == kLocalFixtureHostA.view() || host == kLocalFixtureHostB.view();
+}
+
+[[nodiscard]] String canonicalizeCapturedUrl(const String &urlText)
+{
+    const auto maybeUrl = Url::fromText(urlText);
+    if (!maybeUrl)
+        return urlText;
+    if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
+        return urlText;
+    if (!maybeUrl->hasPort())
+        return urlText;
+    if (!isLocalFixtureHost(maybeUrl->hostname().view()))
+        return urlText;
+
+    const auto port = maybeUrl->port();
+    const auto matchesFixturePort = (maybeUrl->isHttp() && port.view() == kLocalFixtureHttpPort) ||
+                                    (maybeUrl->isHttps() && port.view() == kLocalFixtureHttpsPort);
+    if (!matchesFixturePort)
+        return urlText;
+
+    auto parsed = maybeUrl->copyParsed();
+    parsed.clear_port();
+    return Url::fromParsed(std::move(parsed)).href();
+}
+
+[[nodiscard]] std::string
+canonicalizeCapturedLocationHeader(const String &responseUrl, std::string_view locationValue)
+{
+    auto location = String::fromBytes(locationValue);
+    if (!location)
+        return std::string(locationValue);
+    if (location->empty() || location->startsWith('/') || location->startsWith('?') ||
+        location->startsWith("//")) {
+        return std::string(location->view());
+    }
+
+    const auto canonicalLocation = canonicalizeCapturedUrl(location.value());
+    const auto maybeCanonicalUrl = Url::fromText(canonicalLocation);
+    const auto maybeResponseUrl = Url::fromText(responseUrl);
+    if (!maybeCanonicalUrl || !maybeResponseUrl)
+        return std::string(canonicalLocation.view());
+
+    if (maybeCanonicalUrl->isHttp() == maybeResponseUrl->isHttp() &&
+        maybeCanonicalUrl->host() == maybeResponseUrl->host()) {
+        return std::string(maybeCanonicalUrl->pathWithSearch().view());
+    }
+
+    return std::string(canonicalLocation.view());
+}
+
 [[nodiscard]] std::unordered_map<std::string, std::string>
 normalizeHeadersOrEmpty(const std::optional<dto::CdpHeaders> &headers)
 {
     if (!headers)
         return {};
     return normalizeHeaders(headers.value());
+}
+
+[[nodiscard]] std::unordered_map<std::string, std::string>
+normalizeHeadersForCapture(const std::optional<dto::CdpHeaders> &headers, const String &responseUrl)
+{
+    auto normalized = normalizeHeadersOrEmpty(headers);
+    if (const auto it = normalized.find("location"); it != std::end(normalized))
+        it->second = canonicalizeCapturedLocationHeader(responseUrl, it->second);
+    return normalized;
 }
 
 [[nodiscard]] std::optional<String> stringOrNull(const std::optional<std::string> &value)
@@ -390,9 +456,7 @@ void removeBrowserRunDir(const std::string &path) noexcept
     const auto memoryBytes = cgroupLimits ? cgroupLimits->memoryBytes : 0_i64;
     const auto cgroupName = std::format("webshotd_crawler_{}", paths.runId);
 
-    auto chromiumArgs = crawler::buildChromiumArgs(
-        paths.userDataDir, paths.netlogPath, paths.runId
-    );
+    auto chromiumArgs = crawler::buildChromiumArgs(paths.userDataDir, paths.netlogPath);
     auto bwrapArgs = std::vector<std::string>{
         "bwrap",
         "--json-status-fd",
@@ -639,6 +703,7 @@ public:
     }
 
     [[nodiscard]] i64 proxyDownBytes() const noexcept { return proxy ? proxy->downBytes() : 0_i64; }
+    [[nodiscard]] const std::string &runId() const noexcept { return paths.runId; }
     [[nodiscard]] std::optional<String> proxyFailureReason() const noexcept
     {
         if (!proxy)
@@ -754,41 +819,45 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
 )
 {
     if (!redirectResponse)
-        return requestUrl;
+        return canonicalizeCapturedUrl(requestUrl);
 
-    const auto headers = normalizeHeadersOrEmpty(redirectResponse->headers);
+    const auto headers = normalizeHeadersForCapture(redirectResponse->headers, baseUrl);
     const auto locationIt = headers.find("location");
     if (locationIt == std::end(headers) || locationIt->second.empty())
-        return requestUrl;
+        return canonicalizeCapturedUrl(requestUrl);
 
     const auto location = String::fromBytes(locationIt->second);
     if (!location)
-        return requestUrl;
+        return canonicalizeCapturedUrl(requestUrl);
     if (const auto absoluteLocation = Url::fromText(location.value()))
-        return absoluteLocation->href();
+        return canonicalizeCapturedUrl(absoluteLocation->href());
 
     const auto origin = buildUrlOrigin(baseUrl);
     if (!origin)
-        return requestUrl;
+        return canonicalizeCapturedUrl(requestUrl);
 
     if (location->startsWith("//")) {
         const auto maybeBaseUrl = Url::fromText(baseUrl);
         if (!maybeBaseUrl)
-            return requestUrl;
-        return text::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", location.value());
+            return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(
+            text::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", location.value())
+        );
     }
 
     if (location->startsWith('/'))
-        return text::format("{}{}", origin.value(), location.value());
+        return canonicalizeCapturedUrl(text::format("{}{}", origin.value(), location.value()));
 
     if (location->startsWith('?')) {
         const auto maybeBaseUrl = Url::fromText(baseUrl);
         if (!maybeBaseUrl)
-            return requestUrl;
-        return text::format("{}{}{}", origin.value(), maybeBaseUrl->pathname(), location.value());
+            return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(
+            text::format("{}{}{}", origin.value(), maybeBaseUrl->pathname(), location.value())
+        );
     }
 
-    return requestUrl;
+    return canonicalizeCapturedUrl(requestUrl);
 }
 
 [[nodiscard]] std::optional<String> normalizeInterceptedUrlForDenylist(const String &requestUrl)
@@ -1346,7 +1415,7 @@ private:
                                                    previousRequestUrl.value(), rawRequestUrl,
                                                    requestWillBeSent.redirectResponse
                                                )
-                                             : rawRequestUrl;
+                                             : canonicalizeCapturedUrl(rawRequestUrl);
 
         TrackedRequest trackedRequest{
             canonicalRequestUrl,
@@ -1387,7 +1456,6 @@ private:
             return;
         }
 
-        const auto headers = normalizeHeadersOrEmpty(responseReceived.response.headers);
         const auto timestamp = currentTimestamp();
         auto &request = requestIt->second;
         request.statusCode = responseReceived.response.status
@@ -1395,7 +1463,9 @@ private:
                                  : 0_i64;
         request.statusMessage =
             String::fromBytes(responseReceived.response.statusText.value_or("")).expect();
-        request.headers = std::move(headers);
+        request.headers = normalizeHeadersForCapture(
+            responseReceived.response.headers, request.requestUrl
+        );
         request.timestamp = timestamp;
         if (responseReceived.type)
             request.resourceType = stringOrNull(responseReceived.type);
@@ -1480,7 +1550,7 @@ private:
         request.statusCode = i64(redirectResponse->status.value());
         request.statusMessage =
             String::fromBytes(redirectResponse->statusText.value_or("")).expect();
-        request.headers = normalizeHeadersOrEmpty(redirectResponse->headers);
+        request.headers = normalizeHeadersForCapture(redirectResponse->headers, request.requestUrl);
         request.timestamp = currentTimestamp();
         request.loaded = true;
 
@@ -1591,6 +1661,7 @@ readDomState(crawler::CdpClient &cdp, const String &sessionId)
     auto finalUrl = String::fromBytes(value.finalUrl);
     if (!finalUrl)
         return std::unexpected("Runtime.evaluate returned invalid finalUrl"_t);
+    finalUrl = canonicalizeCapturedUrl(finalUrl.value());
     return DomState{
         .finalUrl = grabValueOf(finalUrl),
         .title = title.value_or(std::nullopt),
@@ -1750,6 +1821,10 @@ private:
         sessionId = String::fromBytes(attached->sessionId).expect();
         tracker = std::make_unique<PageTracker>(sessionId.value(), targetId.value());
         listenerId = cdpClient().addListener([this](crawler::CdpEvent event) {
+            if (event.method == "Fetch.authRequired"_t) {
+                handleFetchAuthRequired(event);
+                return;
+            }
             if (event.method == "Fetch.requestPaused"_t) {
                 handleFetchRequestPaused(event);
                 return;
@@ -1774,7 +1849,7 @@ private:
 
         browser.markPhase("enable_fetch");
         dto::FetchEnableParams fetchParams;
-        fetchParams.handleAuthRequests = false;
+        fetchParams.handleAuthRequests = true;
         if (auto ok = sendVoid("Fetch.enable", fetchParams, attachedSessionId()); !ok)
             return std::unexpected(ok.error());
 
@@ -2020,6 +2095,41 @@ private:
         if (tracker)
             tracker->fail(reason);
         interceptionFailure = std::move(reason);
+    }
+
+    void handleFetchAuthRequired(const crawler::CdpEvent &event)
+    {
+        if (!sessionId || !event.sessionId || event.sessionId->view() != sessionId->view())
+            return;
+
+        const auto authRequired = parseEventParams<dto::FetchAuthRequiredEvent>(event);
+        if (!authRequired) {
+            noteInterceptionFailure(authRequired.error());
+            return;
+        }
+
+        dto::FetchContinueWithAuthParams params;
+        params.requestId = authRequired->requestId;
+
+        dto::FetchAuthChallengeResponse authChallengeResponse;
+        const auto isProxyChallenge = !authRequired->authChallenge.source ||
+                                      authRequired->authChallenge.source.value() == "Proxy";
+        if (isProxyChallenge) {
+            authChallengeResponse.response = "ProvideCredentials";
+            authChallengeResponse.username = browser.runId();
+            authChallengeResponse.password = "x";
+        } else {
+            authChallengeResponse.response = "Default";
+        }
+        params.authChallengeResponse = std::move(authChallengeResponse);
+
+        const auto continued = cdpClient().sendNoWait(
+            "Fetch.continueWithAuth", params, attachedSessionId()
+        );
+        if (!continued)
+            noteInterceptionFailure(
+                describeCdpFailure("Fetch.continueWithAuth failed"_t, continued.error())
+            );
     }
 
     void handleFetchRequestPaused(const crawler::CdpEvent &event)

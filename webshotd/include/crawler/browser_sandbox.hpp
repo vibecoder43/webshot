@@ -6,8 +6,7 @@
 
 namespace v1::crawler {
 
-[[nodiscard]] std::vector<std::string> buildChromiumArgs(
-    const std::string &userDataDir, const std::string &netlogPath, std::string_view runId
-);
+[[nodiscard]] std::vector<std::string>
+buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath);
 
 } // namespace v1::crawler
