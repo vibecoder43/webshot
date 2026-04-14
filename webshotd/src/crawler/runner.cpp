@@ -139,7 +139,7 @@ const auto kLocalFixtureHostB = "asset.test-target"_t;
     if (path.empty() || path.front() != '/')
         abortCgroupConfig("cgroup path must be absolute");
     if (path == "/")
-        abortCgroupConfig("webshotd must run inside a delegated systemd subgroup");
+        abortCgroupConfig("webshotd must run inside the managed cgroup subgroup");
 
     const auto slashPos = path.find_last_of('/');
     if (slashPos == std::string::npos)

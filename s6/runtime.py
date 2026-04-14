@@ -34,21 +34,8 @@ _cmd_timeout_sec = 30.0
 _poll_interval_sec = 0.2
 _logs_wait_timeout_sec = 5.0
 _webshotd_ready_url = "http://127.0.0.1:8081/service/monitor?format=json"
-_systemd_scope_env = "WEBSHOT_SYSTEMD_SCOPE"
-_systemd_scope_subgroup = "service"
+_managed_cgroup_subgroup = "service"
 _delegated_cgroup_controllers = ("cpu", "memory")
-_systemd_passthrough_env = (
-    "PATH",
-    "PYTHONPATH",
-    "LD_LIBRARY_PATH",
-    "SSL_CERT_FILE",
-    "NIX_SSL_CERT_FILE",
-    "XDG_DATA_DIRS",
-    "XDG_CONFIG_DIRS",
-    "TMPDIR",
-    "HOME",
-    "USER",
-)
 
 
 @dataclass(frozen=True)
@@ -200,29 +187,26 @@ def _current_cgroup_v2_dir() -> Path:
     return Path("/sys/fs/cgroup") / relative.lstrip("/")
 
 
-def _assert_delegated_systemd_scope() -> None:
-    if os.environ.get(_systemd_scope_env) != "1":
-        die("s6: startup requires the managed systemd --user scope", exit_code=1)
-
+def _assert_managed_cgroup_scope() -> None:
     current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name != _systemd_scope_subgroup:
+    if current_cgroup.name != _managed_cgroup_subgroup:
         die(
             (
-                "s6: expected to run inside delegated systemd subgroup "
-                f"'{_systemd_scope_subgroup}', got {current_cgroup}"
+                "s6: expected to run inside managed cgroup subgroup "
+                f"'{_managed_cgroup_subgroup}', got {current_cgroup}"
             ),
             exit_code=1,
         )
 
-    delegated_root = current_cgroup.parent
-    if delegated_root == current_cgroup:
-        die("s6: delegated cgroup root is missing", exit_code=1)
+    managed_root = current_cgroup.parent
+    if managed_root == current_cgroup:
+        die("s6: managed cgroup root is missing", exit_code=1)
 
-    controllers_path = delegated_root / "cgroup.controllers"
-    subtree_control_path = delegated_root / "cgroup.subtree_control"
+    controllers_path = managed_root / "cgroup.controllers"
+    subtree_control_path = managed_root / "cgroup.subtree_control"
     if not controllers_path.is_file() or not subtree_control_path.is_file():
         die(
-            f"s6: delegated cgroup root is not writable from {delegated_root}",
+            f"s6: managed cgroup root is not writable from {managed_root}",
             exit_code=1,
         )
 
@@ -230,7 +214,7 @@ def _assert_delegated_systemd_scope() -> None:
     missing = [name for name in _delegated_cgroup_controllers if name not in controllers]
     if missing:
         die(
-            ("s6: delegated cgroup root is missing required controllers: " + ", ".join(missing)),
+            ("s6: managed cgroup root is missing required controllers: " + ", ".join(missing)),
             exit_code=1,
         )
 
@@ -239,59 +223,56 @@ def _assert_delegated_systemd_scope() -> None:
     if missing:
         die(
             (
-                "s6: delegated cgroup root is missing required subtree controllers: "
+                "s6: managed cgroup root is missing required subtree controllers: "
                 + ", ".join(missing)
             ),
             exit_code=1,
         )
 
 
-def _enter_systemd_subgroup() -> None:
-    if os.environ.get(_systemd_scope_env) != "1":
-        die("s6: startup requires the managed systemd --user scope", exit_code=1)
-
+def _enter_managed_cgroup_subgroup() -> None:
     current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name == _systemd_scope_subgroup:
+    if current_cgroup.name == _managed_cgroup_subgroup:
         return
 
-    subgroup = current_cgroup / _systemd_scope_subgroup
+    subgroup = current_cgroup / _managed_cgroup_subgroup
     subgroup.mkdir(exist_ok=True)
     try:
         (subgroup / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
     except OSError as e:
         raise ToolError(
             message=(
-                f"s6: failed to move startup process into delegated cgroup subgroup {subgroup}: {e}"
+                f"s6: failed to move startup process into managed cgroup subgroup {subgroup}: {e}"
             ),
             exit_code=1,
         ) from e
 
-    if _current_cgroup_v2_dir().name != _systemd_scope_subgroup:
+    if _current_cgroup_v2_dir().name != _managed_cgroup_subgroup:
         die(
-            (f"s6: startup process did not enter delegated subgroup '{_systemd_scope_subgroup}'"),
+            (f"s6: startup process did not enter managed subgroup '{_managed_cgroup_subgroup}'"),
             exit_code=1,
         )
 
 
-def _enable_delegated_systemd_scope_controllers() -> None:
+def _enable_managed_cgroup_scope_controllers() -> None:
     current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name != _systemd_scope_subgroup:
+    if current_cgroup.name != _managed_cgroup_subgroup:
         die(
-            (f"s6: startup process is not inside delegated subgroup '{_systemd_scope_subgroup}'"),
+            (f"s6: startup process is not inside managed subgroup '{_managed_cgroup_subgroup}'"),
             exit_code=1,
         )
 
-    delegated_root = current_cgroup.parent
-    controllers_path = delegated_root / "cgroup.controllers"
-    subtree_control_path = delegated_root / "cgroup.subtree_control"
+    managed_root = current_cgroup.parent
+    controllers_path = managed_root / "cgroup.controllers"
+    subtree_control_path = managed_root / "cgroup.subtree_control"
     if not controllers_path.is_file() or not subtree_control_path.is_file():
-        die(f"s6: delegated cgroup root is not writable from {delegated_root}", exit_code=1)
+        die(f"s6: managed cgroup root is not writable from {managed_root}", exit_code=1)
 
     controllers = set(controllers_path.read_text(encoding="utf-8").split())
     missing = [name for name in _delegated_cgroup_controllers if name not in controllers]
     if missing:
         die(
-            ("s6: delegated cgroup root is missing required controllers: " + ", ".join(missing)),
+            ("s6: managed cgroup root is missing required controllers: " + ", ".join(missing)),
             exit_code=1,
         )
 
@@ -305,48 +286,10 @@ def _enable_delegated_systemd_scope_controllers() -> None:
     except OSError as e:
         raise ToolError(
             message=(
-                f"s6: failed to enable delegated subtree controllers at {subtree_control_path}: {e}"
+                f"s6: failed to enable managed subtree controllers at {subtree_control_path}: {e}"
             ),
             exit_code=1,
         ) from e
-
-
-def _start_up_inside_systemd_scope(
-    argv: list[str], *, mode: str, service_profile: str
-) -> int | None:
-    if os.environ.get(_systemd_scope_env) == "1":
-        return None
-
-    need_cmd("systemd-run")
-    env_args = [f"--setenv={_systemd_scope_env}=1"]
-    for name in _systemd_passthrough_env:
-        value = os.environ.get(name)
-        if not value:
-            continue
-        env_args.append(f"--setenv={name}={value}")
-    cmd = [
-        "systemd-run",
-        "--user",
-        "--scope",
-        "--quiet",
-        "--collect",
-        "--same-dir",
-        f"--description=webshot {mode} runtime ({service_profile})",
-        "--property=Delegate=cpu memory",
-        *env_args,
-        sys.executable,
-        "-m",
-        "s6.runtime",
-        *argv,
-    ]
-    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
-    if proc.stdout:
-        print(proc.stdout, end="")
-    if proc.stderr:
-        print(proc.stderr, end="", file=sys.stderr)
-    if proc.returncode != 0 and not proc.stderr:
-        print("s6: failed to enter delegated systemd --user scope", file=sys.stderr)
-    return proc.returncode
 
 
 def _build_state_context(*, mode: str) -> RuntimeStateContext:
@@ -1198,14 +1141,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.action == "up":
             if args.service_profile == "full":
-                delegated_rc = _start_up_inside_systemd_scope(
-                    argv, mode=args.mode, service_profile=args.service_profile
-                )
-                if delegated_rc is not None:
-                    return delegated_rc
-                _enter_systemd_subgroup()
-                _enable_delegated_systemd_scope_controllers()
-                _assert_delegated_systemd_scope()
+                _enter_managed_cgroup_subgroup()
+                _enable_managed_cgroup_scope_controllers()
+                _assert_managed_cgroup_scope()
             ctx = _build_up_context(
                 mode=args.mode,
                 service_profile=args.service_profile,

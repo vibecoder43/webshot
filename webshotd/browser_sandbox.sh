@@ -32,6 +32,7 @@ proxy_pid=''
 cdp_pid=''
 browser_pid=''
 chromium_stderr_path='chromium-stderr.log'
+browser_cgroup_dir=''
 
 browserAlive() {
   kill -0 "$browser_pid" 2>/dev/null
@@ -56,6 +57,10 @@ cleanup() {
     kill "$cdp_pid" 2>/dev/null || true
   fi
   wait 2>/dev/null || true
+  if [[ -n $browser_cgroup_dir ]]; then
+    printf '%s\n' "$$" >"$cgroup_root/cgroup.procs" 2>/dev/null || true
+    rmdir "$browser_cgroup_dir" 2>/dev/null || true
+  fi
   exit "$rc"
 }
 
@@ -67,16 +72,17 @@ rm -f "$websocket_path_file"
 
 if [[ $cpu_cores != 0 ]]; then
   if [[ $cgroup_root != /* ]]; then
-    echo "delegated cgroup root must be absolute: $cgroup_root" >&2
+    echo "managed cgroup root must be absolute: $cgroup_root" >&2
     exit 2
   fi
   if [[ ! -f $cgroup_root/cgroup.controllers ]]; then
-    echo "delegated cgroup root is not available in the sandbox: $cgroup_root" >&2
+    echo "managed cgroup root is not available in the sandbox: $cgroup_root" >&2
     exit 2
   fi
 
-  mkdir -p "$cgroup_root/$cgroup_name"
-  printf '%s\n' 0 >"$cgroup_root/$cgroup_name/cgroup.procs"
+  browser_cgroup_dir=$cgroup_root/$cgroup_name
+  mkdir -p "$browser_cgroup_dir"
+  printf '%s\n' 0 >"$browser_cgroup_dir/cgroup.procs"
 
   controllers=$(cat "$cgroup_root/cgroup.controllers")
   for controller in cpu memory; do
@@ -98,8 +104,8 @@ if [[ $cpu_cores != 0 ]]; then
   fi
 
   quota_us=$(( cpu_cores * 100000 ))
-  printf '%s %s\n' "$quota_us" "100000" >"$cgroup_root/$cgroup_name/cpu.max"
-  printf '%s\n' "$memory_bytes" >"$cgroup_root/$cgroup_name/memory.max"
+  printf '%s %s\n' "$quota_us" "100000" >"$browser_cgroup_dir/cpu.max"
+  printf '%s\n' "$memory_bytes" >"$browser_cgroup_dir/memory.max"
 fi
 
 socat \

@@ -2,30 +2,40 @@
 set -euo pipefail
 
 runtime_extra_path='@WEBSHOT_RUNTIME_EXTRA_PATH@'
-systemd_scope_env=WEBSHOT_SYSTEMD_SCOPE
-systemd_scope_subgroup=service
+managed_cgroup_prefix=webshotd
+managed_cgroup_subgroup=service
 delegated_controllers=( cpu memory )
+uid=
+base_user_slice=
+app_slice_dir=
+current_cgroup=
+current_cgroup_dir=
+cleanup_parent_dir=
+managed_root_dir=
+service_dir=
+cleanup_cgroup_layout=0
 
 if [[ -n $runtime_extra_path ]]; then
   export PATH="$runtime_extra_path:$PATH"
 fi
 
-if [[ ${!systemd_scope_env:-} != 1 ]]; then
-  if ! command -v systemd-run >/dev/null 2>&1; then
-    echo "webshotd: managed startup requires systemd-run" >&2
-    exit 1
-  fi
-  env_args=( "--setenv=${systemd_scope_env}=1" )
-  for name in PATH LD_LIBRARY_PATH SSL_CERT_FILE NIX_SSL_CERT_FILE XDG_DATA_DIRS XDG_CONFIG_DIRS TMPDIR HOME USER; do
-    if [[ -n ${!name-} ]]; then
-      env_args+=( "--setenv=$name=${!name}" )
+cleanup() {
+  local rc=$?
+  if (( cleanup_cgroup_layout != 0 )); then
+    if [[ -n $cleanup_parent_dir ]]; then
+      printf '%s\n' "$$" >"$cleanup_parent_dir/cgroup.procs" 2>/dev/null || true
     fi
-  done
-  exec systemd-run --user --scope --quiet --collect --same-dir \
-    '--property=Delegate=cpu memory' \
-    "${env_args[@]}" \
-    "$0" "$@"
-fi
+    if [[ -n $service_dir ]]; then
+      rmdir "$service_dir" 2>/dev/null || true
+    fi
+    if [[ -n $managed_root_dir ]]; then
+      rmdir "$managed_root_dir" 2>/dev/null || true
+    fi
+  fi
+  exit "$rc"
+}
+
+trap 'cleanup' EXIT
 
 current_cgroup=$(sed -n 's/^0:://p' /proc/self/cgroup | tail -n 1)
 if [[ -z $current_cgroup || $current_cgroup != /* ]]; then
@@ -33,28 +43,48 @@ if [[ -z $current_cgroup || $current_cgroup != /* ]]; then
   exit 1
 fi
 current_cgroup_dir=/sys/fs/cgroup${current_cgroup}
-if [[ ${current_cgroup_dir##*/} != ${systemd_scope_subgroup} ]]; then
-  mkdir -p "$current_cgroup_dir/$systemd_scope_subgroup"
-  printf '%s\n' "$$" >"$current_cgroup_dir/$systemd_scope_subgroup/cgroup.procs"
-  delegated_root_dir=$current_cgroup_dir
-else
-  delegated_root_dir=$(dirname "$current_cgroup_dir")
-fi
-
-if [[ ! -f $delegated_root_dir/cgroup.controllers || ! -f $delegated_root_dir/cgroup.subtree_control ]]; then
-  echo "webshotd: delegated cgroup root is not writable: $delegated_root_dir" >&2
+uid=$(id -u)
+base_user_slice="/user.slice/user-${uid}.slice/"
+app_slice_dir=/sys/fs/cgroup${base_user_slice%/}/user@${uid}.service/app.slice
+if [[ ! -f $app_slice_dir/cgroup.controllers || ! -f $app_slice_dir/cgroup.subtree_control ]]; then
+  echo "webshotd: managed app.slice is not available: $app_slice_dir" >&2
   exit 1
 fi
 
-controllers=$(cat "$delegated_root_dir/cgroup.controllers")
+case "$current_cgroup" in
+  "${base_user_slice}"user@${uid}.service/app.slice/"${managed_cgroup_prefix}"-*.scope/"$managed_cgroup_subgroup")
+    service_dir=$current_cgroup_dir
+    managed_root_dir=$(dirname "$service_dir")
+    ;;
+  "${base_user_slice}"*)
+    cleanup_parent_dir=$app_slice_dir
+    managed_root_dir=$app_slice_dir/${managed_cgroup_prefix}-$$.scope
+    service_dir=$managed_root_dir/$managed_cgroup_subgroup
+    mkdir -p "$service_dir"
+    cleanup_cgroup_layout=1
+    ;;
+  *)
+    echo \
+      "webshotd: must run inside user-${uid}.slice so it can stage managed cgroups under app.slice; current cgroup is $current_cgroup" \
+      >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! -f $managed_root_dir/cgroup.controllers || ! -f $managed_root_dir/cgroup.subtree_control ]]; then
+  echo "webshotd: managed cgroup root is not writable: $managed_root_dir" >&2
+  exit 1
+fi
+
+controllers=$(cat "$managed_root_dir/cgroup.controllers")
 for controller in "${delegated_controllers[@]}"; do
   if [[ " $controllers " != *" $controller "* ]]; then
-    echo "webshotd: delegated cgroup root is missing controller '$controller'" >&2
+    echo "webshotd: managed cgroup root is missing controller '$controller'" >&2
     exit 1
   fi
 done
 
-enabled=$(cat "$delegated_root_dir/cgroup.subtree_control")
+enabled=$(cat "$managed_root_dir/cgroup.subtree_control")
 enable_args=()
 for controller in "${delegated_controllers[@]}"; do
   if [[ " $enabled " != *" $controller "* ]]; then
@@ -62,7 +92,11 @@ for controller in "${delegated_controllers[@]}"; do
   fi
 done
 if (( ${#enable_args[@]} > 0 )); then
-  printf '%s\n' "${enable_args[*]}" >"$delegated_root_dir/cgroup.subtree_control"
+  printf '%s\n' "${enable_args[*]}" >"$managed_root_dir/cgroup.subtree_control"
+fi
+
+if (( cleanup_cgroup_layout != 0 )); then
+  printf '%s\n' "$$" >"$service_dir/cgroup.procs"
 fi
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)

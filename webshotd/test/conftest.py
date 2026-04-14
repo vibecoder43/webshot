@@ -21,6 +21,7 @@ pytest_plugins = [
     "pytest_userver.plugins.config",
     "pytest_userver.chaos",
     "helper.sql_loader",
+    "helper.coarse_profile",
 ]
 
 psycopg2.extras.register_uuid()
