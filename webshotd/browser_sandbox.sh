@@ -59,7 +59,13 @@ cleanup() {
   wait 2>/dev/null || true
   if [[ -n $browser_cgroup_dir ]]; then
     printf '%s\n' "$$" >"$cgroup_root/cgroup.procs" 2>/dev/null || true
-    rmdir "$browser_cgroup_dir" 2>/dev/null || true
+    for _ in {1..50}; do
+      if rmdir "$browser_cgroup_dir" 2>/dev/null; then
+        break
+      fi
+      [[ -d $browser_cgroup_dir ]] || break
+      sleep 0.1
+    done
   fi
   exit "$rc"
 }

@@ -4,6 +4,7 @@ import argparse
 import os
 import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from s6.runtime_support import format_runtime_message, report, runtime_die
 MANAGED_CGROUP_PREFIX = "webshotd"
 MANAGED_CGROUP_SUBGROUP = "service"
 DELEGATED_CGROUP_CONTROLLERS = ("cpu", "memory")
+CGROUP_KILL_WAIT_TIMEOUT_SEC = 5.0
+CGROUP_KILL_POLL_INTERVAL_SEC = 0.1
 
 
 @dataclass(frozen=True)
@@ -108,16 +111,117 @@ def _enable_managed_cgroup_root_controllers(state: _ManagedCgroupRootState) -> N
         ) from e
 
 
+def _validate_managed_cgroup_root_path(path: Path) -> None:
+    _, app_slice_dir = _managed_app_slice_dir()
+    if path.parent != app_slice_dir:
+        runtime_die(
+            f"refusing to clean unmanaged cgroup root outside app.slice: {path}",
+            exit_code=1,
+        )
+    if not path.name.startswith(f"{MANAGED_CGROUP_PREFIX}-") or not path.name.endswith(".scope"):
+        runtime_die(
+            f"refusing to clean unexpected managed cgroup root name: {path}",
+            exit_code=1,
+        )
+
+
+def _iter_managed_cgroup_dirs_deepest_first(path: Path) -> list[Path]:
+    dirs = [Path(root) for root, _, _ in os.walk(path)]
+    dirs.sort(key=lambda current: (-len(current.parts), str(current)))
+    return dirs
+
+
+def _read_cgroup_populated(path: Path) -> bool:
+    events_path = path / "cgroup.events"
+    try:
+        raw = events_path.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise ToolError(message=f"missing cgroup events file at {events_path}", exit_code=1) from e
+    except OSError as e:
+        raise ToolError(
+            message=f"failed to read cgroup events at {events_path}: {e}",
+            exit_code=1,
+        ) from e
+
+    for line in raw.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "populated":
+            if value == "0":
+                return False
+            if value == "1":
+                return True
+            break
+    runtime_die(f"missing populated state in cgroup events at {events_path}", exit_code=1)
+
+
+def _read_cgroup_procs(path: Path) -> list[str]:
+    procs_path = path / "cgroup.procs"
+    try:
+        return [line for line in procs_path.read_text(encoding="utf-8").splitlines() if line]
+    except FileNotFoundError as e:
+        raise ToolError(message=f"missing cgroup process file at {procs_path}", exit_code=1) from e
+    except OSError as e:
+        raise ToolError(
+            message=f"failed to read cgroup processes at {procs_path}: {e}",
+            exit_code=1,
+        ) from e
+
+
+def _kill_managed_cgroup_dir(path: Path) -> None:
+    kill_path = path / "cgroup.kill"
+    procs = _read_cgroup_procs(path)
+    try:
+        kill_path.write_text("1\n", encoding="utf-8")
+    except FileNotFoundError as e:
+        raise ToolError(
+            message=f"missing cgroup kill file at {kill_path} while draining {path}",
+            exit_code=1,
+        ) from e
+    except OSError as e:
+        detail = f" (pids: {', '.join(procs)})" if procs else ""
+        raise ToolError(
+            message=f"failed to kill lingering processes in managed cgroup {path}{detail}: {e}",
+            exit_code=1,
+        ) from e
+
+
+def _drain_managed_cgroup_dir(path: Path) -> None:
+    if not _read_cgroup_populated(path):
+        return
+
+    _kill_managed_cgroup_dir(path)
+    deadline = time.monotonic() + CGROUP_KILL_WAIT_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        if not _read_cgroup_populated(path):
+            return
+        time.sleep(CGROUP_KILL_POLL_INTERVAL_SEC)
+
+    procs = _read_cgroup_procs(path)
+    detail = f" (pids: {', '.join(procs)})" if procs else ""
+    runtime_die(f"managed cgroup stayed populated after kill: {path}{detail}", exit_code=1)
+
+
+def _remove_managed_cgroup_dir(path: Path) -> None:
+    try:
+        path.rmdir()
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        raise ToolError(message=f"failed to remove managed cgroup {path}: {e}", exit_code=1) from e
+
+
 def _cleanup_managed_cgroup_root(path: Path, *, ignore_errors: bool = False) -> None:
-    service_dir = path / MANAGED_CGROUP_SUBGROUP
-    for target in [service_dir, path]:
-        try:
-            target.rmdir()
-        except FileNotFoundError:
-            continue
-        except OSError:
-            if not ignore_errors:
-                raise
+    try:
+        _validate_managed_cgroup_root_path(path)
+        if not path.exists():
+            return
+
+        for current in _iter_managed_cgroup_dirs_deepest_first(path):
+            _drain_managed_cgroup_dir(current)
+            _remove_managed_cgroup_dir(current)
+    except (ToolError, OSError):
+        if not ignore_errors:
+            raise
 
 
 def _enter_managed_cgroup_subgroup(ctx) -> None:
