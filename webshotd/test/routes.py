@@ -65,17 +65,23 @@ async def test_list_captures_prefix_empty_result(service_client):
     assert "next_page_token" not in body
 
 
-async def test_disallow_and_purge_missing_host(service_client):
+async def test_disallow_and_purge_not_exposed_on_main_listener(service_client):
     response = await service_client.post("/v1/denylist/disallow_and_purge")
+
+    assert response.status == 404
+
+
+async def test_disallow_and_purge_missing_host(monitor_client):
+    response = await monitor_client.post("/v1/denylist/disallow_and_purge")
 
     assert response.status == 400
     body = response.json()
     assert body["error"]["message"] == "host: missing parameter"
 
 
-async def test_disallow_and_purge_invalid_host(service_client):
+async def test_disallow_and_purge_invalid_host(monitor_client):
     # IP literals are rejected
-    response = await service_client.post(
+    response = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": "127.0.0.1"},
     )
@@ -93,9 +99,9 @@ async def test_create_capture_missing_body(service_client):
     assert body["error"]["message"] == "invalid request body"
 
 
-async def test_create_capture_denylisted_host(service_client):
+async def test_create_capture_denylisted_host(service_client, monitor_client):
     # Insert host into denylist via dedicated endpoint.
-    deny_resp = await service_client.post(
+    deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/"},
     )
@@ -111,8 +117,8 @@ async def test_create_capture_denylisted_host(service_client):
     assert body["error"]["message"] == "host in denylist"
 
 
-async def test_create_capture_denylisted_path_blocks_subpaths(service_client):
-    deny_resp = await service_client.post(
+async def test_create_capture_denylisted_path_blocks_subpaths(service_client, monitor_client):
+    deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/a"},
     )
@@ -128,8 +134,10 @@ async def test_create_capture_denylisted_path_blocks_subpaths(service_client):
     assert body["error"]["message"] == "host in denylist"
 
 
-async def test_create_capture_denylisted_path_does_not_block_sibling_path(service_client):
-    deny_resp = await service_client.post(
+async def test_create_capture_denylisted_path_does_not_block_sibling_path(
+    service_client, monitor_client
+):
+    deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/a"},
     )

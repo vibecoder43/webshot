@@ -79,6 +79,7 @@ components_manager:
     denylist_check:
       path: /v1/denylist/check
       method: POST
+      monitor-handler: true
       task_processor: main-task-processor
       request-timeout-ms: 2000
       max_request_size: &max-data-per-request 65536
@@ -103,6 +104,7 @@ components_manager:
     disallow_and_purge:
       path: /v1/denylist/disallow_and_purge
       method: POST
+      monitor-handler: true
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
@@ -118,6 +120,17 @@ components_manager:
       task_processor: main-task-processor
       request-timeout-ms: 10000
       max_request_size: *max-data-per-request
+      title: Webshot API
+      spec-url: /openapi/webshot.yaml
+    docs_admin:
+      path: /rapidoc
+      method: GET
+      monitor-handler: true
+      task_processor: main-task-processor
+      request-timeout-ms: 10000
+      max_request_size: *max-data-per-request
+      title: Webshot Admin API
+      spec-url: /openapi/webshot.yaml
     rapidoc_assets_cache:
       dir: $rapidoc_assets_dir
       update-period: 0s
@@ -131,8 +144,22 @@ components_manager:
       directory-file: ""
       not-found-file: ""
       expires: 0s
+    rapidoc_assets_admin:
+      path: /rapidoc-assets/*
+      method: GET
+      monitor-handler: true
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: rapidoc_assets_cache
+      directory-file: ""
+      not-found-file: ""
+      expires: 0s
     openapi_cache:
       dir: $openapi_dir
+      update-period: 0s
+      fs-task-processor: fs-task-processor
+    openapi_admin_cache:
+      dir: $openapi_admin_dir
       update-period: 0s
       fs-task-processor: fs-task-processor
     openapi_static:
@@ -141,6 +168,16 @@ components_manager:
       task_processor: main-task-processor
       max_request_size: *max-data-per-request
       fs-cache-component: openapi_cache
+      directory-file: ""
+      not-found-file: ""
+      expires: 0s
+    openapi_admin:
+      path: /openapi/*
+      method: GET
+      monitor-handler: true
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: openapi_admin_cache
       directory-file: ""
       not-found-file: ""
       expires: 0s

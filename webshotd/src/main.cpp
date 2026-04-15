@@ -55,12 +55,18 @@ int main(int argc, char *argv[])
                              .Append<v1::DenylistCheckHandler>()
                              .Append<v1::ById>()
                              .Append<v1::DocsHandler>()
+                             .Append<v1::DocsHandler>("docs_admin")
                              .Append<v1::UiRedirectHandler>()
                              .Append<us::components::FsCache>("rapidoc_assets_cache")
                              .Append<us::components::FsCache>("openapi_cache")
+                             .Append<us::components::FsCache>("openapi_admin_cache")
                              .Append<us::components::FsCache>("web_ui_cache")
                              .Append<us::server::handlers::HttpHandlerStatic>("rapidoc_assets")
+                             .Append<us::server::handlers::HttpHandlerStatic>(
+                                 "rapidoc_assets_admin"
+                             )
                              .Append<us::server::handlers::HttpHandlerStatic>("openapi_static")
+                             .Append<us::server::handlers::HttpHandlerStatic>("openapi_admin")
                              .Append<us::server::handlers::HttpHandlerStatic>("web_ui_static")
                              .Append<us::server::handlers::ServerMonitor>();
     return us::utils::DaemonMain(argc, argv, componentList);

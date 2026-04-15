@@ -263,7 +263,7 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
 
 
 @pytest.mark.asyncio
-async def test_disallow_and_purge_blocks_new_captures(service_client, pgsql):
+async def test_disallow_and_purge_blocks_new_captures(service_client, monitor_client, pgsql):
     host = TEST_HOST
     link = f"https://{host}/"
     prefix_key = prefix_key_from_link(link)
@@ -275,7 +275,7 @@ async def test_disallow_and_purge_blocks_new_captures(service_client, pgsql):
     await wait_for_job_status(service_client, first_job_id, expected_status="succeeded")
 
     # Disallow and purge
-    resp = await service_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
     assert resp.status == 202
 
     # Wait for purge to remove rows for this host
@@ -432,8 +432,10 @@ async def test_capture_preserves_redirected_subresource_hops(service_client, ser
 
 
 @pytest.mark.asyncio
-async def test_denylist_blocks_subresource_fetch(service_client, service_secdist_path):
-    deny_resp = await service_client.post(
+async def test_denylist_blocks_subresource_fetch(
+    service_client, monitor_client, service_secdist_path
+):
+    deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/denylist/style.css"},
     )
@@ -485,8 +487,10 @@ async def test_capture_fetches_https_subresource_assets(service_client, service_
 
 
 @pytest.mark.asyncio
-async def test_denylist_blocks_https_subresource_fetch(service_client, service_secdist_path):
-    deny_resp = await service_client.post(
+async def test_denylist_blocks_https_subresource_fetch(
+    service_client, monitor_client, service_secdist_path
+):
+    deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_ASSET_HOST}/denylist/asset.css"},
     )

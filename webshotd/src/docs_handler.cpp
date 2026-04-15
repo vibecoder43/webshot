@@ -4,6 +4,7 @@
 #include "integers.hpp"
 
 #include <chrono>
+#include <format>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/task/current_task.hpp>
@@ -17,7 +18,8 @@ DocsHandler::DocsHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : HttpHandlerBase(config, context),
-      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
+      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>())),
+      title(config["title"].As<std::string>()), specUrl(config["spec-url"].As<std::string>())
 {
 }
 
@@ -32,6 +34,12 @@ properties:
     type: integer
     minimum: 1
     description: Upper bound for /rapidoc handler in milliseconds
+  title:
+    type: string
+    description: HTML title used for the RapiDoc page
+  spec-url:
+    type: string
+    description: Same-origin OpenAPI schema URL consumed by RapiDoc
 )");
 }
 
@@ -46,19 +54,22 @@ std::string DocsHandler::HandleRequestThrow(
     auto &response = request.GetHttpResponse();
     response.SetStatus(server::http::HttpStatus::kOk);
     response.SetContentType("text/html");
-    return R"(<!doctype html>
+    return std::format(
+        R"(<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Webshot API</title>
+  <title>{}</title>
   <script src="/rapidoc-assets/rapidoc-min.js"></script>
 </head>
 <body>
-  <rapi-doc spec-url="/openapi/webshot.yaml"></rapi-doc>
+  <rapi-doc spec-url="{}"></rapi-doc>
 </body>
 </html>
-)";
+)",
+        title, specUrl
+    );
 }
 
 } // namespace v1

@@ -3,6 +3,7 @@
 #include "integers.hpp"
 #include "userver_namespaces.hpp"
 
+#include <string>
 #include <string_view>
 
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -28,6 +29,8 @@ public:
 
 private:
     const i64 requestTimeoutMs;
+    const std::string title;
+    const std::string specUrl;
 };
 
 } // namespace v1

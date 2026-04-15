@@ -61,12 +61,14 @@ async def test_concurrent_different_links_create_jobs(service_client, pgsql):
 
 
 @pytest.mark.asyncio
-async def test_disallow_and_purge_blocks_concurrent_new_captures(service_client, pgsql):
+async def test_disallow_and_purge_blocks_concurrent_new_captures(
+    service_client, monitor_client, pgsql
+):
     host = TEST_HOST
     link = f"https://{host}/concurrent-purge"
     prefix_key = prefix_key_from_link(link)
 
-    resp = await service_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
     assert resp.status == 202
 
     tasks = [
