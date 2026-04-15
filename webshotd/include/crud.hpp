@@ -7,6 +7,7 @@
 #include "text.hpp"
 #include "userver_namespaces.hpp"
 
+#include <chrono>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -19,6 +20,11 @@ using Uuid = boost::uuids::uuid;
 
 namespace v1 {
 enum class DenylistError;
+
+struct [[nodiscard]] ClientIpCooldown final {
+    std::chrono::milliseconds retryAfter;
+};
+
 /**
  * @brief Persistence and background-crawl facade.
  *
@@ -51,6 +57,9 @@ public:
      * job status via findCaptureJob().
      */
     [[nodiscard]] Expected<dto::CaptureJob, errors::CreateJobError> createCaptureJob(Link link);
+    /** @brief Acquire per-IP cooldown for an HTTP CRUD operation. */
+    [[nodiscard]] Expected<std::optional<ClientIpCooldown>, errors::CrudError>
+    acquireClientIpCooldown(String clientIp);
     /** @brief Look up a capture by id. */
     [[nodiscard]] Expected<std::optional<Link>, errors::CrudError> findCapture(Uuid uuid);
 

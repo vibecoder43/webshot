@@ -55,6 +55,23 @@ paths:
                   value:
                     error:
                       message: "page_token: invalid page_token"
+        '429':
+          description: Client IP is still in cooldown.
+          headers:
+            Retry-After:
+              description: Seconds until this client IP may perform another operation.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ip_cooldown:
+                  value:
+                    error:
+                      message: client IP in cooldown
         '500':
           description: Internal server error.
           content:
@@ -118,6 +135,23 @@ paths:
                   value:
                     error:
                       message: host in denylist
+        '429':
+          description: Client IP is still in cooldown.
+          headers:
+            Retry-After:
+              description: Seconds until this client IP may perform another operation.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ip_cooldown:
+                  value:
+                    error:
+                      message: client IP in cooldown
         '500':
           description: Internal server error.
           content:
@@ -175,6 +209,23 @@ paths:
                   value:
                     error:
                       message: "page_token: invalid page_token"
+        '429':
+          description: Client IP is still in cooldown.
+          headers:
+            Retry-After:
+              description: Seconds until this client IP may perform another operation.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ip_cooldown:
+                  value:
+                    error:
+                      message: client IP in cooldown
         '500':
           description: Internal server error.
           content:
@@ -222,6 +273,23 @@ paths:
                   value:
                     error:
                       message: job not found
+        '429':
+          description: Client IP is still in cooldown.
+          headers:
+            Retry-After:
+              description: Seconds until this client IP may perform another operation.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ip_cooldown:
+                  value:
+                    error:
+                      message: client IP in cooldown
         '500':
           description: Internal server error.
           content:
@@ -272,6 +340,23 @@ paths:
                   value:
                     error:
                       message: capture not found
+        '429':
+          description: Client IP is still in cooldown.
+          headers:
+            Retry-After:
+              description: Seconds until this client IP may perform another operation.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ip_cooldown:
+                  value:
+                    error:
+                      message: client IP in cooldown
         '500':
           description: Internal server error.
           content:

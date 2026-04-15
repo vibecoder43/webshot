@@ -26,6 +26,9 @@ crawler_cdp_wait_poll_interval_ms: 10
 crawler_browser_stop_timeout_ms: 1500
 crawler_proxy_stop_timeout_ms: 500
 link_cooldown_sec: 0
+ip_cooldown_ms: 500
+client_ip_source: peer
+client_ip_header_name: ""
 secdist_path: secdist.json
 crawler_cpu_cores: 0
 crawler_memory_gib: 0

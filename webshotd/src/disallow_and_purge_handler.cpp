@@ -3,6 +3,7 @@
  * @file
  * @brief Handler that disallows a host and enqueues purge of its captures.
  */
+#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
@@ -16,6 +17,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/task/current_task.hpp>
@@ -79,6 +81,13 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
     }
     LOG_INFO() << std::format("invoked for: {}", link->url.hostname());
     auto prefixKey = prefix::makePrefixKey(link.value());
+    auto clientIp = client_ip::resolve(request, config);
+    if (!clientIp)
+        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
+    auto cooldown = crud.acquireClientIpCooldown(std::move(clientIp).value()).value();
+    if (cooldown)
+        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+
     auto ok = crud.disallowAndPurgePrefix(prefixKey);
     if (!ok) {
         LOG_ERROR() << std::format("disallow_and_purge failed for {}", link->url.hostname());

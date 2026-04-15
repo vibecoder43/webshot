@@ -3,6 +3,7 @@
  * @file
  * @brief Handler that lists captures grouped by normalized link prefix.
  */
+#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <format>
 #include <string>
+#include <utility>
 
 #include "http_utils.hpp"
 #include "server_errors.hpp"
@@ -85,6 +87,13 @@ std::string ByPrefixHandler::HandleRequestThrow(
         return httpu::respondParamError(
             response, kBadRequest, "page_token"_t, "invalid parameter"_t
         );
+
+    auto clientIp = client_ip::resolve(request, cfg);
+    if (!clientIp)
+        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
+    auto cooldown = crud.acquireClientIpCooldown(std::move(clientIp).value()).value();
+    if (cooldown)
+        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
 
     auto page = crud.findCapturesByPrefixPage(normalizedPrefix, token.value());
     if (!page) {

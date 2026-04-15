@@ -12,6 +12,11 @@
 #include <userver/yaml_config/schema.hpp>
 
 namespace v1 {
+enum class ClientIpSource {
+    kPeer,
+    kTrustedHeader,
+};
+
 /**
  * @brief Read-only configuration facade for the service.
  *
@@ -34,6 +39,15 @@ public:
     /** @return Runner-owned state directory for webshotd instance. */
     [[nodiscard]] std::string_view stateDir() const noexcept { return stateDirValue; }
 
+    /** @return Source used for client IP cooldown identity. */
+    [[nodiscard]] ClientIpSource clientIpSource() const noexcept { return clientIpSourceValue; }
+
+    /** @return Trusted header name for client IP cooldown identity. */
+    [[nodiscard]] std::string_view clientIpHeaderName() const noexcept
+    {
+        return clientIpHeaderNameValue;
+    }
+
     /** @name S3 parameters */
     ///@{
     [[nodiscard]] const String &s3Bucket() const noexcept { return s3BucketName; }
@@ -46,6 +60,8 @@ public:
 private:
     usize urlBytesMaxValue;
     std::string stateDirValue;
+    ClientIpSource clientIpSourceValue;
+    std::string clientIpHeaderNameValue;
     String s3BucketName;
     String s3EndpointUrl;
     String s3RegionName;

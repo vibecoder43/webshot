@@ -9,6 +9,7 @@
 #include <userver/yaml_config/schema.hpp>
 
 namespace v1 {
+class Config;
 class Crud;
 
 /**
@@ -31,6 +32,7 @@ public:
 
 private:
     Crud &crud;
+    const Config &config;
     const i64 requestTimeoutMs;
 };
 } // namespace v1

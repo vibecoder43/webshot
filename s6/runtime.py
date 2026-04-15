@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import shutil
 import sys
@@ -25,9 +26,11 @@ from s6.runtime_support import format_runtime_message, report, runtime_die
 
 MANAGED_CGROUP_PREFIX = "webshotd"
 MANAGED_CGROUP_SUBGROUP = "service"
+PARENT_PROCS_CGROUP_NAME = f"{MANAGED_CGROUP_PREFIX}-parent-procs"
 DELEGATED_CGROUP_CONTROLLERS = ("cpu", "memory")
 CGROUP_KILL_WAIT_TIMEOUT_SEC = 5.0
 CGROUP_KILL_POLL_INTERVAL_SEC = 0.1
+CGROUP_FS_ROOT = Path("/sys/fs/cgroup")
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,12 @@ class _ManagedCgroupRootState:
     subtree_control_path: Path
     controllers: set[str]
     subtree_control: set[str]
+
+
+@dataclass(frozen=True)
+class _ManagedCgroupParent:
+    path: Path
+    drain_processes_before_enable: bool
 
 
 def _current_cgroup_v2_relative_path() -> str:
@@ -55,36 +64,62 @@ def _current_cgroup_v2_relative_path() -> str:
 
 
 def _current_cgroup_v2_dir() -> Path:
-    relative = _current_cgroup_v2_relative_path()
+    return _cgroup_v2_dir(_current_cgroup_v2_relative_path())
+
+
+def _cgroup_v2_dir(relative: str) -> Path:
     if not relative.startswith("/"):
         runtime_die(f"Invalid cgroup v2 path: {relative}", exit_code=1)
-    return Path("/sys/fs/cgroup") / relative.lstrip("/")
+    return CGROUP_FS_ROOT / relative.lstrip("/")
 
 
 def _managed_app_slice_dir() -> tuple[str, Path]:
     uid = os.getuid()
     base_user_slice = f"/user.slice/user-{uid}.slice/"
     app_slice_dir = (
-        Path("/sys/fs/cgroup")
-        / f"user.slice/user-{uid}.slice"
-        / f"user@{uid}.service"
-        / "app.slice"
+        CGROUP_FS_ROOT / f"user.slice/user-{uid}.slice" / f"user@{uid}.service" / "app.slice"
     )
     return base_user_slice, app_slice_dir
 
 
-def _managed_scope_prefix(base_user_slice: str, *, uid: int) -> str:
-    return f"{base_user_slice}user@{uid}.service/app.slice/{MANAGED_CGROUP_PREFIX}-"
+def _has_cgroup_control_files(path: Path) -> bool:
+    return (path / "cgroup.controllers").is_file() and (path / "cgroup.subtree_control").is_file()
+
+
+def _is_managed_cgroup_root(path: Path) -> bool:
+    return path.name.startswith(f"{MANAGED_CGROUP_PREFIX}-") and path.name.endswith(".scope")
 
 
 def _managed_scope_service_dir(current_cgroup: str) -> Path | None:
-    uid = os.getuid()
-    base_user_slice, _ = _managed_app_slice_dir()
-    prefix = _managed_scope_prefix(base_user_slice, uid=uid)
     suffix = f"/{MANAGED_CGROUP_SUBGROUP}"
-    if not current_cgroup.startswith(prefix) or not current_cgroup.endswith(suffix):
+    if not current_cgroup.endswith(suffix):
         return None
-    return Path("/sys/fs/cgroup") / current_cgroup.lstrip("/")
+
+    service_dir = _cgroup_v2_dir(current_cgroup)
+    if not _is_managed_cgroup_root(service_dir.parent):
+        return None
+    return service_dir
+
+
+def _managed_cgroup_parent_dir(current_cgroup: str) -> _ManagedCgroupParent:
+    base_user_slice, app_slice_dir = _managed_app_slice_dir()
+    if current_cgroup.startswith(base_user_slice) and _has_cgroup_control_files(app_slice_dir):
+        return _ManagedCgroupParent(path=app_slice_dir, drain_processes_before_enable=False)
+
+    current_dir = _cgroup_v2_dir(current_cgroup)
+    if current_dir.name == PARENT_PROCS_CGROUP_NAME and _has_cgroup_control_files(
+        current_dir.parent
+    ):
+        return _ManagedCgroupParent(path=current_dir.parent, drain_processes_before_enable=False)
+
+    if current_dir == CGROUP_FS_ROOT:
+        runtime_die("must run inside a delegated cgroup; current cgroup is /", exit_code=1)
+    if not _has_cgroup_control_files(current_dir):
+        runtime_die(
+            f"managed cgroup parent is not available from current cgroup: {current_dir}",
+            exit_code=1,
+        )
+    return _ManagedCgroupParent(path=current_dir, drain_processes_before_enable=True)
 
 
 def _record_managed_cgroup_root(ctx, root: Path) -> None:
@@ -92,11 +127,9 @@ def _record_managed_cgroup_root(ctx, root: Path) -> None:
     ctx.managed_cgroup_root_file.write_text(str(root) + "\n", encoding="utf-8")
 
 
-def _enable_managed_cgroup_root_controllers(state: _ManagedCgroupRootState) -> None:
-    _require_cgroup_controllers(state.controllers, label="controllers")
-    enable = [
-        f"+{name}" for name in DELEGATED_CGROUP_CONTROLLERS if name not in state.subtree_control
-    ]
+def _enable_cgroup_controllers(state: _ManagedCgroupRootState, *, label: str) -> None:
+    _require_cgroup_controllers(state.controllers, label=label)
+    enable = [f"+{name}" for name in _missing_cgroup_controllers(state.subtree_control)]
     if not enable:
         return
 
@@ -104,25 +137,72 @@ def _enable_managed_cgroup_root_controllers(state: _ManagedCgroupRootState) -> N
         state.subtree_control_path.write_text(" ".join(enable) + "\n", encoding="utf-8")
     except OSError as e:
         raise ToolError(
-            message=(
-                f"failed to enable managed subtree controllers at {state.subtree_control_path}: {e}"
-            ),
+            message=f"failed to enable {label} subtree controllers at {state.root}: {e}",
             exit_code=1,
         ) from e
 
 
-def _validate_managed_cgroup_root_path(path: Path) -> None:
-    _, app_slice_dir = _managed_app_slice_dir()
-    if path.parent != app_slice_dir:
+def _enable_managed_cgroup_root_controllers(state: _ManagedCgroupRootState) -> None:
+    _enable_cgroup_controllers(state, label="managed cgroup root")
+
+
+def _prepare_managed_cgroup_parent(parent: _ManagedCgroupParent) -> None:
+    state = _read_cgroup_controller_state(parent.path, label="managed cgroup parent")
+    if parent.drain_processes_before_enable and _missing_cgroup_controllers(state.subtree_control):
+        _drain_cgroup_processes_to_leaf(parent.path)
+        state = _read_cgroup_controller_state(parent.path, label="managed cgroup parent")
+    _enable_cgroup_controllers(state, label="managed cgroup parent")
+
+
+def _drain_cgroup_processes_to_leaf(path: Path) -> None:
+    leaf = path / PARENT_PROCS_CGROUP_NAME
+    try:
+        leaf.mkdir(exist_ok=True)
+    except OSError as e:
+        raise ToolError(
+            message=f"failed to create cgroup process leaf {leaf}: {e}",
+            exit_code=1,
+        ) from e
+
+    procs_path = leaf / "cgroup.procs"
+    for _ in range(20):
+        procs = _read_cgroup_procs(path)
+        if not procs:
+            return
+        for pid in procs:
+            try:
+                procs_path.write_text(f"{pid}\n", encoding="utf-8")
+            except OSError as e:
+                if e.errno == errno.ESRCH or not (Path("/proc") / pid).exists():
+                    continue
+                raise ToolError(
+                    message=f"failed to move process {pid} into cgroup process leaf {leaf}: {e}",
+                    exit_code=1,
+                ) from e
+
+    procs = _read_cgroup_procs(path)
+    detail = f" (pids: {', '.join(procs)})" if procs else ""
+    runtime_die(f"managed cgroup parent stayed populated after draining: {path}{detail}")
+
+
+def _validate_managed_cgroup_root_path(path: Path) -> Path:
+    resolved = path.resolve(strict=False)
+    if resolved == CGROUP_FS_ROOT or CGROUP_FS_ROOT not in resolved.parents:
         runtime_die(
-            f"refusing to clean unmanaged cgroup root outside app.slice: {path}",
+            f"refusing to clean managed cgroup root outside cgroupfs: {path}",
             exit_code=1,
         )
-    if not path.name.startswith(f"{MANAGED_CGROUP_PREFIX}-") or not path.name.endswith(".scope"):
+    if not _is_managed_cgroup_root(resolved):
         runtime_die(
             f"refusing to clean unexpected managed cgroup root name: {path}",
             exit_code=1,
         )
+    if resolved.exists() and not _has_cgroup_control_files(resolved):
+        runtime_die(
+            f"refusing to clean unexpected managed cgroup root without cgroup files: {path}",
+            exit_code=1,
+        )
+    return resolved
 
 
 def _iter_managed_cgroup_dirs_deepest_first(path: Path) -> list[Path]:
@@ -212,7 +292,7 @@ def _remove_managed_cgroup_dir(path: Path) -> None:
 
 def _cleanup_managed_cgroup_root(path: Path, *, ignore_errors: bool = False) -> None:
     try:
-        _validate_managed_cgroup_root_path(path)
+        path = _validate_managed_cgroup_root_path(path)
         if not path.exists():
             return
 
@@ -234,27 +314,20 @@ def _enter_managed_cgroup_subgroup(ctx) -> None:
         _record_managed_cgroup_root(ctx, state.root)
         return
 
-    uid = os.getuid()
-    base_user_slice, app_slice_dir = _managed_app_slice_dir()
-    if not current_cgroup.startswith(base_user_slice):
-        runtime_die(
-            (
-                f"must run inside user-{uid}.slice so it can stage "
-                "managed cgroups under app.slice; "
-                f"current cgroup is {current_cgroup}"
-            ),
-            exit_code=1,
-        )
+    parent = _managed_cgroup_parent_dir(current_cgroup)
+    _prepare_managed_cgroup_parent(parent)
 
-    controllers_path = app_slice_dir / "cgroup.controllers"
-    subtree_control_path = app_slice_dir / "cgroup.subtree_control"
-    if not controllers_path.is_file() or not subtree_control_path.is_file():
-        runtime_die(f"managed app.slice is not available: {app_slice_dir}", exit_code=1)
-
-    managed_root = app_slice_dir / f"{MANAGED_CGROUP_PREFIX}-{os.getpid()}.scope"
+    managed_root = parent.path / f"{MANAGED_CGROUP_PREFIX}-{os.getpid()}.scope"
     service_dir = managed_root / MANAGED_CGROUP_SUBGROUP
-    service_dir.mkdir(parents=True, exist_ok=False)
     try:
+        try:
+            service_dir.mkdir(parents=True, exist_ok=False)
+        except OSError as e:
+            raise ToolError(
+                message=f"failed to create managed cgroup subgroup {service_dir}: {e}",
+                exit_code=1,
+            ) from e
+
         state = _read_managed_cgroup_root_state(service_dir)
         _enable_managed_cgroup_root_controllers(state)
         try:
@@ -282,8 +355,8 @@ def _enter_managed_cgroup_subgroup(ctx) -> None:
 
 def _assert_managed_cgroup_scope() -> None:
     state = _require_managed_cgroup_subgroup()
-    _require_cgroup_controllers(state.controllers, label="controllers")
-    _require_cgroup_controllers(state.subtree_control, label="subtree controllers")
+    _require_cgroup_controllers(state.controllers, label="managed cgroup root")
+    _require_cgroup_controllers(state.subtree_control, label="managed cgroup root subtree")
 
 
 def _require_managed_cgroup_subgroup() -> _ManagedCgroupRootState:
@@ -304,13 +377,17 @@ def _read_managed_cgroup_root_state(current_cgroup: Path) -> _ManagedCgroupRootS
     if managed_root == current_cgroup:
         runtime_die("managed cgroup root is missing", exit_code=1)
 
-    controllers_path = managed_root / "cgroup.controllers"
-    subtree_control_path = managed_root / "cgroup.subtree_control"
+    return _read_cgroup_controller_state(managed_root, label="managed cgroup root")
+
+
+def _read_cgroup_controller_state(root: Path, *, label: str) -> _ManagedCgroupRootState:
+    controllers_path = root / "cgroup.controllers"
+    subtree_control_path = root / "cgroup.subtree_control"
     if not controllers_path.is_file() or not subtree_control_path.is_file():
-        runtime_die(f"managed cgroup root is not writable from {managed_root}", exit_code=1)
+        runtime_die(f"{label} is not writable from {root}", exit_code=1)
 
     return _ManagedCgroupRootState(
-        root=managed_root,
+        root=root,
         subtree_control_path=subtree_control_path,
         controllers=set(controllers_path.read_text(encoding="utf-8").split()),
         subtree_control=set(subtree_control_path.read_text(encoding="utf-8").split()),
@@ -318,12 +395,16 @@ def _read_managed_cgroup_root_state(current_cgroup: Path) -> _ManagedCgroupRootS
 
 
 def _require_cgroup_controllers(available: set[str], *, label: str) -> None:
-    missing = [name for name in DELEGATED_CGROUP_CONTROLLERS if name not in available]
+    missing = _missing_cgroup_controllers(available)
     if missing:
         runtime_die(
-            f"managed cgroup root is missing required {label}: " + ", ".join(missing),
+            f"{label} is missing required controllers: " + ", ".join(missing),
             exit_code=1,
         )
+
+
+def _missing_cgroup_controllers(available: set[str]) -> list[str]:
+    return [name for name in DELEGATED_CGROUP_CONTROLLERS if name not in available]
 
 
 def _up(ctx) -> None:

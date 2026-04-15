@@ -4,6 +4,7 @@ set -euo pipefail
 runtime_extra_path='@WEBSHOT_RUNTIME_EXTRA_PATH@'
 managed_cgroup_prefix=webshotd
 managed_cgroup_subgroup=service
+parent_procs_cgroup=webshotd-parent-procs
 delegated_controllers=( cpu memory )
 uid=
 base_user_slice=
@@ -18,6 +19,87 @@ cleanup_cgroup_layout=0
 if [[ -n $runtime_extra_path ]]; then
   export PATH="$runtime_extra_path:$PATH"
 fi
+
+cgroupHasControlFiles() {
+  [[ -f $1/cgroup.controllers && -f $1/cgroup.subtree_control ]]
+}
+
+cgroupNeedsControllersEnabled() {
+  local cgroup_dir=$1
+  local enabled=
+
+  enabled=$(cat "$cgroup_dir/cgroup.subtree_control")
+  for controller in "${delegated_controllers[@]}"; do
+    if [[ " $enabled " != *" $controller "* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+drainCgroupProcessesToLeaf() {
+  local cgroup_dir=$1
+  local leaf_dir=$cgroup_dir/$parent_procs_cgroup
+  local procs=()
+
+  mkdir -p "$leaf_dir"
+  for _ in {1..20}; do
+    mapfile -t procs <"$cgroup_dir/cgroup.procs"
+    if (( ${#procs[@]} == 0 )); then
+      return
+    fi
+
+    for pid in "${procs[@]}"; do
+      [[ -n $pid ]] || continue
+      if ! printf '%s\n' "$pid" >"$leaf_dir/cgroup.procs" 2>/dev/null; then
+        if [[ -d /proc/$pid ]]; then
+          echo "webshotd: failed to move process $pid into cgroup process leaf: $leaf_dir" >&2
+          exit 1
+        fi
+      fi
+    done
+  done
+
+  mapfile -t procs <"$cgroup_dir/cgroup.procs"
+  if (( ${#procs[@]} > 0 )); then
+    echo "webshotd: managed cgroup parent stayed populated after draining: $cgroup_dir" >&2
+    exit 1
+  fi
+}
+
+enableCgroupControllers() {
+  local cgroup_dir=$1
+  local label=$2
+  local controllers=
+  local enabled=
+  local enable_args=()
+
+  if ! cgroupHasControlFiles "$cgroup_dir"; then
+    echo "webshotd: ${label} is not writable: $cgroup_dir" >&2
+    exit 1
+  fi
+
+  controllers=$(cat "$cgroup_dir/cgroup.controllers")
+  for controller in "${delegated_controllers[@]}"; do
+    if [[ " $controllers " != *" $controller "* ]]; then
+      echo "webshotd: ${label} is missing controller '$controller'" >&2
+      exit 1
+    fi
+  done
+
+  enabled=$(cat "$cgroup_dir/cgroup.subtree_control")
+  for controller in "${delegated_controllers[@]}"; do
+    if [[ " $enabled " != *" $controller "* ]]; then
+      enable_args+=( "+$controller" )
+    fi
+  done
+  if (( ${#enable_args[@]} > 0 )); then
+    if ! printf '%s\n' "${enable_args[*]}" >"$cgroup_dir/cgroup.subtree_control"; then
+      echo "webshotd: failed to enable ${label} subtree controllers: $cgroup_dir" >&2
+      exit 1
+    fi
+  fi
+}
 
 cleanup() {
   local rc=$?
@@ -46,54 +128,64 @@ current_cgroup_dir=/sys/fs/cgroup${current_cgroup}
 uid=$(id -u)
 base_user_slice="/user.slice/user-${uid}.slice/"
 app_slice_dir=/sys/fs/cgroup${base_user_slice%/}/user@${uid}.service/app.slice
-if [[ ! -f $app_slice_dir/cgroup.controllers || ! -f $app_slice_dir/cgroup.subtree_control ]]; then
-  echo "webshotd: managed app.slice is not available: $app_slice_dir" >&2
-  exit 1
-fi
 
 case "$current_cgroup" in
-  "${base_user_slice}"user@${uid}.service/app.slice/"${managed_cgroup_prefix}"-*.scope/"$managed_cgroup_subgroup")
+  */${managed_cgroup_prefix}-*.scope/${managed_cgroup_subgroup})
     service_dir=$current_cgroup_dir
     managed_root_dir=$(dirname "$service_dir")
     ;;
-  "${base_user_slice}"*)
-    cleanup_parent_dir=$app_slice_dir
-    managed_root_dir=$app_slice_dir/${managed_cgroup_prefix}-$$.scope
+  */${parent_procs_cgroup})
+    cleanup_parent_dir=$(dirname "$current_cgroup_dir")
+    if ! cgroupHasControlFiles "$cleanup_parent_dir"; then
+      echo "webshotd: managed cgroup parent is not available from current cgroup: $current_cgroup_dir" >&2
+      exit 1
+    fi
+    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
     service_dir=$managed_root_dir/$managed_cgroup_subgroup
     mkdir -p "$service_dir"
     cleanup_cgroup_layout=1
     ;;
-  *)
-    echo \
-      "webshotd: must run inside user-${uid}.slice so it can stage managed cgroups under app.slice; current cgroup is $current_cgroup" \
-      >&2
+  "${base_user_slice}"*)
+    if cgroupHasControlFiles "$app_slice_dir"; then
+      cleanup_parent_dir=$app_slice_dir
+    elif cgroupHasControlFiles "$current_cgroup_dir"; then
+      cleanup_parent_dir=$current_cgroup_dir
+    else
+      echo "webshotd: managed cgroup parent is not available from current cgroup: $current_cgroup_dir" >&2
+      exit 1
+    fi
+    if [[ $cleanup_parent_dir == "$current_cgroup_dir" ]] && cgroupNeedsControllersEnabled "$cleanup_parent_dir"; then
+      drainCgroupProcessesToLeaf "$cleanup_parent_dir"
+    fi
+    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
+    service_dir=$managed_root_dir/$managed_cgroup_subgroup
+    mkdir -p "$service_dir"
+    cleanup_cgroup_layout=1
+    ;;
+  /)
+    echo "webshotd: must run inside a delegated cgroup; current cgroup is /" >&2
     exit 1
+    ;;
+  *)
+    if ! cgroupHasControlFiles "$current_cgroup_dir"; then
+      echo "webshotd: managed cgroup parent is not available from current cgroup: $current_cgroup_dir" >&2
+      exit 1
+    fi
+    cleanup_parent_dir=$current_cgroup_dir
+    if cgroupNeedsControllersEnabled "$cleanup_parent_dir"; then
+      drainCgroupProcessesToLeaf "$cleanup_parent_dir"
+    fi
+    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
+    service_dir=$managed_root_dir/$managed_cgroup_subgroup
+    mkdir -p "$service_dir"
+    cleanup_cgroup_layout=1
     ;;
 esac
 
-if [[ ! -f $managed_root_dir/cgroup.controllers || ! -f $managed_root_dir/cgroup.subtree_control ]]; then
-  echo "webshotd: managed cgroup root is not writable: $managed_root_dir" >&2
-  exit 1
-fi
-
-controllers=$(cat "$managed_root_dir/cgroup.controllers")
-for controller in "${delegated_controllers[@]}"; do
-  if [[ " $controllers " != *" $controller "* ]]; then
-    echo "webshotd: managed cgroup root is missing controller '$controller'" >&2
-    exit 1
-  fi
-done
-
-enabled=$(cat "$managed_root_dir/cgroup.subtree_control")
-enable_args=()
-for controller in "${delegated_controllers[@]}"; do
-  if [[ " $enabled " != *" $controller "* ]]; then
-    enable_args+=( "+$controller" )
-  fi
-done
-if (( ${#enable_args[@]} > 0 )); then
-  printf '%s\n' "${enable_args[*]}" >"$managed_root_dir/cgroup.subtree_control"
-fi
+enableCgroupControllers "$managed_root_dir" "managed cgroup root"
 
 if (( cleanup_cgroup_layout != 0 )); then
   printf '%s\n' "$$" >"$service_dir/cgroup.procs"

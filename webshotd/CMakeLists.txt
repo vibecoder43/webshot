@@ -87,6 +87,7 @@ set(${PROJECT_NAME}_headers
     include/config.hpp
     include/crawler/failure.hpp
     include/crawler/fallback.hpp
+    include/client_ip.hpp
     include/error_utils.hpp
     include/http_utils.hpp
     include/ip_utils.hpp

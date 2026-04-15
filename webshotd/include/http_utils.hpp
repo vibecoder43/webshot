@@ -7,9 +7,13 @@
 #include "text.hpp"
 #include "userver_namespaces.hpp"
 
+#include <chrono>
+#include <format>
+
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
+#include <userver/http/common_headers.hpp>
 #include <userver/http/content_type.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
@@ -60,5 +64,19 @@ respondError(server::http::HttpResponse &resp, server::http::HttpStatus status, 
 )
 {
     return respondJson(resp, status, v1::errors::makeParamError(paramName, message));
+}
+
+[[nodiscard]] inline std::string
+respondClientIpCooldown(server::http::HttpResponse &resp, std::chrono::milliseconds retryAfter)
+{
+    using namespace text::literals;
+
+    const auto retryAfterSeconds = std::chrono::ceil<std::chrono::seconds>(retryAfter);
+    resp.SetHeader(
+        userver::http::headers::kRetryAfter, std::format("{}", retryAfterSeconds.count())
+    );
+    return respondError(
+        resp, server::http::HttpStatus::kTooManyRequests, "client IP in cooldown"_t
+    );
 }
 } // namespace v1::httpu

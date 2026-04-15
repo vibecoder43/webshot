@@ -44,6 +44,8 @@ components_manager:
     config:
       url_bytes_max: 32768
       state_dir: $state_dir
+      client_ip_source: $client_ip_source
+      client_ip_header_name: $client_ip_header_name
       s3_bucket: $s3_bucket
       s3_endpoint: $s3_endpoint
       s3_region: $s3_region
@@ -223,6 +225,7 @@ components_manager:
       crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
       crawler_proxy_stop_timeout_ms: $crawler_proxy_stop_timeout_ms
       link_cooldown_sec: $link_cooldown_sec
+      ip_cooldown_ms: $ip_cooldown_ms
       crawl_job_retention_sec: 604800
       crawl_job_cleanup_interval_sec: 3600
       s3_credentials_endpoint: $s3_credentials_endpoint

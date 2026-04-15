@@ -3,6 +3,8 @@
  * @file
  * @brief Handler that exposes crawl job status by UUID.
  */
+#include "client_ip.hpp"
+#include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
@@ -12,6 +14,7 @@
 #include <chrono>
 #include <format>
 #include <optional>
+#include <utility>
 
 #include <boost/uuid/string_generator.hpp>
 
@@ -48,6 +51,7 @@ JobHandler::JobHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<Crud>()),
+      config(context.FindComponent<Config>()),
       requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
 {
 }
@@ -88,6 +92,13 @@ std::string JobHandler::HandleRequestThrow(
     const auto uuidOpt = parseUuid(uuidStr->view());
     if (!uuidOpt)
         return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
+
+    auto clientIp = client_ip::resolve(request, config);
+    if (!clientIp)
+        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
+    auto cooldown = crud.acquireClientIpCooldown(std::move(clientIp).value()).value();
+    if (cooldown)
+        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
 
     auto job = crud.findCaptureJob(uuidOpt.value());
     if (!job)

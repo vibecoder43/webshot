@@ -3,6 +3,7 @@
  * @file
  * @brief Handler that creates captures and lists them by exact link.
  */
+#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
@@ -17,9 +18,8 @@
 #include "text.hpp"
 
 #include <chrono>
-#include <format>
-#include <optional>
 #include <string>
+#include <utility>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/task/current_task.hpp>
@@ -103,6 +103,14 @@ std::string Handler::HandleRequestThrow(
         }
         if (!allowed.value())
             return httpu::respondError(response, kForbidden, "host in denylist"_t);
+
+        auto clientIp = client_ip::resolve(request, config);
+        if (!clientIp)
+            return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
+        auto cooldown = crud.acquireClientIpCooldown(std::move(clientIp).value()).value();
+        if (cooldown)
+            return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+
         auto job = crud.createCaptureJob(std::move(parsed).value());
         if (!job)
             return httpu::respondError(response, kInternalServerError, "internal server error"_t);
@@ -126,6 +134,13 @@ std::string Handler::HandleRequestThrow(
         return httpu::respondParamError(
             response, kBadRequest, "page_token"_t, "missing parameter"_t
         );
+    auto clientIp = client_ip::resolve(request, config);
+    if (!clientIp)
+        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
+    auto cooldown = crud.acquireClientIpCooldown(std::move(clientIp).value()).value();
+    if (cooldown)
+        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+
     auto page = crud.findCapturesByLinkPage(link.value(), token.value());
     if (!page) {
         using enum errors::CapturePageError;

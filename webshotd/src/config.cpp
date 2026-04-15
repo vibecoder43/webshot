@@ -16,7 +16,16 @@ Config::Config(
 )
     : us::components::ComponentBase(config, context),
       urlBytesMaxValue(usize{config["url_bytes_max"].As<size_t>()}),
-      stateDirValue(config["state_dir"].As<std::string>()),
+      stateDirValue(config["state_dir"].As<std::string>()), clientIpSourceValue([&config]() {
+          const auto source = config["client_ip_source"].As<std::string>();
+          if (source == "peer")
+              return ClientIpSource::kPeer;
+          if (source == "trusted_header")
+              return ClientIpSource::kTrustedHeader;
+          UINVARIANT(false, "client_ip_source must be peer or trusted_header");
+          return ClientIpSource::kPeer;
+      }()),
+      clientIpHeaderNameValue(config["client_ip_header_name"].As<std::string>()),
       s3BucketName(String::fromBytes(config["s3_bucket"].As<std::string>()).expect()),
       s3EndpointUrl(String::fromBytes(config["s3_endpoint"].As<std::string>()).expect()),
       s3RegionName(String::fromBytes(config["s3_region"].As<std::string>()).expect()),
@@ -24,6 +33,10 @@ Config::Config(
       s3TimeoutDuration(std::chrono::milliseconds(config["s3_timeout_ms"].As<int>()))
 {
     UINVARIANT(!stateDirValue.empty(), "state_dir must not be empty");
+    UINVARIANT(
+        clientIpSourceValue != ClientIpSource::kTrustedHeader || !clientIpHeaderNameValue.empty(),
+        "client_ip_header_name must be set when client_ip_source is trusted_header"
+    );
 }
 
 us::yaml_config::Schema Config::GetStaticConfigSchema()
@@ -41,6 +54,13 @@ properties:
   state_dir:
     type: string
     description: Runner-owned state directory for this webshotd instance
+  client_ip_source:
+    type: string
+    enum: [peer, trusted_header]
+    description: Source used for per-IP cooldown identity
+  client_ip_header_name:
+    type: string
+    description: Trusted header containing a single client IP literal when client_ip_source is trusted_header
   s3_bucket:
     type: string
     description: Target bucket name

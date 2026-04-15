@@ -9,6 +9,7 @@
 #include <userver/yaml_config/schema.hpp>
 
 namespace v1 {
+class Config;
 class Crud;
 /**
  * @brief HTTP handler that redirects to the stored capture by id.
@@ -30,6 +31,7 @@ public:
 
 private:
     Crud &crud;
+    const Config &config;
     const i64 requestTimeoutMs;
 };
 } // namespace v1
