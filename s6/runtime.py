@@ -1,163 +1,38 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
-import shlex
 import shutil
-import signal
-import subprocess
 import sys
-import time
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
-from urllib.parse import urlsplit
 
-import yaml
-
-from s6.common import (
-    ToolError,
-    die,
-    need_cmd,
-    repo_root_from_file,
-    run,
-    tail_lines,
-    wait_for_pid_exit,
+from s6.common import ToolError
+from s6.runtime_context import build_inspect_context, build_state_context, build_up_context
+from s6.runtime_setup import ensure_dev_bucket, prepare_runtime
+from s6.runtime_supervisor import (
+    check,
+    logs,
+    stack_healthy,
+    start_supervisor,
+    status,
+    stop_supervisor,
+    supervisor_matches_profile,
+    supervisor_running,
 )
-from s6.s3_bucket import ensure_s3_bucket_exists
+from s6.runtime_support import format_runtime_message, report, runtime_die
 
-_start_timeout_sec = 120.0
-_stop_timeout_sec = 15.0
-_cmd_timeout_sec = 30.0
-_poll_interval_sec = 0.2
-_logs_wait_timeout_sec = 5.0
-_webshotd_ready_url = "http://127.0.0.1:8081/service/monitor?format=json"
-_managed_cgroup_subgroup = "service"
-_delegated_cgroup_controllers = ("cpu", "memory")
+MANAGED_CGROUP_PREFIX = "webshotd"
+MANAGED_CGROUP_SUBGROUP = "service"
+DELEGATED_CGROUP_CONTROLLERS = ("cpu", "memory")
 
 
 @dataclass(frozen=True)
-class ServiceSpec:
-    name: str
-    service_dir: Path
-    log_file: Path
-    ready_cmd: list[str]
-    timeout_sec: float
-
-
-@dataclass(frozen=True)
-class RuntimeStateContext:
-    mode: str
-    repo_root: Path
-    state_dir: Path
-    scan_dir: Path
-    svscan_pid_file: Path
-
-
-@dataclass(frozen=True)
-class RuntimeInspectContext(RuntimeStateContext):
-    service_profile: str
-    postgres_log_file: Path
-    seaweed_log_file: Path
-    test_target_log_file: Path
-    webshotd_service_dir: Path
-    webshotd_log_file: Path
-
-
-@dataclass(frozen=True)
-class RuntimeUpContext(RuntimeInspectContext):
-    binary_path: Path
-    config_vars_source: Path
-    runtime_ld_library_path: str
-    postgres_data_dir: Path
-    postgres_run_dir: Path
-    postgres_bootstrap_done_file: Path
-    postgres_bootstrap_log: Path
-    postgres_capture_meta_db_name: str
-    postgres_shared_state_db_name: str
-    seaweed_data_dir: Path
-    test_target_dir: Path
-
-
-def _repo_root() -> Path:
-    return repo_root_from_file(Path(__file__))
-
-
-def _shell_quote(value: str | Path) -> str:
-    return shlex.quote(str(value))
-
-
-def _shell_join(parts: list[str | Path]) -> str:
-    return " ".join(_shell_quote(part) for part in parts)
-
-
-def _write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-
-
-def _write_executable(path: Path, content: str) -> None:
-    _write_text(path, content)
-    path.chmod(0o755)
-
-
-def _read_yaml(path: Path) -> dict[str, object]:
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as e:
-        raise ToolError(message=f"Missing config vars file: {path}", exit_code=2) from e
-
-    if not isinstance(raw, dict):
-        die(f"Config vars file must be a YAML mapping: {path}", exit_code=2)
-    return raw
-
-
-def _require_cmake_cache_string(path: Path, key: str) -> str:
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            prefix = f"{key}:"
-            if not line.startswith(prefix):
-                continue
-            _, value = line.split("=", 1)
-            if value:
-                return value
-            break
-    except FileNotFoundError as e:
-        raise ToolError(message=f"Missing CMake cache: {path}", exit_code=2) from e
-
-    die(f"Missing required CMake cache entry '{key}' in {path}", exit_code=2)
-
-
-def _require_yaml_path(raw: dict[str, object], key: str, *, source: Path) -> Path:
-    value = raw.get(key)
-    if not isinstance(value, str):
-        die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    if not value:
-        die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    return Path(cast(str, value))
-
-
-def _require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> str:
-    value = raw.get(key)
-    if not isinstance(value, str):
-        die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    if not value:
-        die(f"Missing required config var '{key}' in {source}", exit_code=2)
-    return cast(str, value)
-
-
-def _database_name_from_dsn(dsn: str, *, key: str, source: Path) -> str:
-    parsed = urlsplit(dsn)
-    db_name = parsed.path.lstrip("/")
-    if not db_name:
-        die(f"Config var '{key}' in {source} must include a database name", exit_code=2)
-    return db_name
-
-
-def _fixed_state_dir(mode: str) -> Path:
-    return Path("/tmp/webshot") / mode
+class _ManagedCgroupRootState:
+    root: Path
+    subtree_control_path: Path
+    controllers: set[str]
+    subtree_control: set[str]
 
 
 def _current_cgroup_v2_relative_path() -> str:
@@ -168,948 +43,215 @@ def _current_cgroup_v2_relative_path() -> str:
 
     for line in raw.splitlines():
         parts = line.split(":", 2)
-        if len(parts) != 3:
-            continue
-        if parts[0] != "0" or parts[1] != "":
-            continue
-        path = parts[2].strip()
-        if not path:
+        if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
+            path = parts[2].strip()
+            if path:
+                return path
             break
-        return path
-
-    die("Failed to determine cgroup v2 path from /proc/self/cgroup", exit_code=1)
+    runtime_die("Failed to determine cgroup v2 path from /proc/self/cgroup", exit_code=1)
 
 
 def _current_cgroup_v2_dir() -> Path:
     relative = _current_cgroup_v2_relative_path()
     if not relative.startswith("/"):
-        die(f"Invalid cgroup v2 path: {relative}", exit_code=1)
+        runtime_die(f"Invalid cgroup v2 path: {relative}", exit_code=1)
     return Path("/sys/fs/cgroup") / relative.lstrip("/")
 
 
-def _assert_managed_cgroup_scope() -> None:
-    current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name != _managed_cgroup_subgroup:
-        die(
-            (
-                "s6: expected to run inside managed cgroup subgroup "
-                f"'{_managed_cgroup_subgroup}', got {current_cgroup}"
-            ),
-            exit_code=1,
-        )
-
-    managed_root = current_cgroup.parent
-    if managed_root == current_cgroup:
-        die("s6: managed cgroup root is missing", exit_code=1)
-
-    controllers_path = managed_root / "cgroup.controllers"
-    subtree_control_path = managed_root / "cgroup.subtree_control"
-    if not controllers_path.is_file() or not subtree_control_path.is_file():
-        die(
-            f"s6: managed cgroup root is not writable from {managed_root}",
-            exit_code=1,
-        )
-
-    controllers = set(controllers_path.read_text(encoding="utf-8").split())
-    missing = [name for name in _delegated_cgroup_controllers if name not in controllers]
-    if missing:
-        die(
-            ("s6: managed cgroup root is missing required controllers: " + ", ".join(missing)),
-            exit_code=1,
-        )
-
-    subtree_control = set(subtree_control_path.read_text(encoding="utf-8").split())
-    missing = [name for name in _delegated_cgroup_controllers if name not in subtree_control]
-    if missing:
-        die(
-            (
-                "s6: managed cgroup root is missing required subtree controllers: "
-                + ", ".join(missing)
-            ),
-            exit_code=1,
-        )
+def _managed_app_slice_dir() -> tuple[str, Path]:
+    uid = os.getuid()
+    base_user_slice = f"/user.slice/user-{uid}.slice/"
+    app_slice_dir = (
+        Path("/sys/fs/cgroup")
+        / f"user.slice/user-{uid}.slice"
+        / f"user@{uid}.service"
+        / "app.slice"
+    )
+    return base_user_slice, app_slice_dir
 
 
-def _enter_managed_cgroup_subgroup() -> None:
-    current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name == _managed_cgroup_subgroup:
-        return
-
-    subgroup = current_cgroup / _managed_cgroup_subgroup
-    subgroup.mkdir(exist_ok=True)
-    try:
-        (subgroup / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
-    except OSError as e:
-        raise ToolError(
-            message=(
-                f"s6: failed to move startup process into managed cgroup subgroup {subgroup}: {e}"
-            ),
-            exit_code=1,
-        ) from e
-
-    if _current_cgroup_v2_dir().name != _managed_cgroup_subgroup:
-        die(
-            (f"s6: startup process did not enter managed subgroup '{_managed_cgroup_subgroup}'"),
-            exit_code=1,
-        )
+def _managed_scope_prefix(base_user_slice: str, *, uid: int) -> str:
+    return f"{base_user_slice}user@{uid}.service/app.slice/{MANAGED_CGROUP_PREFIX}-"
 
 
-def _enable_managed_cgroup_scope_controllers() -> None:
-    current_cgroup = _current_cgroup_v2_dir()
-    if current_cgroup.name != _managed_cgroup_subgroup:
-        die(
-            (f"s6: startup process is not inside managed subgroup '{_managed_cgroup_subgroup}'"),
-            exit_code=1,
-        )
+def _managed_scope_service_dir(current_cgroup: str) -> Path | None:
+    uid = os.getuid()
+    base_user_slice, _ = _managed_app_slice_dir()
+    prefix = _managed_scope_prefix(base_user_slice, uid=uid)
+    suffix = f"/{MANAGED_CGROUP_SUBGROUP}"
+    if not current_cgroup.startswith(prefix) or not current_cgroup.endswith(suffix):
+        return None
+    return Path("/sys/fs/cgroup") / current_cgroup.lstrip("/")
 
-    managed_root = current_cgroup.parent
-    controllers_path = managed_root / "cgroup.controllers"
-    subtree_control_path = managed_root / "cgroup.subtree_control"
-    if not controllers_path.is_file() or not subtree_control_path.is_file():
-        die(f"s6: managed cgroup root is not writable from {managed_root}", exit_code=1)
 
-    controllers = set(controllers_path.read_text(encoding="utf-8").split())
-    missing = [name for name in _delegated_cgroup_controllers if name not in controllers]
-    if missing:
-        die(
-            ("s6: managed cgroup root is missing required controllers: " + ", ".join(missing)),
-            exit_code=1,
-        )
+def _record_managed_cgroup_root(ctx, root: Path) -> None:
+    ctx.state_dir.mkdir(parents=True, exist_ok=True)
+    ctx.managed_cgroup_root_file.write_text(str(root) + "\n", encoding="utf-8")
 
-    subtree_control = set(subtree_control_path.read_text(encoding="utf-8").split())
-    enable = [f"+{name}" for name in _delegated_cgroup_controllers if name not in subtree_control]
+
+def _enable_managed_cgroup_root_controllers(state: _ManagedCgroupRootState) -> None:
+    _require_cgroup_controllers(state.controllers, label="controllers")
+    enable = [
+        f"+{name}" for name in DELEGATED_CGROUP_CONTROLLERS if name not in state.subtree_control
+    ]
     if not enable:
         return
 
     try:
-        subtree_control_path.write_text(" ".join(enable) + "\n", encoding="utf-8")
+        state.subtree_control_path.write_text(" ".join(enable) + "\n", encoding="utf-8")
     except OSError as e:
         raise ToolError(
             message=(
-                f"s6: failed to enable managed subtree controllers at {subtree_control_path}: {e}"
+                f"failed to enable managed subtree controllers at {state.subtree_control_path}: {e}"
             ),
             exit_code=1,
         ) from e
 
 
-def _build_state_context(*, mode: str) -> RuntimeStateContext:
-    repo_root = _repo_root()
-    state_dir = _fixed_state_dir(mode)
-    return RuntimeStateContext(
-        mode=mode,
-        repo_root=repo_root,
-        state_dir=state_dir,
-        scan_dir=state_dir / "s6-scan",
-        svscan_pid_file=state_dir / "s6-svscan.pid",
-    )
-
-
-def _build_inspect_context(
-    *,
-    mode: str,
-    service_profile: str,
-) -> RuntimeInspectContext:
-    if service_profile == "test_infra" and mode != "dev":
-        die("service profile 'test_infra' requires --mode dev", exit_code=2)
-
-    state_ctx = _build_state_context(mode=mode)
-    return RuntimeInspectContext(
-        mode=state_ctx.mode,
-        repo_root=state_ctx.repo_root,
-        state_dir=state_ctx.state_dir,
-        scan_dir=state_ctx.scan_dir,
-        svscan_pid_file=state_ctx.svscan_pid_file,
-        service_profile=service_profile,
-        postgres_log_file=state_ctx.state_dir / "postgres.log",
-        seaweed_log_file=state_ctx.state_dir / "seaweedfs.log",
-        test_target_log_file=state_ctx.state_dir / "test-target.log",
-        webshotd_service_dir=state_ctx.scan_dir / "webshotd",
-        webshotd_log_file=state_ctx.state_dir / "webshotd.log",
-    )
-
-
-def _build_up_context(
-    *,
-    mode: str,
-    service_profile: str,
-    binary_path: str,
-    config_vars_source: str,
-    runtime_ld_library_path: str,
-) -> RuntimeUpContext:
-    inspect_ctx = _build_inspect_context(mode=mode, service_profile=service_profile)
-    config_path = Path(config_vars_source)
-    raw_vars = _read_yaml(config_path)
-    capture_meta_db_name = _database_name_from_dsn(
-        _require_yaml_string(raw_vars, "pg_capture_meta_db_dsn", source=config_path),
-        key="pg_capture_meta_db_dsn",
-        source=config_path,
-    )
-    shared_state_db_name = _database_name_from_dsn(
-        _require_yaml_string(raw_vars, "pg_shared_state_db_dsn", source=config_path),
-        key="pg_shared_state_db_dsn",
-        source=config_path,
-    )
-    return RuntimeUpContext(
-        mode=inspect_ctx.mode,
-        repo_root=inspect_ctx.repo_root,
-        state_dir=inspect_ctx.state_dir,
-        scan_dir=inspect_ctx.scan_dir,
-        svscan_pid_file=inspect_ctx.svscan_pid_file,
-        service_profile=service_profile,
-        postgres_log_file=inspect_ctx.postgres_log_file,
-        seaweed_log_file=inspect_ctx.seaweed_log_file,
-        test_target_log_file=inspect_ctx.test_target_log_file,
-        webshotd_service_dir=inspect_ctx.webshotd_service_dir,
-        webshotd_log_file=inspect_ctx.webshotd_log_file,
-        binary_path=Path(binary_path),
-        config_vars_source=config_path,
-        runtime_ld_library_path=runtime_ld_library_path,
-        postgres_data_dir=inspect_ctx.state_dir / "postgres" / "data",
-        postgres_run_dir=inspect_ctx.state_dir / "postgres" / "run",
-        postgres_bootstrap_done_file=inspect_ctx.state_dir / "postgres" / ".bootstrap-complete",
-        postgres_bootstrap_log=inspect_ctx.state_dir / "postgres-bootstrap.log",
-        postgres_capture_meta_db_name=capture_meta_db_name,
-        postgres_shared_state_db_name=shared_state_db_name,
-        seaweed_data_dir=inspect_ctx.state_dir / "seaweed",
-        test_target_dir=inspect_ctx.state_dir / "test-target",
-    )
-
-
-def _service_specs(ctx: RuntimeInspectContext) -> list[ServiceSpec]:
-    python_exe = sys.executable
-    specs = [
-        ServiceSpec(
-            name="postgres",
-            service_dir=ctx.scan_dir / "postgres",
-            log_file=ctx.postgres_log_file,
-            ready_cmd=["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres"],
-            timeout_sec=30.0,
-        ),
-    ]
-    if ctx.mode == "dev":
-        specs.extend(
-            [
-                ServiceSpec(
-                    name="seaweedfs",
-                    service_dir=ctx.scan_dir / "seaweedfs",
-                    log_file=ctx.seaweed_log_file,
-                    ready_cmd=[python_exe, "-m", "s6.check_seaweedfs_ready"],
-                    timeout_sec=60.0,
-                ),
-                ServiceSpec(
-                    name="test_target",
-                    service_dir=ctx.scan_dir / "test_target",
-                    log_file=ctx.test_target_log_file,
-                    ready_cmd=[python_exe, "-m", "s6.check_http_ready", "http://127.0.0.1:18080/"],
-                    timeout_sec=30.0,
-                ),
-            ]
-        )
-
-    if ctx.service_profile == "full":
-        specs.extend(
-            [
-                ServiceSpec(
-                    name="webshotd",
-                    service_dir=ctx.webshotd_service_dir,
-                    log_file=ctx.webshotd_log_file,
-                    ready_cmd=[python_exe, "-m", "s6.check_webshotd_ready", _webshotd_ready_url],
-                    timeout_sec=30.0,
-                ),
-            ]
-        )
-
-    return specs
-
-
-def _finish_script() -> str:
-    return """#!/bin/sh
-if [ "$1" -ne 0 ] && [ "$2" -ne 15 ]; then
-  exit 125
-fi
-exit 0
-"""
-
-
-def _hash_file_inputs(files: list[Path]) -> str:
-    hasher = hashlib.sha256()
-    for path in sorted(files, key=lambda candidate: str(candidate)):
-        hasher.update(str(path).encode("utf-8"))
-        hasher.update(b"\0")
-        hasher.update(path.read_bytes())
-        hasher.update(b"\0")
-    return hasher.hexdigest()
-
-
-def _hash_pgmigrate_base_dir(base_dir: Path) -> str:
-    migrations_yaml = base_dir / "migrations.yml"
-    migrations_dir = base_dir / "migrations"
-    if not migrations_yaml.is_file():
-        die(f"Missing pgmigrate config: {migrations_yaml}", exit_code=2)
-    if not migrations_dir.is_dir():
-        die(f"Missing pgmigrate migrations dir: {migrations_dir}", exit_code=2)
-
-    files = [migrations_yaml]
-    for path in migrations_dir.rglob("*"):
-        if path.is_file():
-            files.append(path)
-    return _hash_file_inputs(files)
-
-
-def _psql_scalar(*, db: str, query: str) -> str:
-    need_cmd("psql")
-    return run(
-        [
-            "psql",
-            "-h",
-            "127.0.0.1",
-            "-p",
-            "5432",
-            "-U",
-            "postgres",
-            "-d",
-            db,
-            "-tAc",
-            query,
-        ],
-        capture=True,
-        timeout_sec=30.0,
-    ).stdout.strip()
-
-
-def _pgmigrate_migrate(*, dsn: str, base_dir: Path) -> None:
-    need_cmd("pgmigrate")
-    run(
-        [
-            "pgmigrate",
-            "-c",
-            dsn,
-            "-d",
-            str(base_dir),
-            "-t",
-            "latest",
-            "-vv",
-            "migrate",
-        ],
-        timeout_sec=120.0,
-    )
-
-
-def _die_if_legacy_db_needs_baseline(*, dsn: str, base_dir: Path, db_name: str) -> None:
-    # pgmigrate can't infer a baseline for pre-existing schemas safely.
-    schema_version_exists = _psql_scalar(
-        db=db_name,
-        query="select to_regclass('public.schema_version') is not null",
-    )
-    if schema_version_exists != "t":
-        has_tables = _psql_scalar(
-            db=db_name,
-            query=(
-                "select exists ("
-                "  select 1"
-                "  from information_schema.tables"
-                "  where table_schema = 'public'"
-                "    and table_type = 'BASE TABLE'"
-                "    and table_name <> 'schema_version'"
-                ")"
-            ),
-        )
-        if has_tables == "t":
-            die(
-                "\n".join(
-                    [
-                        f"Detected legacy database without pgmigrate schema_version: {db_name}",
-                        "This repo no longer bootstraps schema from snapshot SQL files.",
-                        "Baseline manually (only if the schema matches V0001), then restart:",
-                        (
-                            f"  pgmigrate -c {shlex.quote(dsn)} -d {shlex.quote(str(base_dir))} "
-                            "-b 1 baseline"
-                        ),
-                    ]
-                ),
-                exit_code=2,
-            )
-
-
-def _bootstrap_postgres(ctx: RuntimeUpContext) -> None:
-    need_cmd("initdb")
-    need_cmd("pg_ctl")
-    need_cmd("psql")
-    need_cmd("createdb")
-    need_cmd("pgmigrate")
-
-    capture_base_dir = ctx.repo_root / "webshotd/sql/schema/capture_meta_db"
-    shared_base_dir = ctx.repo_root / "webshotd/sql/schema/shared_state_db"
-    capture_migrations_hash = _hash_pgmigrate_base_dir(capture_base_dir)
-    shared_migrations_hash = _hash_pgmigrate_base_dir(shared_base_dir)
-
-    bootstrap_state = (
-        f"capture_meta_db={ctx.postgres_capture_meta_db_name}\n"
-        f"shared_state_db={ctx.postgres_shared_state_db_name}\n"
-        f"capture_meta_db_migrations={capture_migrations_hash}\n"
-        f"shared_state_db_migrations={shared_migrations_hash}\n"
-    )
-    if (
-        ctx.postgres_bootstrap_done_file.is_file()
-        and ctx.postgres_bootstrap_done_file.read_text(encoding="utf-8") == bootstrap_state
-    ):
-        return
-
-    was_initialized = ctx.postgres_data_dir.joinpath("PG_VERSION").is_file()
-    ctx.postgres_data_dir.parent.mkdir(parents=True, exist_ok=True)
-    ctx.postgres_run_dir.mkdir(parents=True, exist_ok=True)
-    if not was_initialized:
-        run(
-            [
-                "initdb",
-                "-D",
-                str(ctx.postgres_data_dir),
-                "--username=postgres",
-                "--auth=trust",
-            ],
-            timeout_sec=120.0,
-        )
-    run(
-        [
-            "pg_ctl",
-            "-D",
-            str(ctx.postgres_data_dir),
-            "-l",
-            str(ctx.postgres_bootstrap_log),
-            "-o",
-            (
-                "-c timezone=UTC "
-                "-c log_timezone=UTC "
-                "-c listen_addresses=127.0.0.1 "
-                f"-c unix_socket_directories={ctx.postgres_run_dir} "
-                "-p 5432"
-            ),
-            "-w",
-            "start",
-        ],
-        timeout_sec=120.0,
-    )
-    try:
-        raw_vars = _read_yaml(ctx.config_vars_source)
-        capture_meta_dsn = _require_yaml_string(
-            raw_vars, "pg_capture_meta_db_dsn", source=ctx.config_vars_source
-        )
-        shared_state_dsn = _require_yaml_string(
-            raw_vars, "pg_shared_state_db_dsn", source=ctx.config_vars_source
-        )
-
-        created_capture_meta = run(
-            [
-                "psql",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                "5432",
-                "-U",
-                "postgres",
-                "-d",
-                "postgres",
-                "-tAc",
-                f"SELECT 1 FROM pg_database WHERE datname = '{ctx.postgres_capture_meta_db_name}'",
-            ],
-            capture=True,
-            timeout_sec=30.0,
-        ).stdout.strip()
-        if created_capture_meta != "1":
-            run(
-                [
-                    "createdb",
-                    "-h",
-                    "127.0.0.1",
-                    "-p",
-                    "5432",
-                    "-U",
-                    "postgres",
-                    ctx.postgres_capture_meta_db_name,
-                ],
-                timeout_sec=30.0,
-            )
-
-        _die_if_legacy_db_needs_baseline(
-            dsn=capture_meta_dsn,
-            base_dir=capture_base_dir,
-            db_name=ctx.postgres_capture_meta_db_name,
-        )
-        _pgmigrate_migrate(dsn=capture_meta_dsn, base_dir=capture_base_dir)
-
-        created_shared_state = run(
-            [
-                "psql",
-                "-h",
-                "127.0.0.1",
-                "-p",
-                "5432",
-                "-U",
-                "postgres",
-                "-d",
-                "postgres",
-                "-tAc",
-                f"SELECT 1 FROM pg_database WHERE datname = '{ctx.postgres_shared_state_db_name}'",
-            ],
-            capture=True,
-            timeout_sec=30.0,
-        ).stdout.strip()
-        if created_shared_state != "1":
-            run(
-                [
-                    "createdb",
-                    "-h",
-                    "127.0.0.1",
-                    "-p",
-                    "5432",
-                    "-U",
-                    "postgres",
-                    ctx.postgres_shared_state_db_name,
-                ],
-                timeout_sec=30.0,
-            )
-
-        _die_if_legacy_db_needs_baseline(
-            dsn=shared_state_dsn,
-            base_dir=shared_base_dir,
-            db_name=ctx.postgres_shared_state_db_name,
-        )
-        _pgmigrate_migrate(dsn=shared_state_dsn, base_dir=shared_base_dir)
-
-        ctx.postgres_bootstrap_done_file.write_text(bootstrap_state, encoding="utf-8")
-    finally:
-        run(
-            ["pg_ctl", "-D", str(ctx.postgres_data_dir), "-m", "fast", "-w", "stop"],
-            timeout_sec=120.0,
-        )
-
-
-def _wait_script(cmd: list[str]) -> str:
-    return (
-        f"while ! {_shell_quote(cmd[0])}"
-        + "".join(f" {_shell_quote(part)}" for part in cmd[1:])
-        + " >/dev/null 2>&1; do sleep 0.2; done\n"
-    )
-
-
-def _render_service_tree(ctx: RuntimeUpContext) -> list[ServiceSpec]:
-    active_specs = _service_specs(ctx)
-    active_names = {spec.name for spec in active_specs}
-    ctx.scan_dir.mkdir(parents=True, exist_ok=True)
-    for spec in active_specs:
-        (spec.service_dir / "data").mkdir(parents=True, exist_ok=True)
-        _write_executable(spec.service_dir / "finish", _finish_script())
-
-    python_exe = _shell_quote(sys.executable)
-    repo_root = _shell_quote(ctx.repo_root)
-
-    postgres_service = ctx.scan_dir / "postgres"
-    _write_executable(
-        postgres_service / "data/check",
-        "#!/bin/sh\nexec pg_isready -h 127.0.0.1 -p 5432 -U postgres\n",
-    )
-    _write_executable(
-        postgres_service / "run",
-        (
-            "#!/bin/sh\n"
-            f"exec >>{_shell_quote(ctx.postgres_log_file)} 2>&1\n"
-            f"cd {repo_root}\n"
-            f"exec postgres -D {_shell_quote(ctx.postgres_data_dir)} "
-            f"-h 127.0.0.1 -k {_shell_quote(ctx.postgres_run_dir)} -p 5432 "
-            "-c timezone=UTC -c log_timezone=UTC\n"
-        ),
-    )
-
-    if ctx.mode == "dev":
-        seaweed_service = ctx.scan_dir / "seaweedfs"
-        _write_executable(
-            seaweed_service / "data/check",
-            f"#!/bin/sh\nexec {python_exe} -m s6.check_seaweedfs_ready\n",
-        )
-        _write_executable(
-            seaweed_service / "run",
-            (
-                "#!/bin/sh\n"
-                f"exec >>{_shell_quote(ctx.seaweed_log_file)} 2>&1\n"
-                f"cd {repo_root}\n"
-                "exec weed server -s3 -filer -ip.bind=0.0.0.0 "
-                f"-dir={_shell_quote(ctx.seaweed_data_dir)} "
-                "-volume.port=8082 -volume.port.grpc=18082 "
-                "-master.volumeSizeLimitMB=32 -metricsPort=9324 "
-                f"-s3.config={_shell_quote(ctx.repo_root / 'seaweedfs/s3_config.json')}\n"
-            ),
-        )
-
-        test_target_service = ctx.scan_dir / "test_target"
-        _write_executable(
-            test_target_service / "data/check",
-            f"#!/bin/sh\nexec {python_exe} -m s6.check_http_ready http://127.0.0.1:18080/\n",
-        )
-        _write_executable(
-            test_target_service / "run",
-            (
-                "#!/bin/sh\n"
-                f"exec >>{_shell_quote(ctx.test_target_log_file)} 2>&1\n"
-                f"cd {repo_root}\n"
-                "exec "
-                + _shell_join(
-                    [
-                        "nginx",
-                        "-e",
-                        "stderr",
-                        "-p",
-                        ctx.repo_root,
-                        "-c",
-                        ctx.repo_root / "nginx" / "nginx_test.conf",
-                        "-g",
-                        f"daemon off; pid {ctx.test_target_dir / 'nginx.pid'};",
-                    ]
-                )
-                + "\n"
-            ),
-        )
-
-    if "webshotd" in active_names:
-        webshot_root = _shell_quote(ctx.repo_root / "webshotd")
-        binary_path = _shell_quote(ctx.binary_path)
-        config_vars_path = _shell_quote(ctx.config_vars_source)
-        ld_library_path = _shell_quote(ctx.runtime_ld_library_path)
-        cmake_cache_path = ctx.binary_path.parent / "CMakeCache.txt"
-        rapidoc_assets_dir = _require_cmake_cache_string(
-            cmake_cache_path, "WEBSHOT_RAPIDOC_ASSETS_DIR"
-        )
-        config_vars_override_path = ctx.state_dir / "webshotd-config-vars-override.yaml"
-        _write_text(
-            config_vars_override_path,
-            yaml.safe_dump(
-                {
-                    "rapidoc_assets_dir": rapidoc_assets_dir,
-                    "openapi_dir": str(ctx.repo_root / "schema"),
-                    "web_ui_dir": str(ctx.binary_path.parent / "web_ui"),
-                    "state_dir": str(ctx.state_dir / "webshotd"),
-                },
-                sort_keys=True,
-            ),
-        )
-        config_vars_override_path_quoted = _shell_quote(config_vars_override_path)
-        _write_executable(
-            ctx.webshotd_service_dir / "data/check",
-            (
-                "#!/bin/sh\n"
-                f"exec {python_exe} -m s6.check_webshotd_ready "
-                f"{_shell_quote(_webshotd_ready_url)}\n"
-            ),
-        )
-        webshotd_waits = _wait_script(
-            ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres"]
-        )
-        if ctx.mode == "dev":
-            webshotd_waits += _wait_script([sys.executable, "-m", "s6.check_seaweedfs_ready"])
-        _write_executable(
-            ctx.webshotd_service_dir / "run",
-            (
-                "#!/bin/sh\n"
-                f"exec >>{_shell_quote(ctx.webshotd_log_file)} 2>&1\n"
-                f"cd {webshot_root}\n" + webshotd_waits + "exec "
-                "env -u CPU_LIMIT -u DEPLOY_VCPU_LIMIT -u VCPU_LIMIT "
-                f"LD_LIBRARY_PATH={ld_library_path} "
-                f"{binary_path} --config "
-                f"{_shell_quote(ctx.repo_root / 'webshotd/config/static_config.yaml')} "
-                f"--config_vars {config_vars_path} "
-                f"--config_vars_override {config_vars_override_path_quoted}\n"
-            ),
-        )
-    return active_specs
-
-
-def _read_pid(path: Path) -> int | None:
-    try:
-        raw = path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-def _pid_is_running(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return False
-
-
-def _supervisor_running(ctx: RuntimeInspectContext) -> bool:
-    need_cmd("s6-svok")
-    for spec in _service_specs(ctx):
-        if (
-            run(
-                ["s6-svok", str(spec.service_dir)], check=False, timeout_sec=_cmd_timeout_sec
-            ).returncode
-            != 0
-        ):
-            return False
-    return True
-
-
-def _supervisor_matches_profile(ctx: RuntimeInspectContext) -> bool:
-    need_cmd("s6-svok")
-    active_names = {spec.name for spec in _service_specs(ctx)}
-    known_service_dirs = {
-        "postgres": ctx.scan_dir / "postgres",
-        "seaweedfs": ctx.scan_dir / "seaweedfs",
-        "test_target": ctx.scan_dir / "test_target",
-        "webshotd": ctx.webshotd_service_dir,
-    }
-    for name, service_dir in known_service_dirs.items():
-        supervised = (
-            run(["s6-svok", str(service_dir)], check=False, timeout_sec=_cmd_timeout_sec).returncode
-            == 0
-        )
-        if name in active_names:
-            if not supervised:
-                return False
+def _cleanup_managed_cgroup_root(path: Path, *, ignore_errors: bool = False) -> None:
+    service_dir = path / MANAGED_CGROUP_SUBGROUP
+    for target in [service_dir, path]:
+        try:
+            target.rmdir()
+        except FileNotFoundError:
             continue
-        if supervised:
-            return False
-    return True
+        except OSError:
+            if not ignore_errors:
+                raise
 
 
-def _stack_healthy(ctx: RuntimeInspectContext) -> bool:
-    if not _supervisor_running(ctx):
-        return False
-    for service in _service_specs(ctx):
-        if run(service.ready_cmd, check=False, timeout_sec=_cmd_timeout_sec).returncode != 0:
-            return False
-    return True
-
-
-def _start_supervisor(ctx: RuntimeUpContext, services: list[ServiceSpec]) -> None:
-    need_cmd("s6-svscan")
-
-    pid = _read_pid(ctx.svscan_pid_file)
-    if pid is not None and _pid_is_running(pid):
-        print("s6: already running")
-        return
-    if pid is not None:
-        with suppress(FileNotFoundError):
-            ctx.svscan_pid_file.unlink()
-
-    proc = subprocess.Popen(
-        ["s6-svscan", str(ctx.scan_dir)],
-        cwd=str(ctx.repo_root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    ctx.svscan_pid_file.write_text(f"{proc.pid}\n", encoding="utf-8")
-
-    deadline = time.monotonic() + _start_timeout_sec
-    while not _supervisor_running(ctx):
-        if not _pid_is_running(proc.pid):
-            die("s6: failed to start supervisor", exit_code=1)
-        if time.monotonic() >= deadline:
-            die("s6: timed out waiting for supervisors", exit_code=1)
-        time.sleep(0.1)
-
-    for service in services:
-        _wait_ready(service)
-
-
-def _wait_ready(service: ServiceSpec) -> None:
-    deadline = time.monotonic() + service.timeout_sec
-    while time.monotonic() < deadline:
-        if run(service.ready_cmd, check=False, timeout_sec=_cmd_timeout_sec).returncode == 0:
-            return
-        time.sleep(_poll_interval_sec)
-
-    tail = "\n".join(tail_lines(service.log_file, max_lines=40))
-    detail = f"\n{tail}" if tail else ""
-    die(f"Timed out waiting for {service.name} readiness{detail}", exit_code=1)
-
-
-def _stop_supervisor(ctx: RuntimeStateContext) -> None:
-    need_cmd("s6-svscanctl")
-
-    pid = _read_pid(ctx.svscan_pid_file)
-    if pid is None:
-        return
-    if not _pid_is_running(pid):
-        with suppress(FileNotFoundError):
-            ctx.svscan_pid_file.unlink()
+def _enter_managed_cgroup_subgroup(ctx) -> None:
+    current_cgroup = _current_cgroup_v2_relative_path()
+    current_service_dir = _managed_scope_service_dir(current_cgroup)
+    if current_service_dir is not None:
+        state = _read_managed_cgroup_root_state(current_service_dir)
+        _enable_managed_cgroup_root_controllers(state)
+        _assert_managed_cgroup_scope()
+        _record_managed_cgroup_root(ctx, state.root)
         return
 
-    proc = run(
-        ["s6-svscanctl", "-t", str(ctx.scan_dir)],
-        check=False,
-        capture=True,
-        timeout_sec=_cmd_timeout_sec,
-    )
-    if proc.returncode != 0:
-        with suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGTERM)
-
-    if not wait_for_pid_exit(pid, timeout_sec=_stop_timeout_sec):
-        with suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGTERM)
-        if not wait_for_pid_exit(pid, timeout_sec=2.0):
-            with suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
-    with suppress(FileNotFoundError):
-        ctx.svscan_pid_file.unlink()
-
-
-def _show_service_status(spec: ServiceSpec) -> None:
-    need_cmd("s6-svstat")
-    if (
-        run(
-            ["s6-svok", str(spec.service_dir)], check=False, timeout_sec=_cmd_timeout_sec
-        ).returncode
-        != 0
-    ):
-        print(f"{spec.name}: not supervised")
-        return
-    proc = run(["s6-svstat", str(spec.service_dir)], capture=True, timeout_sec=_cmd_timeout_sec)
-    print(f"{spec.name}: {proc.stdout.strip()}")
-
-
-def _up_task_name(ctx: RuntimeStateContext) -> str:
-    return f"proj:{ctx.mode}Up"
-
-
-def _wait_for_log_files(ctx: RuntimeInspectContext) -> list[Path]:
-    deadline = time.monotonic() + _logs_wait_timeout_sec
-    missing = [spec.log_file for spec in _service_specs(ctx) if not spec.log_file.is_file()]
-    while missing and time.monotonic() < deadline:
-        time.sleep(_poll_interval_sec)
-        missing = [path for path in missing if not path.is_file()]
-    return missing
-
-
-def _require_logs_ready(ctx: RuntimeInspectContext) -> list[Path]:
-    if not _supervisor_running(ctx):
-        die(
-            f"s6: not running; run {_up_task_name(ctx)} first before reading logs",
+    uid = os.getuid()
+    base_user_slice, app_slice_dir = _managed_app_slice_dir()
+    if not current_cgroup.startswith(base_user_slice):
+        runtime_die(
+            (
+                f"must run inside user-{uid}.slice so it can stage "
+                "managed cgroups under app.slice; "
+                f"current cgroup is {current_cgroup}"
+            ),
             exit_code=1,
         )
 
-    missing = _wait_for_log_files(ctx)
-    if missing:
-        missing_paths = "\n".join(str(path) for path in missing)
-        die(
-            f"s6: missing expected log files while supervised:\n{missing_paths}",
-            exit_code=1,
-        )
-    return [spec.log_file for spec in _service_specs(ctx)]
+    controllers_path = app_slice_dir / "cgroup.controllers"
+    subtree_control_path = app_slice_dir / "cgroup.subtree_control"
+    if not controllers_path.is_file() or not subtree_control_path.is_file():
+        runtime_die(f"managed app.slice is not available: {app_slice_dir}", exit_code=1)
 
-
-def _spawn_logs(ctx: RuntimeInspectContext) -> list[subprocess.Popen[str]]:
-    need_cmd("tail")
-    log_files = [str(path) for path in _require_logs_ready(ctx)]
-    print(f"s6: attaching {ctx.mode} logs")
-    return [
-        subprocess.Popen(
-            ["tail", "-n", "+1", "-F", *log_files],
-            cwd=str(ctx.repo_root),
-            text=True,
-        )
-    ]
-
-
-def _cleanup_processes(procs: list[subprocess.Popen[str]]) -> None:
-    for proc in procs:
-        if proc.poll() is None:
-            with suppress(Exception):
-                proc.terminate()
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline:
-        if all(proc.poll() is not None for proc in procs):
-            return
-        time.sleep(0.1)
-    for proc in procs:
-        if proc.poll() is None:
-            with suppress(Exception):
-                proc.kill()
-
-
-def _logs(ctx: RuntimeInspectContext) -> None:
-    procs = _spawn_logs(ctx)
+    managed_root = app_slice_dir / f"{MANAGED_CGROUP_PREFIX}-{os.getpid()}.scope"
+    service_dir = managed_root / MANAGED_CGROUP_SUBGROUP
+    service_dir.mkdir(parents=True, exist_ok=False)
     try:
-        while True:
-            if procs and all(proc.poll() is not None for proc in procs):
-                return
-            time.sleep(0.2)
-    finally:
-        _cleanup_processes(procs)
+        state = _read_managed_cgroup_root_state(service_dir)
+        _enable_managed_cgroup_root_controllers(state)
+        try:
+            (service_dir / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
+        except OSError as e:
+            raise ToolError(
+                message=(
+                    "failed to move startup process into managed "
+                    f"cgroup subgroup {service_dir}: {e}"
+                ),
+                exit_code=1,
+            ) from e
 
-
-def _ensure_dev_bucket(ctx: RuntimeStateContext) -> None:
-    ensure_s3_bucket_exists(
-        secrets_path=ctx.repo_root / "webshotd/secret/test_secdist.json",
-        s3_url="localhost:8333",
-        bucket="webshot",
-    )
-
-
-def _prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
-    ctx.state_dir.mkdir(parents=True, exist_ok=True)
-    _bootstrap_postgres(ctx)
-    if ctx.scan_dir.exists():
-        shutil.rmtree(ctx.scan_dir)
-    if ctx.mode == "dev":
-        ctx.seaweed_data_dir.mkdir(parents=True, exist_ok=True)
-        ctx.test_target_dir.mkdir(parents=True, exist_ok=True)
-    return _render_service_tree(ctx)
-
-
-def _up(ctx: RuntimeUpContext) -> None:
-    if _supervisor_running(ctx):
-        if not _supervisor_matches_profile(ctx):
-            die(
-                "s6: stack already supervised with a different service profile; run down first",
+        if _current_cgroup_v2_dir() != service_dir:
+            runtime_die(
+                f"startup process did not enter managed subgroup '{MANAGED_CGROUP_SUBGROUP}'",
                 exit_code=1,
             )
-        if not _stack_healthy(ctx):
-            die("s6: stack already supervised but not healthy; run down first", exit_code=1)
-        print("s6: already running")
+        _assert_managed_cgroup_scope()
+        _record_managed_cgroup_root(ctx, managed_root)
+    except Exception:
+        _cleanup_managed_cgroup_root(managed_root, ignore_errors=True)
+        raise
+
+
+def _assert_managed_cgroup_scope() -> None:
+    state = _require_managed_cgroup_subgroup()
+    _require_cgroup_controllers(state.controllers, label="controllers")
+    _require_cgroup_controllers(state.subtree_control, label="subtree controllers")
+
+
+def _require_managed_cgroup_subgroup() -> _ManagedCgroupRootState:
+    current_cgroup = _current_cgroup_v2_dir()
+    if current_cgroup.name != MANAGED_CGROUP_SUBGROUP:
+        runtime_die(
+            (
+                "expected to run inside managed cgroup subgroup "
+                f"'{MANAGED_CGROUP_SUBGROUP}', got {current_cgroup}"
+            ),
+            exit_code=1,
+        )
+    return _read_managed_cgroup_root_state(current_cgroup)
+
+
+def _read_managed_cgroup_root_state(current_cgroup: Path) -> _ManagedCgroupRootState:
+    managed_root = current_cgroup.parent
+    if managed_root == current_cgroup:
+        runtime_die("managed cgroup root is missing", exit_code=1)
+
+    controllers_path = managed_root / "cgroup.controllers"
+    subtree_control_path = managed_root / "cgroup.subtree_control"
+    if not controllers_path.is_file() or not subtree_control_path.is_file():
+        runtime_die(f"managed cgroup root is not writable from {managed_root}", exit_code=1)
+
+    return _ManagedCgroupRootState(
+        root=managed_root,
+        subtree_control_path=subtree_control_path,
+        controllers=set(controllers_path.read_text(encoding="utf-8").split()),
+        subtree_control=set(subtree_control_path.read_text(encoding="utf-8").split()),
+    )
+
+
+def _require_cgroup_controllers(available: set[str], *, label: str) -> None:
+    missing = [name for name in DELEGATED_CGROUP_CONTROLLERS if name not in available]
+    if missing:
+        runtime_die(
+            f"managed cgroup root is missing required {label}: " + ", ".join(missing),
+            exit_code=1,
+        )
+
+
+def _up(ctx) -> None:
+    if supervisor_running(ctx):
+        if not supervisor_matches_profile(ctx):
+            runtime_die(
+                "stack already supervised with a different service profile; run down first",
+                exit_code=1,
+            )
+        if not stack_healthy(ctx):
+            runtime_die("stack already supervised but not healthy; run down first", exit_code=1)
+        report("already running")
         if ctx.mode == "dev":
-            _ensure_dev_bucket(ctx)
+            ensure_dev_bucket(ctx)
         return
 
-    services = _prepare_runtime(ctx)
-    _start_supervisor(ctx, services)
+    if ctx.service_profile == "full":
+        _enter_managed_cgroup_subgroup(ctx)
+
+    start_supervisor(ctx, prepare_runtime(ctx))
     if ctx.mode == "dev":
-        _ensure_dev_bucket(ctx)
+        ensure_dev_bucket(ctx)
 
 
-def _down(ctx: RuntimeStateContext) -> None:
-    _stop_supervisor(ctx)
+def _down(ctx) -> None:
+    stop_supervisor(ctx)
+    if ctx.managed_cgroup_root_file.exists():
+        raw = ctx.managed_cgroup_root_file.read_text(encoding="utf-8").strip()
+        if raw:
+            _cleanup_managed_cgroup_root(Path(raw))
     if ctx.state_dir.exists():
         shutil.rmtree(ctx.state_dir)
-
-
-def _status(ctx: RuntimeInspectContext) -> None:
-    if not _supervisor_running(ctx):
-        print("s6: not running")
-        return
-    for spec in _service_specs(ctx):
-        _show_service_status(spec)
-
-
-def _check(ctx: RuntimeInspectContext) -> int:
-    return 0 if _stack_healthy(ctx) else 1
-
-
-def _add_mode_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
-
-
-def _add_service_profile_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--service-profile", choices=["full", "test_infra"], default="full")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1117,34 +259,34 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     up_parser = subparsers.add_parser("up")
-    _add_mode_argument(up_parser)
-    _add_service_profile_argument(up_parser)
+    up_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
+    up_parser.add_argument("--service-profile", choices=["full", "test_infra"], default="full")
     up_parser.add_argument("--binary-path", required=True)
     up_parser.add_argument("--config-vars-source", required=True)
     up_parser.add_argument("--runtime-ld-library-path", required=True)
 
-    _add_mode_argument(subparsers.add_parser("down"))
+    down_parser = subparsers.add_parser("down")
+    down_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
 
     for action in ["status", "logs", "check"]:
         action_parser = subparsers.add_parser(action)
-        _add_mode_argument(action_parser)
-        _add_service_profile_argument(action_parser)
+        action_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
+        action_parser.add_argument(
+            "--service-profile",
+            choices=["full", "test_infra"],
+            default="full",
+        )
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
 
     try:
         if args.action == "up":
-            if args.service_profile == "full":
-                _enter_managed_cgroup_subgroup()
-                _enable_managed_cgroup_scope_controllers()
-                _assert_managed_cgroup_scope()
-            ctx = _build_up_context(
+            ctx = build_up_context(
                 mode=args.mode,
                 service_profile=args.service_profile,
                 binary_path=args.binary_path,
@@ -1153,23 +295,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             _up(ctx)
         elif args.action == "down":
-            ctx = _build_state_context(mode=args.mode)
-            _down(ctx)
+            _down(build_state_context(mode=args.mode))
         elif args.action == "status":
-            ctx = _build_inspect_context(mode=args.mode, service_profile=args.service_profile)
-            _status(ctx)
+            status(build_inspect_context(mode=args.mode, service_profile=args.service_profile))
         elif args.action == "logs":
-            ctx = _build_inspect_context(mode=args.mode, service_profile=args.service_profile)
-            _logs(ctx)
+            logs(build_inspect_context(mode=args.mode, service_profile=args.service_profile))
         elif args.action == "check":
-            ctx = _build_inspect_context(mode=args.mode, service_profile=args.service_profile)
-            return _check(ctx)
+            return check(
+                build_inspect_context(mode=args.mode, service_profile=args.service_profile)
+            )
         else:
             raise AssertionError("unreachable")
         return 0
     except ToolError as e:
         if e.message:
-            print(e.message, file=sys.stderr)
+            print(format_runtime_message(e.message), file=sys.stderr)
         return e.exit_code
     except KeyboardInterrupt:
         return 130

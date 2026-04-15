@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from zipfile import ZIP_STORED, ZipFile
 
 import pytest
-from helper.constants import TEST_ASSET_HOST, TEST_HOST
+from helper.constants import TEST_ASSET_HOST, TEST_HOST, UNTRUSTED_TEST_HOST
 from helper.prefix import prefix_key_from_link
 from helper.waiters import wait_for_job_status, wait_for_purge
 from minio import Minio
@@ -118,6 +118,21 @@ def _wacz_cdxj_statuses_for_url(wacz: bytes, url: str) -> set[int]:
             statuses.add(int(status))
         except (TypeError, ValueError):
             continue
+    return statuses
+
+
+def _root_url_variants(url: str) -> set[str]:
+    parsed = urlparse(url)
+    if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+        return {url}
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    return {base, f"{base}/"}
+
+
+def _wacz_cdxj_statuses_for_root_url(wacz: bytes, url: str) -> set[int]:
+    statuses: set[int] = set()
+    for variant in _root_url_variants(url):
+        statuses.update(_wacz_cdxj_statuses_for_url(wacz, variant))
     return statuses
 
 
@@ -324,7 +339,7 @@ async def test_capture_near_archive_limit_success(service_client, service_secdis
     import pathlib
 
     token = uuid.uuid4().hex
-    payload_dir = pathlib.Path("/tmp/webshot/testsuite/nginx_payloads")
+    payload_dir = pathlib.Path("/tmp/webshot/dev/nginx_payloads")
     payload_dir.mkdir(parents=True, exist_ok=True)
     payload_path = payload_dir / f"{token}.bin"
     try:
@@ -527,9 +542,7 @@ async def test_https_first_falls_back_to_http_when_https_no_response(
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
-    seed_statuses = _wacz_cdxj_statuses_for_url(wacz, link)
-    if 200 not in seed_statuses:
-        seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"{link}/")
+    seed_statuses = _wacz_cdxj_statuses_for_root_url(wacz, link)
     assert 200 in seed_statuses
 
 
@@ -542,6 +555,48 @@ async def test_https_first_falls_back_to_http_and_fails_when_http_fails(service_
     job_id = resp.json()["uuid"]
 
     await wait_for_job_status(service_client, job_id, expected_status="failed")
+
+
+@pytest.mark.asyncio
+async def test_capture_downgrades_untrusted_https_certificate_to_http(
+    service_client, pgsql, service_secdist_path
+):
+    https_link = f"https://{UNTRUSTED_TEST_HOST}/"
+    http_link = f"http://{UNTRUSTED_TEST_HOST}/"
+
+    resp = await service_client.post("/v1/capture", json={"link": https_link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    job = await wait_for_job_status(service_client, job_id, expected_status="succeeded")
+
+    db = pgsql["capture_meta_db"]
+    assert "started_at" in job
+    assert "finished_at" in job
+    assert "result_created_at" in job
+    assert job["result"]["uuid"] == job_id
+    with db.cursor() as cur:
+        cur.execute("select location from capture where id = %s", (uuid.UUID(job_id),))
+        row = cur.fetchone()
+    assert row is not None
+    (location,) = row
+    assert location.endswith(job_id)
+
+    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    http_statuses = _wacz_cdxj_statuses_for_root_url(wacz, http_link)
+    https_statuses = _wacz_cdxj_statuses_for_root_url(wacz, https_link)
+    assert 200 in http_statuses
+    assert 200 not in https_statuses
+
+    entries = _wacz_entries(wacz)
+    stdout_log = entries["logs/stdout.log"].decode("utf-8")
+    assert "seed_url=http://untrusted.test-target" in stdout_log
+    assert "final_url=http://untrusted.test-target/" in stdout_log
+
+    archive_text = _wacz_archive_text(wacz)
+    assert "WARC-Target-URI: http://untrusted.test-target" in archive_text
+    assert "WARC-Target-URI: urn:pageinfo:http://untrusted.test-target" in archive_text
+    assert "WARC-Target-URI: https://untrusted.test-target" not in archive_text
 
 
 @pytest.mark.asyncio

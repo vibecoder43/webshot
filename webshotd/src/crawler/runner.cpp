@@ -71,8 +71,11 @@ constexpr auto kMaxLogBytes = 64_i64 * 1024_i64;
 constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
 const auto kLocalFixtureHttpPort = "18080"_t;
 const auto kLocalFixtureHttpsPort = "18443"_t;
-const auto kLocalFixtureHostA = "test-target"_t;
-const auto kLocalFixtureHostB = "asset.test-target"_t;
+constexpr std::array kLocalFixtureHosts = {
+    std::string_view{"test-target"},
+    std::string_view{"asset.test-target"},
+    std::string_view{"untrusted.test-target"},
+};
 
 [[nodiscard]] i64 computeCdpMaxRemotePayloadBytes(i64 maxArchiveBytes)
 {
@@ -179,7 +182,23 @@ normalizeHeaders(const dto::CdpHeaders &headers)
 
 [[nodiscard]] bool isLocalFixtureHost(const String &host) noexcept
 {
-    return host == kLocalFixtureHostA || host == kLocalFixtureHostB;
+    return std::ranges::find(kLocalFixtureHosts, host.view()) != std::end(kLocalFixtureHosts);
+}
+
+[[nodiscard]] std::string localFixtureTrustDbSourcePath(std::string_view stateDir)
+{
+    return normalizeDirPath(std::string(stateDir)) + "/test_pki/chromium_nssdb";
+}
+
+[[nodiscard]] Expected<void, String>
+copyFileContents(const std::string &sourcePath, const std::string &destinationPath)
+{
+    if (!us::fs::blocking::FileExists(sourcePath))
+        return std::unexpected(text::format("source file does not exist: {}", sourcePath));
+    us::fs::blocking::RewriteFileContents(
+        destinationPath, us::fs::blocking::ReadFileContents(sourcePath)
+    );
+    return {};
 }
 
 [[nodiscard]] String canonicalizeCapturedUrl(const String &urlText)
@@ -297,7 +316,24 @@ struct [[nodiscard]] BrowserPaths {
     std::string bwrapStatusFilePath;
     std::string phaseFilePath;
     std::string devNullPath;
+    std::string localFixtureTrustDbDir;
 };
+
+[[nodiscard]] Expected<void, String>
+stageLocalFixtureTrustDb(const BrowserPaths &paths, const std::string &sourcePath)
+{
+    us::fs::blocking::CreateDirectories(paths.rootDir + "/.pki");
+    us::fs::blocking::CreateDirectories(paths.localFixtureTrustDbDir);
+
+    for (const auto &fileName : {"cert9.db", "key4.db", "pkcs11.txt"}) {
+        auto copied = copyFileContents(
+            sourcePath + "/" + fileName, paths.localFixtureTrustDbDir + "/" + fileName
+        );
+        if (!copied)
+            return copied;
+    }
+    return {};
+}
 
 [[nodiscard]] BrowserPaths createBrowserPaths(std::string_view browserRunsRoot)
 {
@@ -326,6 +362,7 @@ struct [[nodiscard]] BrowserPaths {
     paths.bwrapStatusFilePath = rootDir + "/bwrap-status.jsonl";
     paths.phaseFilePath = rootDir + "/phase.txt";
     paths.devNullPath = rootDir + "/devnull";
+    paths.localFixtureTrustDbDir = rootDir + "/.pki/nssdb";
 
     for (auto x : {paths.userDataDir, paths.xdgConfigHome, paths.xdgCacheHome, paths.crashpadDir})
         us::fs::blocking::CreateDirectories(x);
@@ -553,12 +590,14 @@ public:
         dns::Resolver &dnsResolver, usize urlBytesMax, i64 proxyDownBytesMax,
         us::engine::subprocess::ProcessStarter &processStarter, std::string browserRunsRootIn,
         std::string cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
-        crawler::CrawlerTunables tunables, i64 cdpMaxRemotePayloadBytes
+        std::string localFixtureTrustDbSourcePathIn, crawler::CrawlerTunables tunables,
+        i64 cdpMaxRemotePayloadBytes
     )
         : dnsResolver(dnsResolver), urlBytesMax(urlBytesMax), proxyDownBytesMax(proxyDownBytesMax),
           processStarter(processStarter),
           browserRunsRoot(normalizeDirPath(std::move(browserRunsRootIn))),
           cgroupRootPath(std::move(cgroupRootPath)), cgroupLimits(std::move(cgroupLimits)),
+          localFixtureTrustDbSourcePath(std::move(localFixtureTrustDbSourcePathIn)),
           tunables(std::move(tunables)), cdpMaxRemotePayloadBytes(cdpMaxRemotePayloadBytes)
     {
     }
@@ -573,6 +612,16 @@ public:
     Expected<void, String> launch()
     {
         paths = createBrowserPaths(browserRunsRoot);
+        if (tunables.enableLocalFixtureRewrite) {
+            auto trustDbStaged = stageLocalFixtureTrustDb(paths, localFixtureTrustDbSourcePath);
+            if (!trustDbStaged) {
+                return std::unexpected(
+                    text::format(
+                        "failed to stage local fixture trust db: {}", trustDbStaged.error()
+                    )
+                );
+            }
+        }
         markPhase("launch_browser");
         const auto devtoolsDeadline = us::engine::Deadline::FromDuration(
             tunables.devtoolsStartupTimeout
@@ -758,6 +807,7 @@ private:
     std::string browserRunsRoot;
     std::string cgroupRootPath;
     std::optional<crawler::CgroupLimits> cgroupLimits;
+    std::string localFixtureTrustDbSourcePath;
     crawler::CrawlerTunables tunables;
     i64 cdpMaxRemotePayloadBytes;
     BrowserPaths paths;
@@ -1713,7 +1763,8 @@ public:
           browser(
               dnsResolver, urlBytesMax, proxyDownBytesMax, processStarter,
               std::move(browserRunsRootIn), std::move(cgroupRootPathIn), std::move(cgroupLimitsIn),
-              std::move(tunablesIn), computeCdpMaxRemotePayloadBytes(maxArchiveBytesIn)
+              localFixtureTrustDbSourcePath(config.stateDir()), std::move(tunablesIn),
+              computeCdpMaxRemotePayloadBytes(maxArchiveBytesIn)
           )
     {
     }

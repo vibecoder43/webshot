@@ -5,12 +5,11 @@
 #include "text.hpp"
 #include "userver_namespaces.hpp"
 
-#include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include <userver/clients/dns/resolver_fwd.hpp>
-#include <userver/utils/fast_pimpl.hpp>
 
 namespace v1::crawler {
 
@@ -41,9 +40,7 @@ public:
 
 private:
     struct Impl;
-    static constexpr size_t kImplSize = 1024UL;
-    static constexpr size_t kImplAlignment = 16UL;
-    us::utils::FastPimpl<Impl, kImplSize, kImplAlignment> impl;
+    std::unique_ptr<Impl> impl;
 };
 
 } // namespace v1::crawler

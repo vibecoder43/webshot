@@ -58,8 +58,11 @@ constexpr auto kMaxHeaderBytes = 64_uz * 1024_uz;
 constexpr size_t kIoBufferBytes = 16UL * 1024UL;
 constexpr auto kMaxContentLengthBytes = 1024_i64 * 1024_i64 * 1024_i64;
 
-constexpr std::string_view kLocalHostA = "test-target";
-constexpr std::string_view kLocalHostB = "asset.test-target";
+constexpr std::array kLocalFixtureHosts = {
+    std::string_view{"test-target"},
+    std::string_view{"asset.test-target"},
+    std::string_view{"untrusted.test-target"},
+};
 constexpr auto kLocalHttpPort = 18080_u16;
 constexpr auto kLocalHttpsPort = 18443_u16;
 constexpr std::string_view kConnectEstablishedResponse =
@@ -317,7 +320,8 @@ rewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host,
     if (!cfg.enableLocalFixtureRewrite)
         return UpstreamTarget{.connectHost = std::string(host), .connectPort = port};
 
-    const bool isLocalHost = host == kLocalHostA || host == kLocalHostB;
+    const auto isLocalHost = std::ranges::find(kLocalFixtureHosts, host) !=
+                             std::end(kLocalFixtureHosts);
     if (!isLocalHost)
         return UpstreamTarget{.connectHost = std::string(host), .connectPort = port};
 
@@ -880,7 +884,7 @@ struct EgressProxy::Impl final {
     }
 };
 
-EgressProxy::EgressProxy(EgressProxyConfig config) : impl(std::move(config))
+EgressProxy::EgressProxy(EgressProxyConfig config) : impl{std::make_unique<Impl>(std::move(config))}
 {
     UINVARIANT(!impl->config.socketPath.empty(), "proxy socket path must not be empty");
     UINVARIANT(!impl->config.runId.empty(), "proxy runId must not be empty");

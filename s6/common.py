@@ -20,8 +20,8 @@ class ToolError(Exception):
         return self.message
 
 
-def format_cmd(cmd: Sequence[str]) -> str:
-    return " ".join(shlex.quote(part) for part in cmd)
+def format_cmd(cmd: Sequence[str | Path]) -> str:
+    return " ".join(shlex.quote(str(part)) for part in cmd)
 
 
 def die(message: str, *, exit_code: int = 2) -> NoReturn:
@@ -41,7 +41,7 @@ def need_env(name: str) -> str:
 
 
 def run(
-    cmd: Sequence[str],
+    cmd: Sequence[str | Path],
     *,
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
@@ -52,7 +52,7 @@ def run(
     stdout_opt = subprocess.PIPE if capture else None
     stderr_opt = subprocess.PIPE if capture else None
     proc = subprocess.Popen(
-        list(cmd),
+        [str(part) for part in cmd],
         cwd=str(cwd) if cwd is not None else None,
         env=dict(env) if env is not None else None,
         text=True,
@@ -76,7 +76,12 @@ def run(
         die(f"Timed out running: {cmd_str} (timeout={timeout_sec}s)", exit_code=1)
 
     returncode = proc.returncode if proc.returncode is not None else 0
-    completed = subprocess.CompletedProcess(list(cmd), returncode, stdout=stdout, stderr=stderr)
+    completed = subprocess.CompletedProcess(
+        [str(part) for part in cmd],
+        returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
     if check and completed.returncode != 0:
         cmd_str = format_cmd(cmd)
         out = (completed.stdout or "").strip()

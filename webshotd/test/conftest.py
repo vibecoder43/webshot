@@ -1,5 +1,7 @@
 import asyncio
 import pathlib
+import shutil
+import tempfile
 from urllib.parse import urlparse, urlunparse
 
 import psycopg2
@@ -14,6 +16,10 @@ from s6.s3_bucket import ensure_s3_bucket_exists
 _S3_GATE_HOST = "localhost"
 _SERVICE_PORT = 8080
 _MONITOR_PORT = 8081
+_DEV_STATE_DIR = pathlib.Path("/tmp/webshot/dev")
+_DEV_WEBSHOTD_STATE_DIR = _DEV_STATE_DIR / "webshotd"
+_DEV_TRUSTED_NSSDB_DIR = _DEV_WEBSHOTD_STATE_DIR / "test_pki" / "chromium_nssdb"
+_TESTSUITE_STATE_ROOT = pathlib.Path("/tmp/webshot/testsuite")
 
 pytest_plugins = [
     "pytest_userver.plugins.core",
@@ -50,6 +56,19 @@ def _require_service_binary_path(pytestconfig) -> pathlib.Path:
     if not binary:
         raise RuntimeError("--service-binary must be set for testsuite runs")
     return pathlib.Path(binary).resolve()
+
+
+def _prepare_testsuite_webshotd_state_dir() -> pathlib.Path:
+    if not _DEV_TRUSTED_NSSDB_DIR.is_dir():
+        raise RuntimeError(f"missing runtime-generated Chromium NSS DB: {_DEV_TRUSTED_NSSDB_DIR}")
+
+    _TESTSUITE_STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    state_dir = pathlib.Path(tempfile.mkdtemp(prefix="ws-", dir=_TESTSUITE_STATE_ROOT))
+
+    trusted_nssdb_dir = state_dir / "test_pki" / "chromium_nssdb"
+    trusted_nssdb_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(_DEV_TRUSTED_NSSDB_DIR, trusted_nssdb_dir)
+    return state_dir
 
 
 @pytest.fixture(scope="session")
@@ -207,6 +226,7 @@ def service_config_path_temp(
     service_source_dir: pathlib.Path,
 ) -> pathlib.Path:
     dst_path = service_tmpdir / "config.yaml"
+    state_dir = _prepare_testsuite_webshotd_state_dir()
     config_yaml = dict(_service_config_hooked.config_yaml)
     config_vars = dict(_service_config_hooked.config_vars)
     cmake_cache_path = service_binary.parent / "CMakeCache.txt"
@@ -215,7 +235,7 @@ def service_config_path_temp(
     )
     config_vars["openapi_dir"] = str(service_source_dir.parent / "schema")
     config_vars["web_ui_dir"] = str(service_binary.parent / "web_ui")
-    config_vars["state_dir"] = "/tmp/webshot/testsuite/webshotd"
+    config_vars["state_dir"] = str(state_dir)
 
     components = config_yaml["components_manager"]["components"]
     http_client_core = components["http-client-core"]

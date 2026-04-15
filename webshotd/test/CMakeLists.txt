@@ -109,6 +109,11 @@ add_cpp_test(
   crawler_fallback_test SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback.cpp)
 
+add_cpp_test(
+  browser_sandbox_test SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.cpp
+  ${CMAKE_SOURCE_DIR}/src/crawler/browser_sandbox.cpp)
+
 get_property(WEBSHOT_CPP_TESTS GLOBAL PROPERTY WEBSHOT_CPP_TESTS)
 set(WEBSHOT_COVERAGE_TARGETS ${PROJECT_NAME} ${WEBSHOT_CPP_TESTS})
 set(WEBSHOT_COVERAGE_TARGET_FILES "")

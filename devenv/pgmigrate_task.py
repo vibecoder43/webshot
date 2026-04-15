@@ -8,19 +8,14 @@ from pathlib import Path
 
 import yaml
 
+from s6.runtime_databases import resolve_runtime_databases
+
 
 def _repo_root() -> Path:
     root = Path(__file__).resolve().parents[1]
     if not root.joinpath("devenv.nix").is_file():
         raise RuntimeError(f"failed to locate repo root from {__file__}")
     return root
-
-
-def _require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> str:
-    value = raw.get(key)
-    if not isinstance(value, str) or not value:
-        raise RuntimeError(f"missing required config var {key!r} in {source}")
-    return value
 
 
 def _run(cmd: list[str]) -> None:
@@ -46,19 +41,19 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(raw, dict):
         raise RuntimeError(f"config vars file must be a YAML mapping: {config_vars_path}")
 
-    capture_dsn = _require_yaml_string(raw, "pg_capture_meta_db_dsn", source=config_vars_path)
-    shared_dsn = _require_yaml_string(raw, "pg_shared_state_db_dsn", source=config_vars_path)
-
-    capture_base_dir = repo_root / "webshotd/sql/schema/capture_meta_db"
-    shared_base_dir = repo_root / "webshotd/sql/schema/shared_state_db"
+    databases = resolve_runtime_databases(
+        repo_root=repo_root,
+        raw_vars=raw,
+        source=config_vars_path,
+    )
 
     if args.cmd == "migrate":
         extra_args = ["-t", "latest", "-vv", "migrate"]
     else:
         extra_args = ["-b", str(args.baseline_version), "baseline"]
 
-    _run(["pgmigrate", "-c", capture_dsn, "-d", str(capture_base_dir), *extra_args])
-    _run(["pgmigrate", "-c", shared_dsn, "-d", str(shared_base_dir), *extra_args])
+    for database in databases:
+        _run(["pgmigrate", "-c", database.dsn, "-d", str(database.base_dir), *extra_args])
     return 0
 
 

@@ -129,7 +129,7 @@
     exec = ''
       set -euo pipefail
       ${mkBuildCommandsForMode mode}
-      ${mkRuntimeCommand "up" mode null}
+      exec ${mkRuntimeCommand "up" mode null}
     '';
   };
 

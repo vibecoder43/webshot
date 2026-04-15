@@ -20,5 +20,7 @@
     seaweedfs
     util-linux
     socat
+    openssl
+    nssTools.tools
   ];
 }

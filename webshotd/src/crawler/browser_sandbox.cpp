@@ -26,7 +26,6 @@ buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
         "--hide-scrollbars",
         "--no-sandbox",
         "--no-zygote",
-        "--ignore-certificate-errors",
         "--use-gl=swiftshader",
         "--disable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
         "--user-data-dir=" + userDataDir,
