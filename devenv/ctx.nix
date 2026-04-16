@@ -199,7 +199,16 @@ in {
       pname = "webshot${suffix}";
       version = "0.1.0";
       src = webshotSrc;
-      sourceRoot = "source/webshotd";
+      # gitignoreSource preserves the repo basename in the unpack tree, so pick
+      # the service subdir dynamically instead of assuming `source/`.
+      setSourceRoot = ''
+        matches=(*/webshotd)
+        if [[ "''${#matches[@]}" -ne 1 || ! -d "''${matches[0]}" ]]; then
+          printf 'expected one unpacked repo root with webshotd/, got: %s\n' "''${matches[*]}" >&2
+          exit 1
+        fi
+        sourceRoot="''${matches[0]}"
+      '';
 
       dontStrip = true;
 
