@@ -117,6 +117,9 @@ add_cpp_test(
   ${CMAKE_CURRENT_SOURCE_DIR}/browser_sandbox.cpp
   ${CMAKE_SOURCE_DIR}/src/crawler/browser_sandbox.cpp)
 
+add_cpp_test(cdp_request_tracker_test SOURCES
+                     ${CMAKE_CURRENT_SOURCE_DIR}/cdp_request_tracker.cpp)
+
 get_property(WEBSHOT_CPP_TESTS GLOBAL PROPERTY WEBSHOT_CPP_TESTS)
 set(WEBSHOT_COVERAGE_TARGETS ${PROJECT_NAME} ${WEBSHOT_CPP_TESTS})
 set(WEBSHOT_COVERAGE_TARGET_FILES "")

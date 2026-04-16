@@ -1,5 +1,6 @@
 #pragma once
 
+#include "crawler/cdp_request_tracker.hpp"
 #include "expected.hpp"
 #include "integers.hpp"
 #include "schema/cdp.hpp"
@@ -13,7 +14,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -184,11 +184,6 @@ private:
         std::chrono::seconds commandTimeout, std::chrono::milliseconds waitPollInterval
     );
 
-    struct [[nodiscard]] PendingRequestTrace {
-        std::string method;
-        std::optional<String> sessionId;
-    };
-
     [[nodiscard]] Expected<us::formats::json::Value, CdpFailure> sendRaw(
         std::string_view method, const us::formats::json::Value &params,
         const std::optional<String> &sessionId
@@ -205,7 +200,7 @@ private:
     Expected<void, CdpFailure> writeTraceLine(const us::formats::json::Value &value);
     void traceCommand(i64 id, std::string_view method, const std::optional<String> &sessionId);
     void
-    traceResponse(i64 id, const PendingRequestTrace *request, const std::optional<String> &error);
+    traceResponse(i64 id, const CdpPendingRequest *request, const std::optional<String> &error);
     void traceEvent(std::string_view method, const std::optional<String> &sessionId);
     void traceClose(std::string_view direction, int closeCode);
     void traceTransportError(std::string_view operation, std::string_view error);
@@ -215,8 +210,7 @@ private:
     std::shared_ptr<us::websocket::WebSocketConnection> connection;
     std::unordered_map<ListenerId, EventListener> listeners;
     std::unordered_map<i64, us::formats::json::Value> pendingResults;
-    std::unordered_map<i64, PendingRequestTrace> pendingRequests;
-    std::unordered_set<i64> dropResults;
+    CdpRequestTracker pendingRequests;
     std::string tracePath;
     us::fs::blocking::FileDescriptor traceFile;
     us::engine::Deadline overallDeadline;

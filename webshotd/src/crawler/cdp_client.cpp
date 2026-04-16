@@ -335,12 +335,7 @@ Expected<json::Value, CdpFailure> CdpClient::sendRaw(
         request.params = dto::CdpCommandRequest::Params{params};
     if (sessionId)
         request.sessionId = std::string(sessionId->view());
-    pendingRequests.emplace(
-        id, PendingRequestTrace{
-                .method = std::string{method},
-                .sessionId = sessionId,
-            }
-    );
+    pendingRequests.insertWaiting(id, std::string{method}, sessionId);
     traceCommand(id, method, sessionId);
     try {
         connection->SendText(json::ToString(json::ValueBuilder(request).ExtractValue()));
@@ -358,7 +353,10 @@ Expected<json::Value, CdpFailure> CdpClient::sendRaw(
         "timed out waiting for cdp response"
     );
     if (!waited) {
-        pendingRequests.erase(id);
+        if (waited.error().code == kTimeout)
+            pendingRequests.markIgnoreResponse(id);
+        else
+            pendingRequests.erase(id);
         return std::unexpected(waited.error());
     }
 
@@ -387,18 +385,11 @@ Expected<void, CdpFailure> CdpClient::sendRawNoWait(
         request.params = dto::CdpCommandRequest::Params{params};
     if (sessionId)
         request.sessionId = std::string(sessionId->view());
-    pendingRequests.emplace(
-        id, PendingRequestTrace{
-                .method = std::string{method},
-                .sessionId = sessionId,
-            }
-    );
-    dropResults.insert(id);
+    pendingRequests.insertIgnored(id, std::string{method}, sessionId);
     traceCommand(id, method, sessionId);
     try {
         connection->SendText(json::ToString(json::ValueBuilder(request).ExtractValue()));
     } catch (const us::utils::TracefulException &e) {
-        dropResults.erase(id);
         pendingRequests.erase(id);
         traceTransportError("send", e.what());
         return std::unexpected(CdpFailure{.code = kTransport, .detail = {}});
@@ -520,41 +511,28 @@ Expected<void, CdpFailure> CdpClient::handleMessage(const std::string &payload)
     const auto idValue = value["id"];
     if (!idValue.IsMissing()) {
         const auto id = i64(idValue.As<int64_t>());
-        const auto requestIt = pendingRequests.find(id);
-        if (requestIt == std::end(pendingRequests)) {
-            const auto dropped = dropResults.find(id);
-            UINVARIANT(
-                dropped != std::end(dropResults),
-                std::format("cdp response for unknown request id {}", id)
-            );
-            dropResults.erase(dropped);
-            return {};
-        }
-        const auto *request = &requestIt->second;
+        auto *request = pendingRequests.find(id);
+        UINVARIANT(request != nullptr, std::format("cdp response for unknown request id {}", id));
         const auto errorValue = value["error"];
-        const auto dropped = dropResults.find(id);
-        const auto isDropped = dropped != std::end(dropResults);
         if (!errorValue.IsMissing()) {
             auto errorMessage = getErrorMessage(errorValue);
             if (!errorMessage)
                 return std::unexpected(errorMessage.error());
             traceResponse(id, request, *errorMessage);
-            if (isDropped) {
-                dropResults.erase(dropped);
-                pendingRequests.erase(requestIt);
+            if (request->ignoreResponse) {
+                pendingRequests.erase(id);
                 return {};
             }
-            pendingRequests.erase(requestIt);
+            pendingRequests.erase(id);
             return std::unexpected(CdpFailure{.code = kCommandFailed, .detail = *errorMessage});
         }
         traceResponse(id, request, {});
-        if (isDropped) {
-            dropResults.erase(dropped);
-            pendingRequests.erase(requestIt);
+        if (request->ignoreResponse) {
+            pendingRequests.erase(id);
             return {};
         }
         pendingResults.emplace(id, value["result"]);
-        pendingRequests.erase(requestIt);
+        pendingRequests.erase(id);
         return {};
     }
 
@@ -619,7 +597,7 @@ void CdpClient::traceCommand(
 }
 
 void CdpClient::traceResponse(
-    i64 id, const PendingRequestTrace *request, const std::optional<String> &error
+    i64 id, const CdpPendingRequest *request, const std::optional<String> &error
 )
 {
     json::ValueBuilder entry;
