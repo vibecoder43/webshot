@@ -183,8 +183,8 @@ components_manager:
       directory-file: ""
       not-found-file: ""
       expires: 0s
-    ui_redirect:
-      path: /ui
+    ui_replay:
+      path: /vendor/replaywebpage/replay/{uuid}
       method: GET
       task_processor: main-task-processor
       request-timeout-ms: 10000
@@ -193,8 +193,39 @@ components_manager:
       dir: $web_ui_dir
       update-period: 0s
       fs-task-processor: fs-task-processor
+    web_ui_vendor_cache:
+      dir: $web_ui_vendor_dir
+      update-period: 0s
+      fs-task-processor: fs-task-processor
     web_ui_static:
-      path: /ui/*
+      path: /vendor/*
+      method: GET
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: web_ui_vendor_cache
+      directory-file: ""
+      not-found-file: ""
+      expires: 0s
+    web_ui_style_static:
+      path: /style.css
+      method: GET
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: web_ui_cache
+      directory-file: style.css
+      not-found-file: ""
+      expires: 0s
+    web_ui_index_static:
+      path: /index.html
+      method: GET
+      task_processor: main-task-processor
+      max_request_size: *max-data-per-request
+      fs-cache-component: web_ui_cache
+      directory-file: index.html
+      not-found-file: ""
+      expires: 0s
+    web_ui_root_static:
+      path: /
       method: GET
       task_processor: main-task-processor
       max_request_size: *max-data-per-request

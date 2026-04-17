@@ -1,7 +1,7 @@
 #include "by_id_handler.hpp"
 /**
  * @file
- * @brief Handler that resolves a capture id to its public location via 302.
+ * @brief Handler that resolves a capture id to JSON metadata.
  */
 #include "client_ip.hpp"
 #include "config.hpp"
@@ -11,21 +11,16 @@
 #include "integers.hpp"
 #include "text.hpp"
 #include "uuid_format.hpp"
+#include "uuid_utils.hpp"
 
 #include <chrono>
 
 #include <format>
-#include <optional>
 #include <utility>
-
-#include <boost/uuid/string_generator.hpp>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/exception.hpp>
 #include <userver/engine/task/current_task.hpp>
-#include <userver/http/common_headers.hpp>
-#include <userver/http/content_type.hpp>
-#include <userver/http/status_code.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_request.hpp>
@@ -36,20 +31,6 @@
 
 using namespace v1;
 using namespace text::literals;
-
-namespace {
-
-[[nodiscard]] std::optional<Uuid> parseUuid(std::string_view text) noexcept
-{
-    boost::uuids::string_generator gen;
-    try {
-        return gen(std::string{text});
-    } catch (const std::runtime_error &) {
-        return {};
-    }
-}
-
-} // namespace
 
 ById::ById(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
@@ -93,7 +74,7 @@ std::string ById::HandleRequestThrow(
     if (!uuidStr)
         return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
 
-    const auto uuidOpt = parseUuid(uuidStr->view());
+    const auto uuidOpt = uuidu::parse(uuidStr->view());
     if (!uuidOpt)
         return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
 
@@ -104,15 +85,13 @@ std::string ById::HandleRequestThrow(
     if (cooldown)
         return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
 
-    auto location = crud.findCapture(*uuidOpt);
-    if (!location)
+    auto capture = crud.findCapture(*uuidOpt);
+    if (!capture)
         return httpu::respondError(response, kInternalServerError, "internal server error"_t);
-    if (!*location) {
+    if (!*capture) {
         LOG_INFO() << std::format("capture not found: {}", *uuidOpt);
         return httpu::respondError(response, kNotFound, "capture not found"_t);
     }
 
-    response.SetStatus(kFound);
-    response.SetHeader(us::http::headers::kLocation, std::string((*location)->httpsUrl().view()));
-    return {};
+    return httpu::respondJson(response, kOk, **capture);
 }

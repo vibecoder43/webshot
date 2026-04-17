@@ -15,7 +15,7 @@ namespace v1 {
 class Config;
 class Crud;
 /**
- * @brief HTTP handler that redirects to the stored capture by id.
+ * @brief HTTP handler that returns stored capture metadata by id.
  */
 class [[nodiscard]] ById : public server::handlers::HttpHandlerBase {
 public:

@@ -29,8 +29,28 @@
 
   mkBuild = mode: let
     cfg = modes.${mode};
+    configureFingerprint = ctx.mkConfigureFingerprint {
+      inherit (cfg) buildDir variant;
+    };
   in ''
     build_dir=${lib.escapeShellArg cfg.buildDir}
+    configure_fingerprint=${lib.escapeShellArg configureFingerprint}
+    configure_fingerprint_file="$build_dir/.configure-fingerprint"
+    configure_fresh_flag=
+    configure_mode=normal
+    if [[ -f "$configure_fingerprint_file" ]]; then
+      previous_configure_fingerprint=$(<"$configure_fingerprint_file")
+      if [[ "$previous_configure_fingerprint" != "$configure_fingerprint" ]]; then
+        configure_fresh_flag=--fresh
+        configure_mode=fresh
+        printf 'CMake configure spec changed; reconfiguring with --fresh\n'
+      fi
+    elif [[ -f "$build_dir/CMakeCache.txt" || -d "$build_dir/CMakeFiles" ]]; then
+      configure_fresh_flag=--fresh
+      configure_mode=fresh
+      printf 'Existing build dir has no configure fingerprint; reconfiguring with --fresh\n'
+    fi
+
     before_log=$(mktemp /tmp/webshot_build_times_before.XXXXXX)
     started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     started_ms=$(date +%s%3N)
@@ -42,9 +62,32 @@
 
     configure_started_ms=$(date +%s%3N)
     configure_exit_code=0
-    { ${ctx.mkConfigure cfg.buildDir cfg.clangd cfg.variant} } || configure_exit_code=$?
+    if [[ -n "$configure_fresh_flag" ]]; then
+      set +e
+      ${ctx.mkConfigure {
+      buildDir = cfg.buildDir;
+      clangdFile = cfg.clangd;
+      variant = cfg.variant;
+      fresh = true;
+    }}
+      configure_exit_code=$?
+      set -e
+    else
+      set +e
+      ${ctx.mkConfigure {
+      buildDir = cfg.buildDir;
+      clangdFile = cfg.clangd;
+      variant = cfg.variant;
+      fresh = false;
+    }}
+      configure_exit_code=$?
+      set -e
+    fi
     configure_finished_ms=$(date +%s%3N)
     configure_time_ms=$((configure_finished_ms - configure_started_ms))
+    if [[ "$configure_exit_code" -eq 0 ]]; then
+      printf '%s\n' "$configure_fingerprint" > "$configure_fingerprint_file"
+    fi
 
     build_started_ms=$(date +%s%3N)
     build_exit_code=0
@@ -159,7 +202,12 @@ in {
 
   tasks."proj:tidyBuild" = mkTask ''
     set -euo pipefail
-    ${ctx.mkConfigure ctx.paths.build.tidy ctx.paths.clangd.tidy ctx.variants.tidy}
+    ${ctx.mkConfigure {
+      buildDir = ctx.paths.build.tidy;
+      clangdFile = ctx.paths.clangd.tidy;
+      variant = ctx.variants.tidy;
+      fresh = false;
+    }}
     cmake --build ${lib.escapeShellArg ctx.paths.build.tidy} -- -k 0
   '';
 

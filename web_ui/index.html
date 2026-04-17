@@ -4,12 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Webshot UI</title>
-    <link rel="stylesheet" href="/ui/style.css" />
-    <script src="/ui/vendor/htmx.min.js"></script>
-    <script src="/ui/vendor/response-targets.min.js"></script>
-    <script src="/ui/vendor/json-enc.min.js"></script>
-    <script src="/ui/vendor/client-side-templates.min.js"></script>
-    <script src="/ui/vendor/nunjucks.min.js"></script>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/htmx.min.js"></script>
+    <script src="/vendor/response-targets.min.js"></script>
+    <script src="/vendor/json-enc.min.js"></script>
+    <script src="/vendor/client-side-templates.min.js"></script>
+    <script src="/vendor/nunjucks.min.js"></script>
     <script>
       // Ensure user-controlled strings (e.g. link) are escaped in templates by default.
       nunjucks.configure({ autoescape: true });
@@ -170,7 +170,7 @@
       <div class="job-status terminal">
         <span class="badge {{ status }}">{{ status }}</span>
         {% if result and result.uuid %}
-        <a class="mono" href="/v1/capture/{{ result.uuid }}">capture {{ result.uuid }}</a>
+        <a class="mono" href="/vendor/replaywebpage/replay/{{ result.uuid }}">capture {{ result.uuid }}</a>
         {% else %}
         <span class="mono">{{ uuid }}</span>
         {% endif %}
@@ -200,7 +200,7 @@
         </div>
         {% for item in items %}
         <div class="trow">
-          <div><a class="mono" href="/v1/capture/{{ item.uuid }}">{{ item.uuid }}</a></div>
+          <div><a class="mono" href="/vendor/replaywebpage/replay/{{ item.uuid }}">{{ item.uuid }}</a></div>
           <div class="mono">{{ item.created_at }}</div>
         </div>
         {% endfor %}
@@ -241,7 +241,7 @@
         {% for item in items %}
         <div class="trow">
           <div class="mono">{{ item.link }}</div>
-          <div><a class="mono" href="/v1/capture/{{ item.uuid }}">{{ item.uuid }}</a></div>
+          <div><a class="mono" href="/vendor/replaywebpage/replay/{{ item.uuid }}">{{ item.uuid }}</a></div>
           <div class="mono">{{ item.created_at }}</div>
         </div>
         {% endfor %}

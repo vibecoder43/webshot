@@ -10,6 +10,10 @@ body {
   font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
 }
 
+.replay-body {
+  min-height: 100vh;
+}
+
 a {
   color: inherit;
   text-decoration: underline;
@@ -41,6 +45,21 @@ a {
 
 .grid {
   max-width: 900px;
+}
+
+.replay-main {
+  width: 100%;
+}
+
+.replay-root {
+  min-height: 70vh;
+}
+
+.replay-player {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 96px);
+  min-height: 520px;
 }
 
 .card {

@@ -11,14 +11,12 @@
 #include "integers.hpp"
 #include "schema/webshot.hpp"
 #include "text.hpp"
+#include "uuid_utils.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <format>
-#include <optional>
 #include <utility>
-
-#include <boost/uuid/string_generator.hpp>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/exception.hpp>
@@ -37,16 +35,6 @@ using namespace v1;
 using namespace text::literals;
 
 namespace {
-
-[[nodiscard]] std::optional<Uuid> parseUuid(std::string_view text) noexcept
-{
-    boost::uuids::string_generator gen;
-    try {
-        return gen(std::string{text});
-    } catch (const std::runtime_error &) {
-        return {};
-    }
-}
 
 [[nodiscard]] std::string respondJobPollCooldown(
     server::http::HttpResponse &response, const Uuid &uuid, std::chrono::milliseconds retryAfter
@@ -111,7 +99,7 @@ std::string JobHandler::HandleRequestThrow(
     if (!uuidStr)
         return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
 
-    const auto uuidOpt = parseUuid(uuidStr->view());
+    const auto uuidOpt = uuidu::parse(uuidStr->view());
     if (!uuidOpt)
         return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
 

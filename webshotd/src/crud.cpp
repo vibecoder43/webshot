@@ -613,15 +613,13 @@ struct [[nodiscard]] CrawlContext {
     Uuid id;
     String keyOnly;
     String s3Key;
-    String location;
     std::optional<std::string> waczBytes;
     std::optional<std::string> contentSha256;
     std::optional<String> failureMessage;
 
     CrawlContext(Uuid id, Link link, const Config &cfg)
         : link(std::move(link)), id(id), keyOnly(text::format("{}", id)),
-          s3Key(text::format("{}/{}", cfg.s3Bucket(), keyOnly)),
-          location(text::format("{}/{}", cfg.publicBaseUrl(), keyOnly))
+          s3Key(text::format("{}/{}", cfg.s3Bucket(), keyOnly))
     {
     }
 };
@@ -1170,7 +1168,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
     };
     auto row = readwrite(
         [&](auto &res) { return res.template AsSingleRow<Row>(pg::kRowTag); }, sql::kInsertCapture,
-        ctx.id, ctx.link.normalized(), prefixKey, prefixTree, ctx.location,
+        ctx.id, ctx.link.normalized(), prefixKey, prefixTree,
         pg::Bytea(std::string_view{*ctx.contentSha256})
     );
     if (!row) {
@@ -1380,34 +1378,42 @@ Crud::acquireClientIpCooldown(String clientIp)
     return grabValueOf(acquired);
 }
 
-Expected<std::optional<Link>, errors::CrudError> Crud::findCapture(Uuid uuid)
+Expected<std::optional<dto::CaptureDetails>, errors::CrudError> Crud::findCapture(Uuid uuid)
 {
     using enum errors::CrudError;
 
-    auto location = impl->readonly(
-        [&](auto &res) { return res.template AsOptionalSingleRow<std::string>(); },
+    struct Row {
+        pg::TimePointTz createdAt;
+        std::string link;
+    };
+    auto capture = impl->readonly(
+        [&](auto &res) { return res.template AsOptionalSingleRow<Row>(pg::kRowTag); },
         sql::kSelectCapture, uuid
     );
-    if (!location) {
+    if (!capture) {
         LOG_ERROR() << std::format(
-            "DB select capture failed for {}: {}", uuid, location.error().what
+            "DB select capture failed for {}: {}", uuid, capture.error().what
         );
         return std::unexpected(kDbFailure);
     }
-    auto locationOpt = grabValueOf(location);
-    if (!locationOpt) {
+    auto captureOpt = grabValueOf(capture);
+    if (!captureOpt) {
         LOG_INFO() << std::format("UUID not found: {}", uuid);
         return {};
     }
-    auto locationText = String::fromBytes(grabValueOf(locationOpt));
-    if (!locationText)
+    auto row = grabValueOf(captureOpt);
+    auto linkText = String::fromBytes(row.link);
+    if (!linkText)
         return std::unexpected(kCorruptData);
-    auto link = Link::fromText(
-        *locationText, impl->svcCfg.urlBytesMax(), Link::FromTextOptions::kNone
+    const auto storageUrl = String::fromBytes(
+        std::format("{}/{}", impl->svcCfg.publicBaseUrl(), uuid)
     );
-    if (!link)
+    if (!storageUrl)
         return std::unexpected(kCorruptData);
-    return {grabValueOf(link)};
+    return {dto::CaptureDetails{
+        uuid, us::utils::datetime::TimePointTz(row.createdAt.GetUnderlying()), row.link,
+        std::string(storageUrl->view())
+    }};
 }
 
 Expected<std::optional<dto::CaptureJob>, errors::CrudError> Crud::findCaptureJob(Uuid uuid)

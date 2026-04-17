@@ -13,11 +13,14 @@
 
 namespace v1 {
 
-class [[nodiscard]] UiRedirectHandler final : public server::handlers::HttpHandlerBase {
-public:
-    static constexpr std::string_view kName = "ui_redirect";
+class Config;
+class Crud;
 
-    explicit UiRedirectHandler(
+class [[nodiscard]] UiReplayHandler final : public server::handlers::HttpHandlerBase {
+public:
+    static constexpr std::string_view kName = "ui_replay";
+
+    explicit UiReplayHandler(
         const us::components::ComponentConfig &config,
         const us::components::ComponentContext &context
     );
@@ -30,6 +33,8 @@ public:
     ) const final;
 
 private:
+    Crud &crud;
+    const Config &config;
     const i64 requestTimeoutMs;
 };
 

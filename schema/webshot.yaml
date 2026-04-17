@@ -301,7 +301,7 @@ paths:
   /v1/capture/{uuid}:
     get:
       operationId: getCaptureByUuid
-      summary: Redirect to stored WACZ by UUID
+      summary: Get capture metadata by UUID
       parameters:
         - in: path
           name: uuid
@@ -312,14 +312,12 @@ paths:
             format: uuid
           example: 123e4567-e89b-12d3-a456-426614174000
       responses:
-        '302':
-          description: Found; Location header points to the stored WACZ.
-          headers:
-            Location:
-              description: Canonical storage URL of the WACZ file.
+        '200':
+          description: Capture found; metadata and anonymous-read storage URL returned.
+          content:
+            application/json:
               schema:
-                type: string
-                format: uri
+                $ref: '#/components/schemas/CaptureDetails'
         '400':
           description: Bad request (missing or invalid UUID path parameter).
           content:
@@ -525,6 +523,29 @@ components:
             $ref: '#/components/schemas/UuidWithTimeLink'
         next_page_token:
           type: string
+    CaptureDetails:
+      type: object
+      additionalProperties: false
+      required: [uuid, created_at, link, storage_url]
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        link:
+          type: string
+          description: Normalized scheme-less link
+        storage_url:
+          type: string
+          format: uri
+          description: Anonymous-read URL of the stored WACZ.
+      example:
+        uuid: 123e4567-e89b-12d3-a456-426614174000
+        created_at: 2025-11-11T12:34:56+00:00
+        link: example.com/a
+        storage_url: https://storage.yandexcloud.net/webshot/123e4567-e89b-12d3-a456-426614174000
     PaginationPrefixCursor:
       type: object
       additionalProperties: false

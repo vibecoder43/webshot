@@ -236,6 +236,7 @@ def service_config_path_temp(
     config_vars["openapi_dir"] = str(service_source_dir.parent / "schema" / "public_openapi")
     config_vars["openapi_admin_dir"] = str(service_source_dir.parent / "schema" / "admin_openapi")
     config_vars["web_ui_dir"] = str(service_binary.parent.parent / "web_ui")
+    config_vars["web_ui_vendor_dir"] = str(service_binary.parent.parent / "web_ui" / "vendor")
     config_vars["state_dir"] = str(state_dir)
 
     components = config_yaml["components_manager"]["components"]

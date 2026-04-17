@@ -116,24 +116,35 @@
         url = "https://registry.npmjs.org/nunjucks/-/nunjucks-${nunjucksVersion}.tgz";
         hash = "sha512-26XRV6BhkgK0VOxfbU5cQI+ICFUtMLixv1noZn1tGU38kQH5A5nmmbk/O45xdyBhD1esk47nKrY0mvQpZIhRjQ==";
       };
+
+      replaywebpageVersion = "2.4.4";
+      replaywebpageSrc = nix.fetchurl {
+        url = "https://registry.npmjs.org/replaywebpage/-/replaywebpage-${replaywebpageVersion}.tgz";
+        hash = "sha512-LgkOOO4Mrvdq77Ly7nzMZKxAlESGKJkwb919Mq8b35TyqQJiZo3fs35QYiwZLCFGj4w41BVM/SlfseJusCwspQ==";
+      };
     in ''
       set -euo pipefail
-      mkdir -p "$out"
+      mkdir -p "$out" "$out/replaywebpage"
 
       tmp=$(mktemp -d)
-      mkdir -p "$tmp/htmx" "$tmp/json_enc" "$tmp/cst" "$tmp/rt" "$tmp/nunjucks"
+      mkdir -p "$tmp/htmx" "$tmp/json_enc" "$tmp/cst" "$tmp/rt" "$tmp/nunjucks" "$tmp/replaywebpage"
 
       tar -xzf "${htmxSrc}" -C "$tmp/htmx"
       tar -xzf "${jsonEncSrc}" -C "$tmp/json_enc"
       tar -xzf "${clientSideTemplatesSrc}" -C "$tmp/cst"
       tar -xzf "${responseTargetsSrc}" -C "$tmp/rt"
       tar -xzf "${nunjucksSrc}" -C "$tmp/nunjucks"
+      tar -xzf "${replaywebpageSrc}" -C "$tmp/replaywebpage"
 
       cp "$tmp/htmx/package/dist/htmx.min.js" "$out/htmx.min.js"
       cp "$tmp/json_enc/package/dist/json-enc.min.js" "$out/json-enc.min.js"
       cp "$tmp/cst/package/dist/client-side-templates.min.js" "$out/client-side-templates.min.js"
       cp "$tmp/rt/package/dist/response-targets.min.js" "$out/response-targets.min.js"
       cp "$tmp/nunjucks/package/browser/nunjucks.min.js" "$out/nunjucks.min.js"
+      cp "$tmp/replaywebpage/package/ui.js" "$out/replaywebpage/ui.js"
+      cp "$tmp/replaywebpage/package/sw.js" "$out/replaywebpage/sw.js"
+
+      ${nix.perl}/bin/perl -0pi -e 's@let f=function\(t\)\{const e=\["\\.warc","\\.warc\\.gz","\\.cdx","\\.cdxj","\\.har","\\.json","\\.wacz"\];for\(const r of e\)if\(t\.endsWith\(r\)\)return r;if\(t\.endsWith\("\\.wacz\\.zip"\)\)return"\\.wacz"\}\(n\.sourceName\);@let f="wacz"===n.extraConfig?.sourceType?".wacz":function(t){const e=[".warc",".warc.gz",".cdx",".cdxj",".har",".json",".wacz"];for(const r of e)if(t.endsWith(r))return r;if(t.endsWith(".wacz.zip"))return".wacz"}(n.sourceName);@' "$out/replaywebpage/sw.js"
 
       # Optional source maps reduce noisy devtools warnings when serving the UI locally.
       for f in \

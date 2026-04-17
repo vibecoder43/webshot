@@ -34,7 +34,6 @@ async def test_list_captures_orders_by_created_at(
                 f"{TEST_HOST}/a",
                 prefix_key,
                 prefix_tree,
-                f"http://{TEST_HOST}/{newer_id}",
                 DUMMY_SHA256,
             ),
         )
@@ -45,7 +44,6 @@ async def test_list_captures_orders_by_created_at(
                 f"{TEST_HOST}/a",
                 prefix_key,
                 prefix_tree,
-                f"http://{TEST_HOST}/{older_id}",
                 DUMMY_SHA256,
             ),
         )
@@ -82,7 +80,6 @@ async def test_list_captures_prefix_sees_inserted_links(
                 f"{TEST_HOST}/prefix/a",
                 prefix_key_a,
                 prefix_tree_a,
-                f"http://{TEST_HOST}/prefix/a",
                 DUMMY_SHA256,
             ),
         )
@@ -95,7 +92,6 @@ async def test_list_captures_prefix_sees_inserted_links(
                 f"{TEST_HOST}/prefix/b",
                 prefix_key_b,
                 prefix_tree_b,
-                f"http://{TEST_HOST}/prefix/b",
                 DUMMY_SHA256,
             ),
         )
@@ -136,7 +132,6 @@ async def test_list_captures_paged_two_pages(
                     f"{TEST_HOST}/a",
                     prefix_key,
                     prefix_tree,
-                    f"http://{TEST_HOST}/{capture_id}",
                     DUMMY_SHA256,
                 ),
             )

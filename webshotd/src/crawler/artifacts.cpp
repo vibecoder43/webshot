@@ -489,9 +489,7 @@ std::string buildPagesJsonl(const CapturedExchange &exchange)
 {
     dto::BrowsertrixPageEntry entry;
     entry.id = std::string(exchange.pageId.view());
-    entry.url = std::string(
-        (exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view()
-    );
+    entry.url = std::string(exchange.finalUrl.view());
     entry.title = exchange.title ? std::string(exchange.title->view())
                                  : extractHtmlTitle(exchange.body);
     entry.loadState = exchange.statusCode >= 200_i64 && exchange.statusCode < 400_i64 ? 2 : 0;

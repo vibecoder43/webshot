@@ -35,7 +35,7 @@ set(WEBSHOT_RAPIDOC_ASSETS_DIR
 set(WEBSHOT_WEB_UI_VENDOR_DIR
     ""
     CACHE STRING
-          "Absolute path to pinned web UI vendor assets (htmx + extensions)")
+          "Absolute path to pinned web UI vendor assets")
 set(WEBSHOT_RUNTIME_EXTRA_PATH
     ""
     CACHE STRING
@@ -75,7 +75,7 @@ set(${PROJECT_NAME}_headers
     include/disallow_and_purge_handler.hpp
     include/denylist_check_handler.hpp
     include/docs_handler.hpp
-    include/ui_redirect_handler.hpp
+    include/ui_replay_handler.hpp
     include/crud.hpp
 	include/crawler/runner.hpp
 	include/crawler/artifacts.hpp
@@ -93,6 +93,7 @@ set(${PROJECT_NAME}_headers
     include/ip_utils.hpp
     include/denylist.hpp
     include/link.hpp
+    include/uuid_utils.hpp
     include/url.hpp
     include/cursor.hpp
     include/pagination.hpp
@@ -109,7 +110,7 @@ add_library(
   src/disallow_and_purge_handler.cpp
   src/denylist_check_handler.cpp
   src/docs_handler.cpp
-  src/ui_redirect_handler.cpp
+  src/ui_replay_handler.cpp
   src/crud.cpp
   src/metrics.cpp
   src/url.cpp

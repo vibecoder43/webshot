@@ -153,35 +153,60 @@
       "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
       "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
     ];
+
+  mkConfigureArgv = {
+    buildDir,
+    variant,
+    fresh,
+  }:
+    ["cmake"]
+    ++ lib.optional fresh "--fresh"
+    ++ ["-B" buildDir]
+    ++ [
+      "-S"
+      "./webshotd"
+      "-G"
+      "Ninja"
+      "-DCMAKE_CXX_COMPILER=clang++"
+      "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+      "-DCMAKE_INSTALL_PREFIX=${buildDir}/runtime_root"
+    ]
+    ++ mkCommonFlags {
+      userverDir = "${drv.userverDbg}/lib/cmake/userver";
+      pythonPath = "${drv.userverPy}/bin/python3";
+    }
+    ++ mkVariantFlags variant
+    ++ [
+      "-DUSERVER_FEATURE_TESTSUITE=ON"
+      "-DUSERVER_TESTSUITE_USE_VENV=OFF"
+      "-DUSERVER_SQL_USE_VENV=OFF"
+      "-DUSERVER_CHAOTIC_USE_VENV=OFF"
+      "-DTESTSUITE_PYTHON_BINARY=${drv.userverPy}/bin/python3"
+      "-Wno-dev"
+    ];
 in {
   inherit drv nix paths sets srcs toolchain variants;
   treefmtExcludes = treefmtExcludes;
 
-  mkConfigure = buildDir: clangdFile: variant: ''
-    ${lib.escapeShellArgs (["cmake" "-B" buildDir]
-      ++ [
-        "-S"
-        "./webshotd"
-        "-G"
-        "Ninja"
-        "-DCMAKE_CXX_COMPILER=clang++"
-        "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
-        "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-        "-DCMAKE_INSTALL_PREFIX=${buildDir}/runtime_root"
-      ]
-      ++ mkCommonFlags {
-        userverDir = "${drv.userverDbg}/lib/cmake/userver";
-        pythonPath = "${drv.userverPy}/bin/python3";
-      }
-      ++ mkVariantFlags variant
-      ++ [
-        "-DUSERVER_FEATURE_TESTSUITE=ON"
-        "-DUSERVER_TESTSUITE_USE_VENV=OFF"
-        "-DUSERVER_SQL_USE_VENV=OFF"
-        "-DUSERVER_CHAOTIC_USE_VENV=OFF"
-        "-DTESTSUITE_PYTHON_BINARY=${drv.userverPy}/bin/python3"
-        "-Wno-dev"
-      ])}
+  mkConfigureFingerprint = {
+    buildDir,
+    variant,
+  }:
+    builtins.hashString "sha256" (builtins.toJSON (mkConfigureArgv {
+      inherit buildDir variant;
+      fresh = false;
+    }));
+
+  mkConfigure = {
+    buildDir,
+    clangdFile,
+    variant,
+    fresh,
+  }: ''
+    ${lib.escapeShellArgs (mkConfigureArgv {
+      inherit buildDir variant fresh;
+    })}
     ln -sf "${clangdFile}" .clangd
   '';
 

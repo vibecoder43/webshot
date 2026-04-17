@@ -60,8 +60,9 @@ public:
     /** @brief Acquire per-IP cooldown for an HTTP CRUD operation. */
     [[nodiscard]] Expected<std::optional<ClientIpCooldown>, errors::CrudError>
     acquireClientIpCooldown(String clientIp);
-    /** @brief Look up a capture by id. */
-    [[nodiscard]] Expected<std::optional<Link>, errors::CrudError> findCapture(Uuid uuid);
+    /** @brief Look up capture metadata by id. */
+    [[nodiscard]] Expected<std::optional<dto::CaptureDetails>, errors::CrudError>
+    findCapture(Uuid uuid);
 
     /** @brief Look up a capture job by id. */
     [[nodiscard]] Expected<std::optional<dto::CaptureJob>, errors::CrudError>

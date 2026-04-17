@@ -181,11 +181,14 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
     normalized_link = job["result"]["link"]
     _assert_missing_job_fields(job, "error")
 
-    # Resolve by id (redirect)
+    # Resolve by id
     resp = await service_client.get(f"/v1/capture/{uuid_str}", allow_redirects=False)
-    assert resp.status == 302
-    loc = resp.headers.get("Location", "")
-    assert loc.endswith(uuid_str)
+    assert resp.status == 200
+    capture = resp.json()
+    assert capture["uuid"] == uuid_str
+    assert capture["link"] == normalized_link
+    assert capture["storage_url"].endswith(uuid_str)
+    assert "Location" not in resp.headers
 
     # List by exact link
     resp = await service_client.get("/v1/capture", params={"link": normalized_link})
@@ -206,13 +209,12 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
     db = pgsql["capture_meta_db"]
     with db.cursor() as cur:
         cur.execute(
-            "select location, prefix_key from capture where id = %s",
+            "select prefix_key from capture where id = %s",
             (uuid.UUID(uuid_str),),
         )
         row = cur.fetchone()
     assert row is not None
-    location, prefix_key = row
-    assert location.endswith(uuid_str)
+    (prefix_key,) = row
     assert prefix_key == prefix_key_from_link(normalized_link)
 
     wacz = await _download_wacz_from_s3(service_secdist_path, uuid_str)
@@ -297,11 +299,11 @@ async def test_capture_fails_on_proxy_denied_seed(service_client, pgsql):
 
     job = await wait_for_job_status(service_client, job_id, expected_status="failed")
 
-    db = pgsql["capture_meta_db"]
     assert "started_at" in job
     assert "finished_at" in job
     _assert_missing_job_fields(job, "result", "result_created_at")
     assert job["error"]["error"]["message"] == "capture failed"
+    db = pgsql["capture_meta_db"]
     with db.cursor() as cur:
         cur.execute("select 1 from capture where id = %s", (uuid.UUID(job_id),))
         assert cur.fetchone() is None
@@ -563,7 +565,7 @@ async def test_https_first_falls_back_to_http_and_fails_when_http_fails(service_
 
 @pytest.mark.asyncio
 async def test_capture_downgrades_untrusted_https_certificate_to_http(
-    service_client, pgsql, service_secdist_path
+    service_client, service_secdist_path
 ):
     https_link = f"https://{UNTRUSTED_TEST_HOST}/"
     http_link = f"http://{UNTRUSTED_TEST_HOST}/"
@@ -574,17 +576,13 @@ async def test_capture_downgrades_untrusted_https_certificate_to_http(
 
     job = await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    db = pgsql["capture_meta_db"]
     assert "started_at" in job
     assert "finished_at" in job
     assert "result_created_at" in job
     assert job["result"]["uuid"] == job_id
-    with db.cursor() as cur:
-        cur.execute("select location from capture where id = %s", (uuid.UUID(job_id),))
-        row = cur.fetchone()
-    assert row is not None
-    (location,) = row
-    assert location.endswith(job_id)
+    resp = await service_client.get(f"/v1/capture/{job_id}")
+    assert resp.status == 200
+    assert resp.json()["storage_url"].endswith(job_id)
 
     wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
     http_statuses = _wacz_cdxj_statuses_for_root_url(wacz, http_link)

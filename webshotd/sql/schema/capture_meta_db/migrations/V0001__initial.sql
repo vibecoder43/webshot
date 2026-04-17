@@ -6,7 +6,6 @@ create table capture (
     link text collate "C" not null,
     prefix_key text collate "C" not null,
     prefix_tree ltree not null,
-    location text not null,
     content_sha256 bytea not null,
     constraint capture_content_sha256_len check (octet_length(content_sha256) = 32)
 );
