@@ -43,6 +43,6 @@
     ++ [drv.seaweedfs];
 
   userverLibs = drv.userverLibs;
-  userver = userverLibs ++ [drv.userverPy];
+  userver = userverLibs ++ [drv.repoPy];
   testLibs = userver ++ [nix.libarchive nix.stdenv.cc.cc];
 }

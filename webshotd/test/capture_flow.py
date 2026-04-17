@@ -159,8 +159,18 @@ async def _download_wacz_from_s3(service_secdist_path, object_name: str) -> byte
     return await asyncio.to_thread(_get)
 
 
+@pytest.fixture
+def download_wacz(service_secdist_path, wacz_validator):
+    async def _download(object_name: str) -> bytes:
+        wacz = await _download_wacz_from_s3(service_secdist_path, object_name)
+        await wacz_validator.validate_bytes(wacz, object_name=object_name)
+        return wacz
+
+    return _download
+
+
 @pytest.mark.asyncio
-async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdist_path):
+async def test_capture_and_query_roundtrip(service_client, pgsql, download_wacz):
     link = f"https://{TEST_HOST}/webshot-capture-path"
 
     # Create capture
@@ -217,7 +227,7 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, service_secdis
     (prefix_key,) = row
     assert prefix_key == prefix_key_from_link(normalized_link)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, uuid_str)
+    wacz = await download_wacz(uuid_str)
     entries = _wacz_entries(wacz)
     assert set(entries) == {
         "archive/data.warc.gz",
@@ -310,7 +320,7 @@ async def test_capture_fails_on_proxy_denied_seed(service_client, pgsql):
 
 
 @pytest.mark.asyncio
-async def test_capture_depth_fetches_additional_resources(service_client, service_secdist_path):
+async def test_capture_depth_fetches_additional_resources(service_client, download_wacz):
     link = f"https://{TEST_HOST}/with-subresource"
 
     resp = await service_client.post("/v1/capture", json={"link": link})
@@ -319,7 +329,7 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/with-subresource")
     assert 200 in seed_statuses
 
@@ -331,7 +341,7 @@ async def test_capture_depth_fetches_additional_resources(service_client, servic
 
 
 @pytest.mark.asyncio
-async def test_capture_near_archive_limit_success(service_client, service_secdist_path):
+async def test_capture_near_archive_limit_success(service_client, download_wacz):
     limit_mib = 8
     payload_mib = limit_mib - 3
     mib = 1024 * 1024
@@ -355,7 +365,7 @@ async def test_capture_near_archive_limit_success(service_client, service_secdis
         link = f"https://{TEST_HOST}/near-archive-limit?token={token}"
         job_id, _job = await _capture_and_wait(service_client, link, timeout=40.0)
 
-        wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+        wacz = await download_wacz(job_id)
         assert len(wacz) >= payload_mib * mib
         assert len(wacz) < limit_mib * mib
     finally:
@@ -363,11 +373,11 @@ async def test_capture_near_archive_limit_success(service_client, service_secdis
 
 
 @pytest.mark.asyncio
-async def test_capture_records_main_document_redirect_in_wacz(service_client, service_secdist_path):
+async def test_capture_records_main_document_redirect_in_wacz(service_client, download_wacz):
     link = f"https://{TEST_HOST}/redirect-seed"
     job_id, _job = await _capture_and_wait(service_client, link)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     redirect_statuses = _wacz_cdxj_statuses_for_url(wacz, link)
     assert 302 in redirect_statuses
 
@@ -385,11 +395,11 @@ async def test_capture_records_main_document_redirect_in_wacz(service_client, se
 
 
 @pytest.mark.asyncio
-async def test_capture_preserves_post_subresource_requests(service_client, service_secdist_path):
+async def test_capture_preserves_post_subresource_requests(service_client, download_wacz):
     link = f"https://{TEST_HOST}/with-post-subresource"
     job_id, _job = await _capture_and_wait(service_client, link)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     submit_url = f"https://{TEST_HOST}/submit?source=page"
     submit_statuses = _wacz_cdxj_statuses_for_url(wacz, submit_url)
     assert 200 in submit_statuses
@@ -400,11 +410,11 @@ async def test_capture_preserves_post_subresource_requests(service_client, servi
 
 
 @pytest.mark.asyncio
-async def test_capture_preserves_head_subresource_requests(service_client, service_secdist_path):
+async def test_capture_preserves_head_subresource_requests(service_client, download_wacz):
     link = f"https://{TEST_HOST}/with-head-subresource"
     job_id, _job = await _capture_and_wait(service_client, link)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     metadata_url = f"https://{TEST_HOST}/metadata?source=page"
     metadata_statuses = _wacz_cdxj_statuses_for_url(wacz, metadata_url)
     assert 200 in metadata_statuses
@@ -415,11 +425,11 @@ async def test_capture_preserves_head_subresource_requests(service_client, servi
 
 
 @pytest.mark.asyncio
-async def test_capture_preserves_redirected_subresource_hops(service_client, service_secdist_path):
+async def test_capture_preserves_redirected_subresource_hops(service_client, download_wacz):
     link = f"https://{TEST_HOST}/with-redirected-asset"
     job_id, _job = await _capture_and_wait(service_client, link)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     redirect_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/redirect-script.js")
     assert 302 in redirect_statuses
 
@@ -434,9 +444,7 @@ async def test_capture_preserves_redirected_subresource_hops(service_client, ser
 
 
 @pytest.mark.asyncio
-async def test_denylist_blocks_subresource_fetch(
-    service_client, monitor_client, service_secdist_path
-):
+async def test_denylist_blocks_subresource_fetch(service_client, monitor_client, download_wacz):
     deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
         params={"host": f"https://{TEST_HOST}/denylist/style.css"},
@@ -450,7 +458,7 @@ async def test_denylist_blocks_subresource_fetch(
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
         wacz, f"https://{TEST_HOST}/with-subresource-denylist"
     )
@@ -466,7 +474,7 @@ async def test_denylist_blocks_subresource_fetch(
 
 
 @pytest.mark.asyncio
-async def test_capture_fetches_https_subresource_assets(service_client, service_secdist_path):
+async def test_capture_fetches_https_subresource_assets(service_client, download_wacz):
     link = f"https://{TEST_HOST}/with-https-asset-subresource"
 
     resp = await service_client.post("/v1/capture", json={"link": link})
@@ -475,7 +483,7 @@ async def test_capture_fetches_https_subresource_assets(service_client, service_
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
         wacz, f"https://{TEST_HOST}/with-https-asset-subresource"
     )
@@ -490,7 +498,7 @@ async def test_capture_fetches_https_subresource_assets(service_client, service_
 
 @pytest.mark.asyncio
 async def test_denylist_blocks_https_subresource_fetch(
-    service_client, monitor_client, service_secdist_path
+    service_client, monitor_client, download_wacz
 ):
     deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
@@ -505,7 +513,7 @@ async def test_denylist_blocks_https_subresource_fetch(
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(
         wacz, f"https://{TEST_HOST}/with-https-asset-subresource-denylist"
     )
@@ -521,7 +529,7 @@ async def test_denylist_blocks_https_subresource_fetch(
 
 
 @pytest.mark.asyncio
-async def test_https_first_succeeds_when_http_fails(service_client, service_secdist_path):
+async def test_https_first_succeeds_when_http_fails(service_client, download_wacz):
     link = f"http://{TEST_HOST}/https-first-http-fails"
 
     resp = await service_client.post("/v1/capture", json={"link": link})
@@ -530,15 +538,13 @@ async def test_https_first_succeeds_when_http_fails(service_client, service_secd
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/https-first-http-fails")
     assert 200 in seed_statuses
 
 
 @pytest.mark.asyncio
-async def test_https_first_falls_back_to_http_when_https_no_response(
-    service_client, service_secdist_path
-):
+async def test_https_first_falls_back_to_http_when_https_no_response(service_client, download_wacz):
     link = f"http://{TEST_HOST}/http-fallback-success"
 
     resp = await service_client.post("/v1/capture", json={"link": link})
@@ -547,7 +553,7 @@ async def test_https_first_falls_back_to_http_when_https_no_response(
 
     await wait_for_job_status(service_client, job_id, expected_status="succeeded")
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     seed_statuses = _wacz_cdxj_statuses_for_root_url(wacz, link)
     assert 200 in seed_statuses
 
@@ -565,7 +571,7 @@ async def test_https_first_falls_back_to_http_and_fails_when_http_fails(service_
 
 @pytest.mark.asyncio
 async def test_capture_downgrades_untrusted_https_certificate_to_http(
-    service_client, service_secdist_path
+    service_client, download_wacz
 ):
     https_link = f"https://{UNTRUSTED_TEST_HOST}/"
     http_link = f"http://{UNTRUSTED_TEST_HOST}/"
@@ -584,13 +590,17 @@ async def test_capture_downgrades_untrusted_https_certificate_to_http(
     assert resp.status == 200
     assert resp.json()["storage_url"].endswith(job_id)
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, job_id)
+    wacz = await download_wacz(job_id)
     http_statuses = _wacz_cdxj_statuses_for_root_url(wacz, http_link)
     https_statuses = _wacz_cdxj_statuses_for_root_url(wacz, https_link)
     assert 200 in http_statuses
     assert 200 not in https_statuses
 
     entries = _wacz_entries(wacz)
+    pages_lines = entries["pages/pages.jsonl"].decode("utf-8").splitlines()
+    assert len(pages_lines) == 2
+    seed_page = json.loads(pages_lines[1])
+    assert seed_page["url"] == "http://untrusted.test-target/"
     stdout_log = entries["logs/stdout.log"].decode("utf-8")
     assert "seed_url=http://untrusted.test-target" in stdout_log
     assert "final_url=http://untrusted.test-target/" in stdout_log
@@ -602,7 +612,7 @@ async def test_capture_downgrades_untrusted_https_certificate_to_http(
 
 
 @pytest.mark.asyncio
-async def test_sequential_captures_do_not_reuse_browser_state(service_client, service_secdist_path):
+async def test_sequential_captures_do_not_reuse_browser_state(service_client, download_wacz):
     first_job_id, _first_job = await _capture_and_wait(
         service_client, f"https://{TEST_HOST}/state-write"
     )
@@ -612,7 +622,7 @@ async def test_sequential_captures_do_not_reuse_browser_state(service_client, se
 
     assert first_job_id != second_job_id
 
-    wacz = await _download_wacz_from_s3(service_secdist_path, second_job_id)
+    wacz = await download_wacz(second_job_id)
     archive_text = _wacz_archive_text(wacz)
     assert "seen=first" not in archive_text
     assert '"localStorage":"first"' not in archive_text

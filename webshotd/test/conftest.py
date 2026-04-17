@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 import pytest
 import yaml
+from helper.wacz_validator import ReplayWaczValidator
 from pytest_userver import chaos
 from testsuite.databases.pgsql import discover
 
@@ -194,6 +195,12 @@ def service_env(service_source_dir: pathlib.Path):
     return {
         "LSAN_OPTIONS": f"suppressions={service_source_dir}/lsan.supp",
     }
+
+
+@pytest.fixture(scope="session")
+async def wacz_validator(service_binary: pathlib.Path):
+    async with ReplayWaczValidator(service_binary) as validator:
+        yield validator
 
 
 @pytest.fixture(scope="session")

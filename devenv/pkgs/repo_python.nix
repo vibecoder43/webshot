@@ -32,38 +32,22 @@
 
     doCheck = false;
   });
-
-  userverBuildPython = python.withPackages (_: [
-    # Upstream userver helper requirements:
-    # scripts/chaotic/requirements.txt
+in
+  python.withPackages (_: [
+    # Repo build and test helpers still need the userver generator deps.
     pyPkgs.jinja2
     pyPkgs.pyyaml
     pyPkgs.pydantic
     transliterate
-  ]);
-in {
-  inherit userverBuildPython;
-  userverLibs = with pkgs; [
-    python
-    openssl
-    jemalloc
-    zlib
-    boost183
-    libbacktrace
-    zstd
-    yaml-cpp
-    cryptopp
-    fmt
-    cctz
-    re2
-    abseil-cpp
-    gbenchmark
-    gtest
-    libev
-    libpq
-    curl
-    c-ares
-    nghttp2
-    pugixml
-  ];
-}
+
+    # Repo-enabled local tests and helper flows.
+    pyPkgs.minio
+    pyPkgs.playwright
+    pyPkgs.py
+    pyPkgs.psycopg2
+    pyPkgs.pytest
+    pyPkgs.requests
+    # userver testsuite currently requires websockets < 13.
+    websocketsCompatible
+    pyPkgs.zstd
+  ])

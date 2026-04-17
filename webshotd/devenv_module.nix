@@ -15,7 +15,7 @@ in {
     ctx.sets.buildNative
     ++ ctx.sets.runtime
     ++ [
-      ctx.drv.userverPy
+      ctx.drv.repoPy
       ctx.toolchain.cc
       ctx.nix.llvmPackages_22.llvm
       ctx.nix.llvmPackages_22.clang-tools
@@ -41,8 +41,8 @@ in {
     ctx.nix.cryptopp.dev
   ];
 
-  env.USERVER_PYTHON = "${ctx.drv.userverPy}/bin/python3";
-  env.USERVER_PYTHON_PATH = "${ctx.drv.userverPy}/bin/python3";
+  env.USERVER_PYTHON = "${ctx.drv.repoPy}/bin/python3";
+  env.USERVER_PYTHON_PATH = "${ctx.drv.repoPy}/bin/python3";
   env.USERVER_DIR = "${ctx.drv.userverDbg}/lib/cmake/userver";
 
   # Expose the yandex-taxi-testsuite Python package so pytest_userver

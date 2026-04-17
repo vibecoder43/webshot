@@ -18,10 +18,14 @@
   userverDeps = callPkg ./pkgs/userver/deps.nix {
     python = nix.python3;
   };
-  inherit (userverDeps) userverHelperPython userverLibs;
+  inherit (userverDeps) userverBuildPython userverLibs;
+
+  repoPython = callPkg ./pkgs/repo_python.nix {
+    python = nix.python3;
+  };
 
   userverPkgs = callSrcPkg ./pkgs/userver.nix "userver" {
-    inherit toolchain userverHelperPython userverLibs;
+    inherit toolchain userverBuildPython userverLibs;
   };
   pgmigrate = callSrcPkg ./pkgs/pgmigrate.nix "pgmigrate" {};
   testsuite = callSrcPkg ./pkgs/testsuite.nix "testsuite" {
@@ -179,9 +183,9 @@ in {
   '';
   testsuite = testsuite;
   unialgo = unialgo;
-  inherit userverHelperPython userverLibs;
+  inherit userverBuildPython userverLibs;
   userver = userverPkgs.userver-release;
   userverDbg = userverPkgs.userver-debug-addr-ub;
-  userverPy = userverHelperPython;
+  repoPy = repoPython;
   webUi = webUi;
 }

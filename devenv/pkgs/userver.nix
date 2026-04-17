@@ -2,7 +2,7 @@
   pkgs,
   src,
   toolchain,
-  userverHelperPython,
+  userverBuildPython,
   userverLibs,
 }: let
   baseCmakeFlags = [
@@ -59,16 +59,16 @@
         ])
         ++ [toolchain.cc];
 
-      buildInputs = userverLibs ++ [userverHelperPython];
+      buildInputs = userverLibs ++ [userverBuildPython];
 
       cmakeFlags =
         baseCmakeFlags
         ++ [
           "-DUSERVER_INSTALL=ON"
           "-DUSERVER_CHAOTIC_USE_VENV=OFF"
-          "-DUSERVER_CHAOTIC_PYTHON_BINARY=${userverHelperPython}/bin/python3"
+          "-DUSERVER_CHAOTIC_PYTHON_BINARY=${userverBuildPython}/bin/python3"
           "-DUSERVER_SQL_USE_VENV=OFF"
-          "-DUSERVER_SQL_PYTHON_BINARY=${userverHelperPython}/bin/python3"
+          "-DUSERVER_SQL_PYTHON_BINARY=${userverBuildPython}/bin/python3"
           "-DIconv_IS_BUILT_IN=ON"
           "-DCMAKE_BUILD_TYPE=${buildType}"
           "-DOPENSSL_ROOT_DIR=${pkgs.openssl.dev}"

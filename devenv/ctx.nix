@@ -147,7 +147,7 @@
     ]
     ++ mkCommonFlags {
       userverDir = "${userver}/lib/cmake/userver";
-      pythonPath = "${drv.userverPy}/bin/python3";
+      pythonPath = "${drv.repoPy}/bin/python3";
     }
     ++ [
       "-DCMAKE_CXX_COMPILER=${toolchain.cc}/bin/clang++"
@@ -174,7 +174,7 @@
     ]
     ++ mkCommonFlags {
       userverDir = "${drv.userverDbg}/lib/cmake/userver";
-      pythonPath = "${drv.userverPy}/bin/python3";
+      pythonPath = "${drv.repoPy}/bin/python3";
     }
     ++ mkVariantFlags variant
     ++ [
@@ -182,7 +182,7 @@
       "-DUSERVER_TESTSUITE_USE_VENV=OFF"
       "-DUSERVER_SQL_USE_VENV=OFF"
       "-DUSERVER_CHAOTIC_USE_VENV=OFF"
-      "-DTESTSUITE_PYTHON_BINARY=${drv.userverPy}/bin/python3"
+      "-DTESTSUITE_PYTHON_BINARY=${drv.repoPy}/bin/python3"
       "-Wno-dev"
     ];
 in {
