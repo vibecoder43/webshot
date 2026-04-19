@@ -1,6 +1,7 @@
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
+#include "uuid_utils.hpp"
+
 #include <boost/uuid/uuid_io.hpp>
 
 #include <format>
@@ -9,8 +10,10 @@
 
 namespace std {
 
-template <> struct formatter<boost::uuids::uuid, char> : formatter<std::string_view, char> {
-    auto format(const boost::uuids::uuid &value, format_context &ctx) const
+using v1::uuidu::Uuid;
+
+template <> struct formatter<Uuid, char> : formatter<std::string_view, char> {
+    auto format(const Uuid &value, format_context &ctx) const
     {
         const auto text = boost::uuids::to_string(value);
         return formatter<std::string_view, char>::format(text, ctx);

@@ -10,6 +10,7 @@
 #include "s3/s3_v4_client.hpp"
 #include "text.hpp"
 
+using namespace std::chrono_literals;
 using v1::s3v4::AccessKeyId;
 using v1::s3v4::S3Credentials;
 using v1::s3v4::S3V4Client;
@@ -24,7 +25,7 @@ S3V4Config makeConfig()
     auto cfg = S3V4Config{};
     cfg.endpoint = "https://examplebucket.s3.amazonaws.com"_t;
     cfg.region = "us-east-1"_t;
-    cfg.timeout = std::chrono::milliseconds{1000};
+    cfg.timeout = 1000ms;
     cfg.virtualHosted = false;
     return cfg;
 }
@@ -53,7 +54,7 @@ int main(int argc, char **argv)
             auto client = std::make_shared<S3V4Client>(
                 *httpClient, makeConfig(), makeCreds(), String{}
             );
-            const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds{60};
+            const auto expiresAt = userver::utils::datetime::Now() + 60s;
             static_cast<void>(
                 client->GenerateDownloadUrlVirtualHostAddressing("obj", expiresAt, "https")
             );

@@ -66,6 +66,11 @@ constexpr std::array kLocalFixtureHosts = {
 };
 constexpr auto kLocalHttpPort = 18080_u16;
 constexpr auto kLocalHttpsPort = 18443_u16;
+constexpr std::string_view kHttpScheme = "http://";
+constexpr std::string_view kSlashPath = "/";
+constexpr std::string_view kUnsupportedRequestTarget = "unsupported request target";
+constexpr std::string_view kMissingHostHeader = "missing Host header";
+constexpr std::string_view kInvalidHostHeader = "invalid Host header";
 constexpr std::string_view kConnectEstablishedResponse =
     "HTTP/1.1 200 Connection Established\r\n\r\n";
 constexpr std::string_view kProxyAuthRequiredResponse =
@@ -421,31 +426,31 @@ struct [[nodiscard]] HttpRequestTarget final {
 [[nodiscard]] Expected<HttpRequestTarget, std::string_view>
 parseHttpRequestTarget(const ParsedRequest &req)
 {
-    if (req.target.starts_with("http://")) {
-        auto rest = req.target.substr(std::string_view{"http://"}.size());
+    if (req.target.starts_with(kHttpScheme)) {
+        auto rest = req.target.substr(kHttpScheme.size());
         const auto slash = rest.find('/');
         const auto authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
         const auto parsedAuthority = parseAuthority(authority, 80_u16, PortMode::kOptional);
         if (!parsedAuthority)
-            return std::unexpected(std::string_view{"unsupported request target"});
+            return std::unexpected(kUnsupportedRequestTarget);
 
         return HttpRequestTarget{
             .host = parsedAuthority->host,
             .port = parsedAuthority->port,
-            .path = slash == std::string_view::npos ? std::string_view{"/"} : rest.substr(slash),
+            .path = slash == std::string_view::npos ? kSlashPath : rest.substr(slash),
         };
     }
 
     if (!req.target.starts_with('/'))
-        return std::unexpected(std::string_view{"unsupported request target"});
+        return std::unexpected(kUnsupportedRequestTarget);
 
     const auto hostHeader = findHeaderValue(req.headers, "host");
     if (!hostHeader)
-        return std::unexpected(std::string_view{"missing Host header"});
+        return std::unexpected(kMissingHostHeader);
 
     const auto parsedHost = parseAuthority(*hostHeader, 0_u16, PortMode::kOptional);
     if (!parsedHost)
-        return std::unexpected(std::string_view{"invalid Host header"});
+        return std::unexpected(kInvalidHostHeader);
 
     return HttpRequestTarget{
         .host = parsedHost->host,

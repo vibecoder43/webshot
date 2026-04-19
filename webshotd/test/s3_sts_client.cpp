@@ -7,6 +7,7 @@
 #include "s3/s3_sts_client.hpp"
 #include "text.hpp"
 
+using namespace std::chrono_literals;
 using v1::StsCredentials;
 using namespace text::literals;
 
@@ -85,7 +86,7 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     std::string capturedUrl;
     std::string capturedBody;
     userver::clients::http::Headers capturedHeaders;
-    std::chrono::milliseconds capturedTimeout{0};
+    auto capturedTimeout = 0ms;
 
     v1::detail::StsExecutor exec = [&](const String &url, const String &body,
                                        const userver::clients::http::Headers &headers,
@@ -101,8 +102,8 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     const auto parsed = v1::detail::fetchStsWithExecutor(
         exec, String::fromBytes(endpoint).expect(), v1::s3v4::AccessKeyId{"AKIA_STATIC"_t},
         v1::s3v4::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
-        "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t,
-        std::chrono::seconds{900}, std::chrono::milliseconds{1500}
+        "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t, 900s,
+        1500ms
     );
     ASSERT_TRUE(parsed);
     const auto &creds = *parsed;
@@ -116,7 +117,7 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     EXPECT_NE(capturedHeaders.find(amzDateKey), capturedHeaders.end());
     EXPECT_EQ(capturedHeaders.at(contentTypeKey), "application/x-www-form-urlencoded");
     EXPECT_EQ(capturedHeaders.at(hostKey), std::string("sts.example.com"));
-    EXPECT_EQ(capturedTimeout, std::chrono::milliseconds{1500});
+    EXPECT_EQ(capturedTimeout, 1500ms);
 
     EXPECT_NE(capturedBody.find("Action=AssumeRole"), std::string::npos);
     EXPECT_NE(capturedBody.find("Version=2011-06-15"), std::string::npos);

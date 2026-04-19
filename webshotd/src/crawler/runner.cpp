@@ -2,7 +2,6 @@
 
 #include "config.hpp"
 #include "crawler/artifacts.hpp"
-#include "crawler/browser_sandbox.hpp"
 #include "crawler/browser_session.hpp"
 #include "crawler/cdp_client.hpp"
 #include "crawler/egress_proxy.hpp"

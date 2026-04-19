@@ -30,13 +30,14 @@
 
 using namespace v1;
 using namespace text::literals;
+using namespace std::chrono_literals;
 
 DisallowAndPurgeHandler::DisallowAndPurgeHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : HttpHandlerBase(config, context), crud(context.FindComponent<Crud>()),
       config(context.FindComponent<Config>()),
-      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>()))
+      requestTimeout(config["request-timeout-ms"].As<int64_t>() * 1ms)
 {
 }
 
@@ -61,8 +62,7 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    const auto handlerTimeout = std::chrono::milliseconds{requestTimeoutMs};
-    auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
+    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
     eng::current_task::SetDeadline(finalDeadline);
 
     const std::string arg = request.GetArg("host");

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "integers.hpp"
-
 #include <chrono>
 
 namespace v1::s3refresh {
@@ -13,12 +11,14 @@ namespace v1::s3refresh {
  */
 [[nodiscard]] inline std::chrono::seconds computeRefreshDelay(
     std::chrono::system_clock::time_point now, std::chrono::system_clock::time_point expiresAt,
-    i64 marginSec
+    std::chrono::seconds margin
 )
 {
-    auto delay = expiresAt - now - std::chrono::seconds{marginSec};
-    if (delay < std::chrono::seconds(0))
-        return std::chrono::seconds(0);
+    using namespace std::chrono_literals;
+
+    auto delay = expiresAt - now - margin;
+    if (delay < 0s)
+        return 0s;
     return std::chrono::duration_cast<std::chrono::seconds>(delay);
 }
 

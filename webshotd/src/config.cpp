@@ -11,6 +11,8 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 
 namespace v1 {
+using namespace std::chrono_literals;
+
 Config::Config(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
@@ -30,7 +32,7 @@ Config::Config(
       s3EndpointUrl(String::fromBytes(config["s3_endpoint"].As<std::string>()).expect()),
       s3RegionName(String::fromBytes(config["s3_region"].As<std::string>()).expect()),
       publicBaseUrlValue(String::fromBytes(config["public_base_url"].As<std::string>()).expect()),
-      s3TimeoutDuration(std::chrono::milliseconds(config["s3_timeout_ms"].As<int>()))
+      s3TimeoutDuration(config["s3_timeout_ms"].As<int>() * 1ms)
 {
     UINVARIANT(!stateDirValue.empty(), "state_dir must not be empty");
     UINVARIANT(

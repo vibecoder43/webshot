@@ -3,6 +3,7 @@
 #include "integers.hpp"
 #include "userver_namespaces.hpp"
 
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -44,6 +45,6 @@ private:
     const Config &config;
     Denylist &denylist;
     Metrics &metrics;
-    const i64 requestTimeoutMs;
+    const std::chrono::milliseconds requestTimeout;
 };
 } // namespace v1

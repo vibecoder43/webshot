@@ -3,6 +3,7 @@
 #include "integers.hpp"
 #include "userver_namespaces.hpp"
 
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -35,7 +36,7 @@ public:
 private:
     Crud &crud;
     const Config &config;
-    const i64 requestTimeoutMs;
+    const std::chrono::milliseconds requestTimeout;
 };
 
 } // namespace v1

@@ -87,6 +87,7 @@ namespace chrono = std::chrono;
 namespace sql = webshot::sql;
 using namespace v1;
 using namespace text::literals;
+using namespace std::chrono_literals;
 using Uuid = boost::uuids::uuid;
 using chrono::system_clock;
 
@@ -350,33 +351,33 @@ public:
     const i64 pageMax;
     const i64 perLinkMax;
     const i64 linksPerPageMax;
-    const i64 crawlerRunTimeoutSec;
+    const chrono::seconds crawlerRunTimeout;
     const i64 crawlerCpuCores;
     const i64 crawlerMemoryGib;
-    const i64 crawlerJobOverheadTimeoutSec;
-    const i64 crawlerPostLoadDelaySec;
-    const i64 crawlerNetIdleWaitSec;
-    const i64 crawlerPageExtraDelaySec;
-    const i64 crawlerBehaviorTimeoutSec;
-    const i64 crawlerDevtoolsStartupTimeoutSec;
-    const i64 crawlerCdpHandshakeTimeoutSec;
-    const i64 crawlerCdpCommandTimeoutSec;
+    const chrono::seconds crawlerJobOverheadTimeout;
+    const chrono::seconds crawlerPostLoadDelay;
+    const chrono::seconds crawlerNetIdleWait;
+    const chrono::seconds crawlerPageExtraDelay;
+    const chrono::seconds crawlerBehaviorTimeout;
+    const chrono::seconds crawlerDevtoolsStartupTimeout;
+    const chrono::seconds crawlerCdpHandshakeTimeout;
+    const chrono::seconds crawlerCdpCommandTimeout;
     const i64 crawlerSizeLimitMiB;
     const i64 crawlerNetworkDownBytesRatioMax;
     const bool crawlerLocalFixtureRewrite;
-    const i64 crawlerDevtoolsPollIntervalMs;
-    const i64 crawlerBrowserStopTimeoutMs;
-    const i64 crawlerProxyStopTimeoutMs;
-    const i64 linkCooldownSec;
-    const i64 ipCooldownMs;
-    const i64 crawlJobRetentionSec;
-    const i64 crawlJobCleanupIntervalSec;
+    const chrono::milliseconds crawlerDevtoolsPollInterval;
+    const chrono::milliseconds crawlerBrowserStopTimeout;
+    const chrono::milliseconds crawlerProxyStopTimeout;
+    const chrono::seconds linkCooldown;
+    const chrono::milliseconds ipCooldown;
+    const chrono::seconds crawlJobRetention;
+    const chrono::seconds crawlJobCleanupInterval;
     const bool s3UseSts;
     const String s3CredentialsEndpoint;
-    const i64 s3CredentialsDurationSec;
-    const i64 s3CredentialsRefreshMarginSec;
-    const i64 s3CredentialsRefreshRetrySec;
-    const i64 purgeJobTimeoutSec;
+    const chrono::seconds s3CredentialsDuration;
+    const chrono::seconds s3CredentialsRefreshMargin;
+    const chrono::seconds s3CredentialsRefreshRetry;
+    const chrono::seconds purgeJobTimeout;
     const i64 purgeDeleteBatchSize;
     const Config &svcCfg;
     Metrics &metrics;
@@ -437,39 +438,39 @@ public:
         : pageMax(cfg["snapshots_page_max"].As<int64_t>()),
           perLinkMax(cfg["snapshots_per_link_max"].As<int64_t>()),
           linksPerPageMax(cfg["snapshots_links_per_page_max"].As<int64_t>()),
-          crawlerRunTimeoutSec(cfg["crawler_run_timeout_sec"].As<int64_t>()),
+          crawlerRunTimeout(cfg["crawler_run_timeout_sec"].As<int64_t>() * 1s),
           crawlerCpuCores(cfg["crawler_cpu_cores"].As<int64_t>()),
           crawlerMemoryGib(cfg["crawler_memory_gib"].As<int64_t>()),
-          crawlerJobOverheadTimeoutSec(cfg["crawler_job_overhead_timeout_sec"].As<int64_t>()),
-          crawlerPostLoadDelaySec(cfg["crawler_post_load_delay_sec"].As<int64_t>()),
-          crawlerNetIdleWaitSec(cfg["crawler_net_idle_wait_sec"].As<int64_t>()),
-          crawlerPageExtraDelaySec(cfg["crawler_page_extra_delay_sec"].As<int64_t>()),
-          crawlerBehaviorTimeoutSec(cfg["crawler_behavior_timeout_sec"].As<int64_t>()),
-          crawlerDevtoolsStartupTimeoutSec(
-              cfg["crawler_devtools_startup_timeout_sec"].As<int64_t>()
+          crawlerJobOverheadTimeout(cfg["crawler_job_overhead_timeout_sec"].As<int64_t>() * 1s),
+          crawlerPostLoadDelay(cfg["crawler_post_load_delay_sec"].As<int64_t>() * 1s),
+          crawlerNetIdleWait(cfg["crawler_net_idle_wait_sec"].As<int64_t>() * 1s),
+          crawlerPageExtraDelay(cfg["crawler_page_extra_delay_sec"].As<int64_t>() * 1s),
+          crawlerBehaviorTimeout(cfg["crawler_behavior_timeout_sec"].As<int64_t>() * 1s),
+          crawlerDevtoolsStartupTimeout(
+              cfg["crawler_devtools_startup_timeout_sec"].As<int64_t>() * 1s
           ),
-          crawlerCdpHandshakeTimeoutSec(cfg["crawler_cdp_handshake_timeout_sec"].As<int64_t>()),
-          crawlerCdpCommandTimeoutSec(cfg["crawler_cdp_command_timeout_sec"].As<int64_t>()),
+          crawlerCdpHandshakeTimeout(cfg["crawler_cdp_handshake_timeout_sec"].As<int64_t>() * 1s),
+          crawlerCdpCommandTimeout(cfg["crawler_cdp_command_timeout_sec"].As<int64_t>() * 1s),
           crawlerSizeLimitMiB(cfg["crawler_size_limit_mib"].As<int64_t>()),
           crawlerNetworkDownBytesRatioMax(
               cfg["crawler_network_down_bytes_ratio_max"].As<int64_t>()
           ),
           crawlerLocalFixtureRewrite(cfg["crawler_local_fixture_rewrite"].As<bool>()),
-          crawlerDevtoolsPollIntervalMs(cfg["crawler_devtools_poll_interval_ms"].As<int64_t>()),
-          crawlerBrowserStopTimeoutMs(cfg["crawler_browser_stop_timeout_ms"].As<int64_t>()),
-          crawlerProxyStopTimeoutMs(cfg["crawler_proxy_stop_timeout_ms"].As<int64_t>()),
-          linkCooldownSec(cfg["link_cooldown_sec"].As<int64_t>()),
-          ipCooldownMs(cfg["ip_cooldown_ms"].As<int64_t>()),
-          crawlJobRetentionSec(cfg["crawl_job_retention_sec"].As<int64_t>()),
-          crawlJobCleanupIntervalSec(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>()),
+          crawlerDevtoolsPollInterval(cfg["crawler_devtools_poll_interval_ms"].As<int64_t>() * 1ms),
+          crawlerBrowserStopTimeout(cfg["crawler_browser_stop_timeout_ms"].As<int64_t>() * 1ms),
+          crawlerProxyStopTimeout(cfg["crawler_proxy_stop_timeout_ms"].As<int64_t>() * 1ms),
+          linkCooldown(cfg["link_cooldown_sec"].As<int64_t>() * 1s),
+          ipCooldown(cfg["ip_cooldown_ms"].As<int64_t>() * 1ms),
+          crawlJobRetention(cfg["crawl_job_retention_sec"].As<int64_t>() * 1s),
+          crawlJobCleanupInterval(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>() * 1s),
           s3UseSts(cfg["s3_use_sts"].As<bool>()),
           s3CredentialsEndpoint(
               String::fromBytes(cfg["s3_credentials_endpoint"].As<std::string>()).expect()
           ),
-          s3CredentialsDurationSec(cfg["s3_credentials_duration_sec"].As<int64_t>()),
-          s3CredentialsRefreshMarginSec(cfg["s3_credentials_refresh_margin_sec"].As<int64_t>()),
-          s3CredentialsRefreshRetrySec(cfg["s3_credentials_refresh_retry_sec"].As<int64_t>()),
-          purgeJobTimeoutSec(cfg["purge_job_timeout_sec"].As<int64_t>()),
+          s3CredentialsDuration(cfg["s3_credentials_duration_sec"].As<int64_t>() * 1s),
+          s3CredentialsRefreshMargin(cfg["s3_credentials_refresh_margin_sec"].As<int64_t>() * 1s),
+          s3CredentialsRefreshRetry(cfg["s3_credentials_refresh_retry_sec"].As<int64_t>() * 1s),
+          purgeJobTimeout(cfg["purge_job_timeout_sec"].As<int64_t>() * 1s),
           purgeDeleteBatchSize(cfg["purge_delete_batch_size"].As<int64_t>()),
           svcCfg(ctx.FindComponent<Config>()), metrics(ctx.FindComponent<Metrics>()),
           cluster(ctx.FindComponent<us::components::Postgres>("capture_meta_db").GetCluster()),
@@ -481,23 +482,23 @@ public:
           processStarter(ctx.FindComponent<us::components::ProcessStarter>().Get()),
           denylist(ctx.FindComponent<Denylist>()),
           crawlerRunner(
-              denylist, svcCfg, dnsResolver, processStarter, chrono::seconds{crawlerRunTimeoutSec},
+              denylist, svcCfg, dnsResolver, processStarter, crawlerRunTimeout,
               std::string(svcCfg.stateDir()),
               computeCrawlerLimits(crawlerCpuCores, crawlerMemoryGib),
               crawlerSizeLimitMiB * 1024_i64 * 1024_i64,
               crawler::CaptureTimings{
-                  chrono::seconds{crawlerPostLoadDelaySec},
-                  chrono::seconds{crawlerNetIdleWaitSec},
-                  chrono::seconds{crawlerPageExtraDelaySec},
-                  chrono::seconds{crawlerBehaviorTimeoutSec},
+                  crawlerPostLoadDelay,
+                  crawlerNetIdleWait,
+                  crawlerPageExtraDelay,
+                  crawlerBehaviorTimeout,
               },
               crawler::CrawlerTunables{
-                  chrono::seconds{crawlerDevtoolsStartupTimeoutSec},
-                  chrono::seconds{crawlerCdpHandshakeTimeoutSec},
-                  chrono::seconds{crawlerCdpCommandTimeoutSec},
-                  chrono::milliseconds{crawlerDevtoolsPollIntervalMs},
-                  chrono::milliseconds{crawlerBrowserStopTimeoutMs},
-                  chrono::milliseconds{crawlerProxyStopTimeoutMs},
+                  crawlerDevtoolsStartupTimeout,
+                  crawlerCdpHandshakeTimeout,
+                  crawlerCdpCommandTimeout,
+                  crawlerDevtoolsPollInterval,
+                  crawlerBrowserStopTimeout,
+                  crawlerProxyStopTimeout,
                   crawlerLocalFixtureRewrite,
               },
               crawlerNetworkDownBytesRatioMax
@@ -509,18 +510,18 @@ public:
           s3RefreshTask(), crawlJobCleanupTask(), purgeBackground(purgeTaskProcessor),
           crawlBackground(mainTaskProcessor)
     {
-        const auto fixedTimingBudgetSec = crawlerPostLoadDelaySec + crawlerNetIdleWaitSec +
-                                          crawlerPageExtraDelaySec + crawlerBehaviorTimeoutSec;
+        const auto fixedTimingBudget = crawlerPostLoadDelay + crawlerNetIdleWait +
+                                       crawlerPageExtraDelay + crawlerBehaviorTimeout;
         UINVARIANT(
-            fixedTimingBudgetSec <= crawlerRunTimeoutSec,
+            fixedTimingBudget <= crawlerRunTimeout,
             "crawler fixed timing budget must be <= crawler_run_timeout_sec"
         );
         UINVARIANT(
-            crawlJobRetentionSec >= linkCooldownSec,
+            crawlJobRetention >= linkCooldown,
             "crawl_job_retention_sec must be >= link_cooldown_sec"
         );
         UINVARIANT(
-            s3CredentialsDurationSec > s3CredentialsRefreshMarginSec,
+            s3CredentialsDuration > s3CredentialsRefreshMargin,
             "s3_credentials_duration_sec must be greater than s3_credentials_refresh_margin_sec"
         );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
@@ -638,11 +639,9 @@ Crud::Impl::runCrawlJob(Uuid id, Link link)
 {
     using enum errors::CrawlError;
 
-    const auto totalCrawlTimeLimitSec = crawlerJobOverheadTimeoutSec +
-                                        crawlerRunTimeoutSec * kCrawlerSeedAttemptsMax;
-    engine::current_task::SetDeadline(
-        engine::Deadline::FromDuration(chrono::seconds{totalCrawlTimeLimitSec})
-    );
+    const auto totalCrawlTimeLimit = crawlerJobOverheadTimeout +
+                                     crawlerRunTimeout * kCrawlerSeedAttemptsMax;
+    engine::current_task::SetDeadline(engine::Deadline::FromDuration(totalCrawlTimeLimit));
 
     std::shared_lock<engine::CancellableSemaphore> slotLock(crawlSlots);
 
@@ -689,7 +688,7 @@ Expected<us::utils::datetime::TimePointTz, PgError> Crud::Impl::insertJob(Uuid i
 Expected<std::optional<ClientIpCooldown>, PgError>
 Crud::Impl::acquireClientIpCooldownLocked(const String &clientIp)
 {
-    if (ipCooldownMs == 0)
+    if (ipCooldown == 0ms)
         return {};
 
     try {
@@ -709,10 +708,7 @@ Crud::Impl::acquireClientIpCooldownLocked(const String &clientIp)
             }
         }
 
-        trx.Execute(
-            sql::kUpsertClientIpCooldown, clientIp,
-            pg::TimePointTz(now + chrono::milliseconds{ipCooldownMs})
-        );
+        trx.Execute(sql::kUpsertClientIpCooldown, clientIp, pg::TimePointTz(now + ipCooldown));
         trx.Commit();
         return {};
     } catch (const pg::Error &e) {
@@ -743,7 +739,7 @@ Expected<chrono::milliseconds, PgError> Crud::Impl::markJobSucceeded(
     );
     if (!row)
         return std::unexpected(std::move(row).error());
-    return chrono::milliseconds{row->durationMs};
+    return row->durationMs * 1ms;
 }
 
 Expected<chrono::milliseconds, PgError>
@@ -759,7 +755,7 @@ Crud::Impl::markJobFailed(Uuid id, const String &errorCategory, const String &er
     );
     if (!row)
         return std::unexpected(std::move(row).error());
-    return chrono::milliseconds{row->durationMs};
+    return row->durationMs * 1ms;
 }
 
 Expected<std::optional<dto::CaptureJob>, PgError> Crud::Impl::loadJob(Uuid id)
@@ -790,8 +786,8 @@ Crud::Impl::S3ClientState Crud::Impl::fetchS3ClientStateFromSts()
 
     const auto sts = fetchStsCredentials(
         httpClient, s3CredentialsEndpoint, staticAccessKeyId, staticSecretAccessKey,
-        svcCfg.s3Region(), kRoleArnDescription, sessionName, policyJson,
-        chrono::seconds{s3CredentialsDurationSec}, svcCfg.s3Timeout()
+        svcCfg.s3Region(), kRoleArnDescription, sessionName, policyJson, s3CredentialsDuration,
+        svcCfg.s3Timeout()
     );
     if (!sts) {
         metrics.accountError(Metrics::Error::kStsRefresh);
@@ -832,18 +828,18 @@ Crud::Impl::getOrCreateCaptureJobLocked(const String &normalizedLink)
 
     try {
         auto trx = sharedCluster->Begin(pg::ClusterHostType::kMaster, pg::Transaction::RW);
-        if (linkCooldownSec > 0_i64) {
+        if (linkCooldown > 0s) {
             trx.Execute(sql::kLockCrawlJobLink, text::format("link:{}", normalizedLink));
         }
 
-        if (linkCooldownSec > 0_i64) {
+        if (linkCooldown > 0s) {
             auto latestJobRowOpt = trx.Execute(sql::kSelectLatestCrawlJobByLink, normalizedLink)
                                        .template AsOptionalSingleRow<CaptureJobRow>(pg::kRowTag);
             if (latestJobRowOpt) {
                 auto job = makeCaptureJob(grabValueOf(std::move(latestJobRowOpt)));
                 const auto now = us::utils::datetime::Now();
                 const auto lastCreated = job.created_at.GetTimePoint();
-                const auto deadline = lastCreated + chrono::seconds{linkCooldownSec};
+                const auto deadline = lastCreated + linkCooldown;
                 if (now < deadline) {
                     trx.Commit();
                     return CreateCaptureJobResult{.job = std::move(job), .created = false};
@@ -874,11 +870,11 @@ void Crud::Impl::startS3RefreshTask()
     auto snapshot = s3State.Read();
     const auto now = us::utils::datetime::Now();
     auto delay = s3refresh::computeRefreshDelay(
-        now, snapshot->expiresAt, s3CredentialsRefreshMarginSec
+        now, snapshot->expiresAt, s3CredentialsRefreshMargin
     );
 
     us::utils::PeriodicTask::Settings settings(
-        chrono::duration_cast<chrono::milliseconds>(delay), chrono::milliseconds(0)
+        chrono::duration_cast<chrono::milliseconds>(delay), 0ms
     );
     settings.task_processor = &credsRefreshTaskProcessor;
 
@@ -898,11 +894,11 @@ void Crud::Impl::refreshS3CredentialsTask()
 
             const auto now = us::utils::datetime::Now();
             auto nextDelay = s3refresh::computeRefreshDelay(
-                now, newState.expiresAt, s3CredentialsRefreshMarginSec
+                now, newState.expiresAt, s3CredentialsRefreshMargin
             );
 
             us::utils::PeriodicTask::Settings settings(
-                chrono::duration_cast<chrono::milliseconds>(nextDelay), chrono::milliseconds(0)
+                chrono::duration_cast<chrono::milliseconds>(nextDelay), 0ms
             );
             settings.task_processor = &credsRefreshTaskProcessor;
             s3RefreshTask.SetSettings(settings);
@@ -910,17 +906,15 @@ void Crud::Impl::refreshS3CredentialsTask()
         } catch (const us::utils::TracefulException &e) {
             metrics.accountError(Metrics::Error::kStsRefresh);
             LOG_ERROR() << std::format("Failed to refresh S3 credentials from STS: {}", e.what());
-            engine::SleepFor(chrono::seconds{s3CredentialsRefreshRetrySec});
+            engine::SleepFor(s3CredentialsRefreshRetry);
         }
     }
 }
 
 void Crud::Impl::startCrawlJobCleanupTask()
 {
-    auto interval = chrono::duration_cast<chrono::milliseconds>(
-        chrono::seconds{crawlJobCleanupIntervalSec}
-    );
-    us::utils::PeriodicTask::Settings settings(interval, chrono::milliseconds(0));
+    const auto interval = crawlJobCleanupInterval;
+    us::utils::PeriodicTask::Settings settings(interval, 0ms);
     settings.task_processor = &purgeTaskProcessor;
 
     crawlJobCleanupTask.Start("crawl_job_cleanup", settings, [this]() { cleanupOldJobs(); });
@@ -929,7 +923,7 @@ void Crud::Impl::startCrawlJobCleanupTask()
 void Crud::Impl::cleanupOldJobs()
 {
     const auto now = us::utils::datetime::Now();
-    const auto cutoff = now - chrono::seconds{crawlJobRetentionSec};
+    const auto cutoff = now - crawlJobRetention;
     const auto deleted = sharedReadwrite(
         [](auto &) {}, sql::kDeleteCrawlJobsExpired, pg::TimePointTz(cutoff)
     );
@@ -953,7 +947,7 @@ CrawlerRunArtifacts Crud::Impl::runCrawlerAttempt(const String &seedUrl)
 {
     LOG_INFO() << std::format(
         "Submitting crawl for {} to embedded crawler with timeout={}s", seedUrl,
-        crawlerRunTimeoutSec
+        crawlerRunTimeout.count()
     );
 
     const auto run = crawlerRunner.run(seedUrl);
@@ -1270,7 +1264,7 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::createCaptureJob(Link li
     dto::CaptureJob job;
     Uuid id;
 
-    if (implPtr->linkCooldownSec > 0_i64) {
+    if (implPtr->linkCooldown > 0s) {
         auto decision = implPtr->getOrCreateCaptureJobLocked(normalizedLink);
         if (!decision) {
             LOG_ERROR() << std::format(
@@ -1657,7 +1651,7 @@ Expected<void, DenylistError> Crud::disallowAndPurgePrefix(String prefixKey) noe
     impl->purgeBackground.AsyncDetach("purge_prefix_lambda", [implPtr = impl.get(), prefixKey]() {
         try {
             engine::current_task::SetDeadline(
-                engine::Deadline::FromDuration(chrono::seconds{implPtr->purgeJobTimeoutSec})
+                engine::Deadline::FromDuration(implPtr->purgeJobTimeout)
             );
             LOG_INFO() << std::format("Starting purge for denylisted prefix: {}", prefixKey);
             auto purged = implPtr->purgePrefix(prefixKey);

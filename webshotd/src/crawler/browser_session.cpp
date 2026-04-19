@@ -1,6 +1,5 @@
 #include "crawler/browser_session.hpp"
 
-#include "crawler/browser_sandbox.hpp"
 #include "crawler/cdp_client.hpp"
 #include "crawler/egress_proxy.hpp"
 #include "crawler/failure.hpp"
@@ -35,6 +34,7 @@
 #include <absl/strings/ascii.h>
 
 namespace chrono = std::chrono;
+using namespace std::chrono_literals;
 
 using namespace text::literals;
 
@@ -150,6 +150,43 @@ copyFileContents(const std::string &sourcePath, const std::string &destinationPa
         destinationPath, us::fs::blocking::ReadFileContents(sourcePath)
     );
     return {};
+}
+
+[[nodiscard]] std::vector<std::string>
+buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
+{
+    return {
+        "--headless=new",
+        "--ozone-platform=headless",
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+        "--disable-vulkan",
+        "--disable-dev-shm-usage",
+        "--disable-background-networking",
+        "--disable-breakpad",
+        "--disable-crash-reporter",
+        "--disable-quic",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--mute-audio",
+        "--hide-scrollbars",
+        "--no-sandbox",
+        "--no-zygote",
+        "--use-gl=swiftshader",
+        "--disable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+        std::format("--user-data-dir={}", userDataDir),
+        std::format("--log-net-log={}", netlogPath),
+        "--net-log-capture-mode=IncludeSensitive",
+        std::format("--proxy-server=http://127.0.0.1:{}", kProxyListenPort),
+        "--proxy-bypass-list=<-loopback>",
+        "--remote-debugging-address=127.0.0.1",
+        std::format("--remote-debugging-port={}", kDevtoolsPort),
+        "--window-size=1600,900",
+        "--enable-logging=stderr",
+        "--log-level=0",
+        "about:blank",
+    };
 }
 
 struct [[nodiscard]] BrowserPaths final {
@@ -423,7 +460,7 @@ template <typename Process> void stopProcess(Process &process, chrono::milliseco
     if (!process)
         return;
 
-    if (!process->WaitFor(chrono::milliseconds(0))) {
+    if (!process->WaitFor(0ms)) {
         process->SendSignal(SIGTERM);
         if (!process->WaitFor(timeout)) {
             process->SendSignal(SIGKILL);
@@ -547,7 +584,7 @@ struct BrowserSession::Impl final {
         );
         appendDiagnosticField(
             diagnostics, "browser_process_running"_t,
-            process && !process->WaitFor(chrono::milliseconds(0)) ? "true"_t : "false"_t
+            process && !process->WaitFor(0ms) ? "true"_t : "false"_t
         );
         appendDiagnosticField(
             diagnostics, "cdp_socket_exists"_t,
@@ -597,7 +634,7 @@ struct BrowserSession::Impl final {
             sawCdpSocket = sawCdpSocket || us::fs::blocking::FileExists(paths.cdpSocketPath);
             sawWebsocketPath = sawWebsocketPath ||
                                us::fs::blocking::FileExists(paths.websocketPathFilePath);
-            if (process && process->WaitFor(chrono::milliseconds(0))) {
+            if (process && process->WaitFor(0ms)) {
                 return std::unexpected(
                     text::format(
                         "chromium exited before exposing devtools ({})", currentLaunchLogs()
@@ -609,7 +646,7 @@ struct BrowserSession::Impl final {
                 return grabValueOf(websocketPathFromFile);
             us::engine::SleepFor(config.devtoolsPollInterval);
         }
-        if (process && process->WaitFor(chrono::milliseconds(0))) {
+        if (process && process->WaitFor(0ms)) {
             return std::unexpected(
                 text::format("chromium exited before exposing devtools ({})", currentLaunchLogs())
             );

@@ -13,12 +13,13 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 
 namespace v1 {
+using namespace std::chrono_literals;
 
 DocsHandler::DocsHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
     : HttpHandlerBase(config, context),
-      requestTimeoutMs(i64(config["request-timeout-ms"].As<int64_t>())),
+      requestTimeout(config["request-timeout-ms"].As<int64_t>() * 1ms),
       title(config["title"].As<std::string>()), specUrl(config["spec-url"].As<std::string>())
 {
 }
@@ -47,8 +48,7 @@ std::string DocsHandler::HandleRequestThrow(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
-    const auto handlerTimeout = std::chrono::milliseconds{requestTimeoutMs};
-    auto finalDeadline = computeHandlerDeadline(request, handlerTimeout);
+    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
     eng::current_task::SetDeadline(finalDeadline);
 
     auto &response = request.GetHttpResponse();

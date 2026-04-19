@@ -3,6 +3,7 @@
 #include "integers.hpp"
 #include "userver_namespaces.hpp"
 
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -30,7 +31,7 @@ public:
     ) const final;
 
 private:
-    const i64 requestTimeoutMs;
+    const std::chrono::milliseconds requestTimeout;
     const std::string title;
     const std::string specUrl;
 };

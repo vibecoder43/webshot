@@ -6,22 +6,22 @@
 #include "s3_refresh_utils.hpp"
 #include "userver_namespaces.hpp"
 
-using std::chrono::seconds;
 using std::chrono::system_clock;
 using v1::s3refresh::computeRefreshDelay;
+using namespace std::chrono_literals;
 
 UTEST(S3RefreshSchedule, FutureExpirationRespectsMargin)
 {
     const auto now = datetime::Now();
-    const auto expiresAt = now + seconds(600);
-    const auto delay = computeRefreshDelay(now, expiresAt, 120);
-    EXPECT_EQ(delay, seconds(480));
+    const auto expiresAt = now + 600s;
+    const auto delay = computeRefreshDelay(now, expiresAt, 120s);
+    EXPECT_EQ(delay, 480s);
 }
 
 UTEST(S3RefreshSchedule, PastOrNearExpirationClampsToZero)
 {
     const auto now = datetime::Now();
-    const auto expiresAt = now + seconds(30);
-    const auto delay = computeRefreshDelay(now, expiresAt, 60);
-    EXPECT_EQ(delay, seconds(0));
+    const auto expiresAt = now + 30s;
+    const auto delay = computeRefreshDelay(now, expiresAt, 60s);
+    EXPECT_EQ(delay, 0s);
 }

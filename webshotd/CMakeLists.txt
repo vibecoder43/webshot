@@ -81,7 +81,6 @@ set(${PROJECT_NAME}_headers
 	include/crawler/runner.hpp
 	include/crawler/artifacts.hpp
 	include/crawler/browser_session.hpp
-	include/crawler/browser_sandbox.hpp
 	include/crawler/limits.hpp
 	include/crawler/launch_policy.hpp
 	include/crawler/cdp_client.hpp
@@ -120,7 +119,6 @@ add_library(
   src/crawler/runner.cpp
   src/crawler/artifacts.cpp
   src/crawler/browser_session.cpp
-  src/crawler/browser_sandbox.cpp
   src/crawler/cdp_client.cpp
   src/crawler/egress_proxy.cpp
   src/crawler/failure.cpp

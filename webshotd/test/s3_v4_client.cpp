@@ -13,6 +13,7 @@
 #include "s3/sigv4_signer.hpp"
 #include "text.hpp"
 
+using namespace std::chrono_literals;
 using v1::s3v4::AccessKeyId;
 using v1::s3v4::buildCanonicalRequest;
 using v1::s3v4::CanonicalRequestParts;
@@ -138,7 +139,7 @@ S3V4Config makeConfig()
     S3V4Config cfg;
     cfg.endpoint = "https://examplebucket.s3.amazonaws.com"_t;
     cfg.region = "us-east-1"_t;
-    cfg.timeout = std::chrono::milliseconds(1000);
+    cfg.timeout = 1000ms;
     cfg.virtualHosted = false;
     return cfg;
 }
@@ -160,8 +161,10 @@ UTEST(S3SigV4Client, PresignPathStyleClampsShortTtl)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "examplebucket"_t);
 
-    const std::time_t expired = std::time(nullptr) - 3600;
-    const std::string url = client->GenerateDownloadUrl("test.txt", expired, true);
+    const auto expired = userver::utils::datetime::Now() - 1h;
+    const std::string url = client->GenerateDownloadUrl(
+        "test.txt", std::chrono::system_clock::to_time_t(expired), true
+    );
 
     const auto params = parseQuery(url);
     auto it = params.find("X-Amz-Expires");
@@ -176,10 +179,10 @@ UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "examplebucket"_t);
 
-    constexpr std::time_t kTwoWeeksSeconds = std::time_t{14} * std::time_t{24} * std::time_t{60} *
-                                             std::time_t{60};
-    const std::time_t farFuture = std::time(nullptr) + kTwoWeeksSeconds;
-    const std::string url = client->GenerateDownloadUrl("test.txt", farFuture, true);
+    const auto farFuture = userver::utils::datetime::Now() + 14 * 24h;
+    const std::string url = client->GenerateDownloadUrl(
+        "test.txt", std::chrono::system_clock::to_time_t(farFuture), true
+    );
 
     const auto params = parseQuery(url);
     auto it = params.find("X-Amz-Expires");
@@ -194,8 +197,10 @@ UTEST(S3SigV4Client, PresignPathStyleEncodesObjectKey)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "examplebucket"_t);
 
-    const std::time_t soon = std::time(nullptr) + 120;
-    const std::string url = client->GenerateDownloadUrl("folder/file with space.txt", soon, true);
+    const auto soon = userver::utils::datetime::Now() + 120s;
+    const std::string url = client->GenerateDownloadUrl(
+        "folder/file with space.txt", std::chrono::system_clock::to_time_t(soon), true
+    );
 
     const auto schemePos = url.find("://");
     ASSERT_NE(schemePos, std::string::npos);
@@ -227,7 +232,7 @@ UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "bucket-name"_t);
 
-    const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds(60);
+    const auto expiresAt = userver::utils::datetime::Now() + 60s;
     const std::string url = client->GenerateDownloadUrlVirtualHostAddressing(
         "path/object", expiresAt, "https"
     );
@@ -249,7 +254,7 @@ UTEST(S3SigV4Client, UnsupportedOperationsThrow)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "bucket-name"_t);
 
-    userver::s3api::ConnectionCfg newCfg{std::chrono::milliseconds{50}};
+    userver::s3api::ConnectionCfg newCfg{50ms};
     EXPECT_NO_THROW(client->UpdateConfig(std::move(newCfg)));
     EXPECT_EQ(client->GetBucketName(), std::string_view{"bucket-name"});
 }
@@ -262,7 +267,7 @@ UTEST(S3SigV4Client, UploadPresignIncludesContentType)
     auto creds = makeCreds();
     auto client = std::make_shared<S3V4Client>(*httpClient, cfg, creds, "bucket-name"_t);
 
-    const auto expiresAt = userver::utils::datetime::Now() + std::chrono::seconds(120);
+    const auto expiresAt = userver::utils::datetime::Now() + 120s;
     const std::string url = client->GenerateUploadUrlVirtualHostAddressing(
         "ignored-body", "text/plain", "path/file.txt", expiresAt, "http"
     );

@@ -32,6 +32,7 @@ namespace s3 = userver::s3api;
 using namespace text::literals;
 
 namespace v1::s3v4 {
+using namespace std::chrono_literals;
 
 namespace detail {
 
@@ -300,9 +301,9 @@ std::chrono::seconds S3V4Client::computePresignTtl(
 {
     auto ttl = std::chrono::duration_cast<std::chrono::seconds>(expiresAt - now);
     if (ttl.count() <= 0)
-        ttl = std::chrono::seconds(1);
+        ttl = 1s;
     if (ttl.count() > 604800)
-        ttl = std::chrono::seconds(604800);
+        ttl = 604800s;
     return ttl;
 }
 
