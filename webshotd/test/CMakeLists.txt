@@ -1,7 +1,6 @@
 function(_add_cpp_test_target target)
-  cmake_parse_arguments(
-    ARGS "WITH_UTEST;REGISTER_CTEST;ENABLE_COVERAGE" "" "SOURCES;LIBS;INCLUDE_DIRS"
-    ${ARGN})
+  cmake_parse_arguments(ARGS "WITH_UTEST;REGISTER_CTEST;ENABLE_COVERAGE" ""
+                        "SOURCES;LIBS;INCLUDE_DIRS" ${ARGN})
 
   set(linkLibs ada::ada uni-algo::uni-algo absl::strings ${ARGS_LIBS})
   if(ARGS_WITH_UTEST)
@@ -34,8 +33,8 @@ function(_add_cpp_test_target target)
 endfunction()
 
 function(add_cpp_test target)
-  _add_cpp_test_target(
-    ${target} WITH_UTEST REGISTER_CTEST ENABLE_COVERAGE ${ARGN})
+  _add_cpp_test_target(${target} WITH_UTEST REGISTER_CTEST ENABLE_COVERAGE
+                       ${ARGN})
   set_property(GLOBAL APPEND PROPERTY WEBSHOT_CPP_TESTS ${target})
 endfunction()
 
@@ -43,9 +42,8 @@ function(add_cpp_helper target)
   _add_cpp_test_target(${target} ${ARGN})
 endfunction()
 
-add_cpp_test(
-  link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
-  ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/url.cpp)
+add_cpp_test(link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
+             ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/url.cpp)
 
 add_cpp_test(
   s3_v4_client_test
@@ -78,15 +76,14 @@ add_cpp_test(
   INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src)
 
-add_cpp_test(
-  cursor_test SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/cursor.cpp ${CMAKE_SOURCE_DIR}/src/cursor.cpp
-  LIBS ${PROJECT_NAME}-chgen)
+add_cpp_test(cursor_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cursor.cpp
+             ${CMAKE_SOURCE_DIR}/src/cursor.cpp LIBS ${PROJECT_NAME}-chgen)
 
 add_cpp_test(
   pagination_test
   SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/pagination.cpp ${CMAKE_SOURCE_DIR}/src/cursor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/pagination.cpp
+  ${CMAKE_SOURCE_DIR}/src/cursor.cpp
   ${CMAKE_SOURCE_DIR}/src/pagination.cpp
   LIBS
   ${PROJECT_NAME}-chgen)
@@ -95,7 +92,8 @@ add_cpp_test(
   prefix_pagination_test
   SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/prefix_pagination.cpp
-  ${CMAKE_SOURCE_DIR}/src/cursor.cpp ${CMAKE_SOURCE_DIR}/src/prefix_pagination.cpp
+  ${CMAKE_SOURCE_DIR}/src/cursor.cpp
+  ${CMAKE_SOURCE_DIR}/src/prefix_pagination.cpp
   LIBS
   ${PROJECT_NAME}-chgen)
 
@@ -107,43 +105,36 @@ add_cpp_helper(
   integers_abort_probe SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/integers_abort_probe.cpp LIBS userver::core)
 
-add_cpp_test(integers_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/integers.cpp)
+add_cpp_test(integers_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/integers.cpp)
 
-add_cpp_test(text_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/text.cpp)
+add_cpp_test(text_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/text.cpp)
 
-add_cpp_test(
-  s3_secdist_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3_secdist.cpp LIBS
-  userver::core)
+add_cpp_test(s3_secdist_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3_secdist.cpp
+             LIBS userver::core)
 
 add_cpp_test(s3_refresh_schedule_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/s3_refresh_schedule.cpp)
+             ${CMAKE_CURRENT_SOURCE_DIR}/s3_refresh_schedule.cpp)
 
 add_cpp_test(deadline_utils_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/deadline_utils.cpp)
+             ${CMAKE_CURRENT_SOURCE_DIR}/deadline_utils.cpp)
 
-add_cpp_test(expected_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/expected.cpp)
+add_cpp_test(expected_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/expected.cpp)
 
 add_cpp_test(userver_expected_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/userver_expected.cpp)
+             ${CMAKE_CURRENT_SOURCE_DIR}/userver_expected.cpp)
 
-add_cpp_test(
-  crawler_fallback_test SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback.cpp)
+add_cpp_test(crawler_fallback_test SOURCES
+             ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback.cpp)
 
 add_cpp_test(cdp_request_tracker_test SOURCES
-                     ${CMAKE_CURRENT_SOURCE_DIR}/cdp_request_tracker.cpp)
+             ${CMAKE_CURRENT_SOURCE_DIR}/cdp_request_tracker.cpp)
 
 add_cpp_test(
-  browser_page_lifecycle_test
-  SOURCES
+  browser_page_lifecycle_test SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/browser_page_lifecycle.cpp
-  ${CMAKE_SOURCE_DIR}/src/crawler/browser_page_lifecycle.cpp
-  LIBS
-  sml::sml)
-target_compile_definitions(browser_page_lifecycle_test PRIVATE BOOST_SML_CFG_DISABLE_MIN_SIZE)
+  ${CMAKE_SOURCE_DIR}/src/crawler/browser_page_lifecycle.cpp LIBS sml::sml)
+target_compile_definitions(browser_page_lifecycle_test
+                           PRIVATE BOOST_SML_CFG_DISABLE_MIN_SIZE)
 
 add_cpp_helper(
   s3_v4_client_abort_probe
@@ -169,7 +160,8 @@ endforeach()
 if(USERVER_FEATURE_TESTSUITE)
   add_custom_target(testsuite)
   add_dependencies(testsuite ${PROJECT_NAME})
-  set(testsuite_runner_path ${CMAKE_CURRENT_BINARY_DIR}/runtests-testsuite-tests)
+  set(testsuite_runner_path
+      ${CMAKE_CURRENT_BINARY_DIR}/runtests-testsuite-tests)
 
   userver_testsuite_add(
     SERVICE_TARGET
@@ -195,9 +187,7 @@ if(USERVER_FEATURE_TESTSUITE)
     COMMAND
       ${TESTSUITE_PYTHON_BINARY}
       ${CMAKE_CURRENT_SOURCE_DIR}/patch_testsuite_runner.py
-      --runner=${testsuite_runner_path}
-      --service-port=8080
-      --monitor-port=8081
+      --runner=${testsuite_runner_path} --service-port=8080 --monitor-port=8081
     DEPENDS testsuite
     VERBATIM)
 
@@ -213,8 +203,7 @@ if(USERVER_FEATURE_TESTSUITE)
             ${CMAKE_CURRENT_BINARY_DIR}/coverage
     COMMAND ${CMAKE_COMMAND} -E make_directory
             ${CMAKE_CURRENT_BINARY_DIR}/coverage
-    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target
-            testsuite
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target testsuite
     COMMAND
       ${CMAKE_COMMAND} -E env
       LLVM_PROFILE_FILE=${CMAKE_CURRENT_BINARY_DIR}/coverage/webshotd-%p.profraw

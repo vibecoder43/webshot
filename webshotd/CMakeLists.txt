@@ -259,7 +259,8 @@ set_source_files_properties(
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE webshotd_browser_sandbox_sh)
 target_link_libraries(${PROJECT_NAME} PRIVATE webshotd_browser_sandbox_sh)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE sml::sml)
-target_compile_definitions(${PROJECT_NAME}_objs PRIVATE BOOST_SML_CFG_DISABLE_MIN_SIZE)
+target_compile_definitions(${PROJECT_NAME}_objs
+                           PRIVATE BOOST_SML_CFG_DISABLE_MIN_SIZE)
 find_package(ada CONFIG REQUIRED COMPONENTS ada)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE ada::ada)
 find_package(uni-algo CONFIG REQUIRED)

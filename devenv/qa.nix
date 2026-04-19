@@ -19,7 +19,14 @@ in {
         sqlfluff.enable = true;
         yamlfmt.enable = true;
       };
-      settings.global.excludes = ctx.treefmtExcludes;
+      settings = {
+        global.excludes = ctx.treefmtExcludes;
+        formatter."cmake-format".includes = [
+          "*.cmake"
+          "CMakeLists.txt"
+          "**/CMakeLists.txt"
+        ];
+      };
     };
   };
 
