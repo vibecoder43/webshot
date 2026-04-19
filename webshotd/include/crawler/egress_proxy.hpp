@@ -17,10 +17,11 @@ namespace v1::crawler {
 struct [[nodiscard]] EgressProxyConfig final {
     EgressProxyConfig(
         std::string socketPath, std::string runId, usize urlBytesMax, i64 downBytesMax,
-        bool enableLocalFixtureRewrite
+        bool requireAuth, bool enableLocalFixtureRewrite
     )
         : socketPath(std::move(socketPath)), runId(std::move(runId)), urlBytesMax(urlBytesMax),
-          downBytesMax(downBytesMax), enableLocalFixtureRewrite(enableLocalFixtureRewrite)
+          downBytesMax(downBytesMax), requireAuth(requireAuth),
+          enableLocalFixtureRewrite(enableLocalFixtureRewrite)
     {
     }
 
@@ -28,6 +29,7 @@ struct [[nodiscard]] EgressProxyConfig final {
     std::string runId;
     usize urlBytesMax;
     i64 downBytesMax;
+    bool requireAuth;
     bool enableLocalFixtureRewrite;
 };
 

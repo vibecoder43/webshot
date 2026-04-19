@@ -14,6 +14,8 @@
 
 #include <chrono>
 
+#include <ada/character_sets-inl.h>
+#include <ada/unicode.h>
 #include <userver/components/component.hpp>
 #include <userver/engine/task/current_task.hpp>
 #include <userver/http/common_headers.hpp>
@@ -56,41 +58,17 @@ namespace {
     return out;
 }
 
-[[nodiscard]] std::string renderReplayPage(const dto::CaptureDetails &capture)
+[[nodiscard]] std::string renderReplayLocation(const CaptureRecord &capture, const Config &config)
 {
-    std::string out = R"(<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Webshot Replay</title>
-    <style>
-      html, body {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-      }
-
-      replay-web-page {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-    </style>
-    <script src="/vendor/replaywebpage/ui.js"></script>
-  </head>
-  <body>
-    <replay-web-page
-      replayBase="/vendor/replaywebpage/"
-      source=")";
-    out += escapeHtml(capture.storage_url);
-    out += R"("
-      config='{"sourceType":"wacz"}'
-      embed="replayonly"
-    ></replay-web-page>
-  </body>
-</html>
-)";
+    const auto downloadUrl = buildCaptureDownloadUrl(capture.uuid, config);
+    std::string out = "/vendor/replaywebpage/index.html?source=";
+    out += ada::unicode::percent_encode(
+        downloadUrl.href().view(), ada::character_sets::WWW_FORM_URLENCODED_PERCENT_ENCODE
+    );
+    out += "#url=";
+    out += ada::unicode::percent_encode(
+        capture.replayUrl.href().view(), ada::character_sets::WWW_FORM_URLENCODED_PERCENT_ENCODE
+    );
     return out;
 }
 
@@ -203,9 +181,9 @@ std::string UiReplayHandler::HandleRequestThrow(
         response.SetStatus(kNotFound);
         return renderErrorPage("capture not found");
     }
-
-    response.SetStatus(kOk);
-    return renderReplayPage(**capture);
+    response.SetStatus(kFound);
+    response.SetHeader(us::http::headers::kLocation, renderReplayLocation(**capture, config));
+    return {};
 }
 
 } // namespace v1

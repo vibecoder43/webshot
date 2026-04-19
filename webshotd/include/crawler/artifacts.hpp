@@ -71,6 +71,8 @@ struct [[nodiscard]] RunRequest {
 struct [[nodiscard]] WarcCdxRecord {
     String recordUrl;
     String timestamp;
+    String digest;
+    String recordDigest;
     i64 statusCode{0};
     std::unordered_map<std::string, std::string> headers;
     i64 offset{0};

@@ -470,6 +470,7 @@ struct BrowserSession::Impl final {
             paths.runId,
             config.urlBytesMax,
             config.proxyDownBytesMax,
+            config.proxyRequireAuth,
             config.enableLocalFixtureRewrite,
         });
         auto proxyStarted = proxy->start(dnsResolver, devtoolsDeadline);

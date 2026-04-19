@@ -1,5 +1,4 @@
 #include "crawler/artifacts.hpp"
-#include "ip_utils.hpp"
 #include "url.hpp"
 #include "userver_namespaces.hpp"
 
@@ -32,6 +31,8 @@ namespace {
 
 constexpr std::string_view kUserAgent = "webshotd/0.1.0";
 constexpr std::string_view kWarcPath = "archive/data.warc.gz";
+constexpr std::string_view kWarcFilename = "data.warc.gz";
+constexpr std::string_view kIndexPath = "indexes/index.cdx";
 
 [[nodiscard]] std::string sha256Bytes(std::string_view data)
 {
@@ -41,6 +42,16 @@ constexpr std::string_view kWarcPath = "archive/data.warc.gz";
 [[nodiscard]] std::string sha256Bytes(std::initializer_list<std::string_view> data)
 {
     return userver::crypto::hash::Sha256(data, userver::crypto::hash::OutputEncoding::kBinary);
+}
+
+[[nodiscard]] std::string sha256Hex(std::string_view data)
+{
+    return userver::crypto::hash::Sha256(data, userver::crypto::hash::OutputEncoding::kHex);
+}
+
+[[nodiscard]] std::string sha256PrefixedHex(std::string_view data, std::string_view prefix)
+{
+    return std::format("{}{}", prefix, sha256Hex(data));
 }
 
 [[nodiscard]] Expected<std::string, ArtifactFailure> gzipMember(std::string_view body) noexcept
@@ -359,6 +370,16 @@ serializeRecordPair(const SerializableResponse &response)
     return url.port() != defaultPortText;
 }
 
+[[nodiscard]] String cdxPayloadDigest(std::string_view payload)
+{
+    return String::fromBytes(sha256PrefixedHex(payload, "sha-256:")).expect();
+}
+
+[[nodiscard]] String cdxRecordDigest(std::string_view recordBytes)
+{
+    return String::fromBytes(sha256PrefixedHex(recordBytes, "sha256:")).expect();
+}
+
 [[nodiscard]] String toSurtKey(const String &urlText)
 {
     const auto maybeUrl = Url::fromText(urlText);
@@ -372,8 +393,6 @@ serializeRecordPair(const SerializableResponse &response)
     std::string port(maybeUrl->port().view());
     while (!host.empty() && host.back() == '.')
         host.pop_back();
-    if (isIpLiteralHostname(host))
-        return urlText;
 
     std::vector<std::string> parts;
     size_t offset = 0;
@@ -401,30 +420,55 @@ serializeRecordPair(const SerializableResponse &response)
     return String::fromBytes(surtHost + ")" + path).expect();
 }
 
-[[nodiscard]] dto::WaczIndexEntry makeWaczIndexEntry(const WarcCdxRecord &record)
+[[nodiscard]] std::string makeWaczIndexJson(const WarcCdxRecord &record)
 {
-    dto::WaczIndexEntry recordEntry;
-    recordEntry.url = std::string(record.recordUrl.view());
-    recordEntry.status = std::format("{}", record.statusCode);
-    recordEntry.mime = contentTypeForHeaders(record.headers);
-    recordEntry.filename = std::string(kWarcPath);
-    recordEntry.length = std::format("{}", record.length);
-    recordEntry.offset = std::format("{}", record.offset);
-    return recordEntry;
+    json::ValueBuilder recordEntry(json::Type::kObject);
+    recordEntry["url"] = std::string(record.recordUrl.view());
+    recordEntry["digest"] = std::string(record.digest.view());
+    recordEntry["mime"] = contentTypeForHeaders(record.headers);
+    recordEntry["filename"] = std::string(kWarcFilename);
+    recordEntry["offset"] = raw(record.offset);
+    recordEntry["length"] = raw(record.length);
+    recordEntry["status"] = raw(record.statusCode);
+    recordEntry["recordDigest"] = std::string(record.recordDigest.view());
+    return json::ToString(recordEntry.ExtractValue());
 }
 
-[[nodiscard]] std::string buildCdxj(const std::vector<WarcCdxRecord> &records)
+[[nodiscard]] std::string buildCdx(const std::vector<WarcCdxRecord> &records)
 {
-    std::string cdxj;
+    struct [[nodiscard]] CdxLine {
+        std::string key;
+        std::string timestamp;
+        std::string json;
+    };
+
+    std::vector<CdxLine> lines;
+    lines.reserve(records.size());
     for (const auto &record : records) {
-        cdxj += toSurtKey(record.recordUrl).view();
-        cdxj += " ";
-        cdxj += record.timestamp.view();
-        cdxj += " ";
-        cdxj += toJsonString(makeWaczIndexEntry(record));
-        cdxj += "\n";
+        lines.push_back(
+            CdxLine{
+                .key = std::string(toSurtKey(record.recordUrl).view()),
+                .timestamp = std::string(record.timestamp.view()),
+                .json = makeWaczIndexJson(record),
+            }
+        );
     }
-    return cdxj;
+    std::ranges::sort(lines, [](const auto &left, const auto &right) {
+        if (left.key != right.key)
+            return left.key < right.key;
+        return left.timestamp < right.timestamp;
+    });
+
+    std::string cdx;
+    for (const auto &line : lines) {
+        cdx += line.key;
+        cdx += " ";
+        cdx += line.timestamp;
+        cdx += " ";
+        cdx += line.json;
+        cdx += "\n";
+    }
+    return cdx;
 }
 
 [[nodiscard]] std::string buildWaczPages(std::string_view pagesJsonl)
@@ -438,35 +482,25 @@ serializeRecordPair(const SerializableResponse &response)
 }
 
 [[nodiscard]] dto::WaczResource
-makeWaczResource(std::string_view name, std::string_view path, size_t bytes)
+makeWaczResource(std::string_view name, std::string_view path, std::string_view body)
 {
     dto::WaczResource item;
     item.name = std::string(name);
     item.path = std::string(path);
-    item.bytes = numericCast<int64_t>(bytes);
+    item.hash = sha256PrefixedHex(body, "sha256:");
+    item.bytes = numericCast<int64_t>(body.size());
     return item;
 }
 
 [[nodiscard]] std::vector<dto::WaczResource> buildWaczResources(
-    size_t warcBytes, size_t pagesBytes, size_t stdoutBytes, size_t stderrBytes, size_t cdxjBytes
+    std::string_view warcBytes, std::string_view pagesBytes, std::string_view cdxBytes
 )
 {
-    struct ResourceSpec {
-        std::string_view name;
-        std::string_view path;
-        size_t bytes;
-    };
-
     std::vector<dto::WaczResource> resources;
-    const auto specs = std::array<ResourceSpec, 5>{{
-        {"archive", kWarcPath, warcBytes},
-        {"pages", "pages/pages.jsonl", pagesBytes},
-        {"stdout log", "logs/stdout.log", stdoutBytes},
-        {"stderr log", "logs/stderr.log", stderrBytes},
-        {"index", "indexes/index.cdxj", cdxjBytes},
-    }};
-    for (const auto &spec : specs)
-        resources.push_back(makeWaczResource(spec.name, spec.path, spec.bytes));
+    resources.reserve(3);
+    resources.push_back(makeWaczResource("pages.jsonl", "pages/pages.jsonl", pagesBytes));
+    resources.push_back(makeWaczResource(kWarcFilename, kWarcPath, warcBytes));
+    resources.push_back(makeWaczResource("index.cdx", kIndexPath, cdxBytes));
     return resources;
 }
 
@@ -476,6 +510,7 @@ buildWaczDataPackage(const RunRequest &run, std::vector<dto::WaczResource> resou
     dto::WaczDataPackage datapackage;
     datapackage.profile = "data-package";
     datapackage.created = datetime::TimePointTz(datetime::Now());
+    datapackage.modified = datetime::TimePointTz(datetime::Now());
     datapackage.wacz_version = "1.1.1";
     datapackage.software = "webshotd";
     datapackage.title = std::string(run.seedUrl.view());
@@ -542,6 +577,8 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
             WarcCdxRecord{
                 .recordUrl = response.responseUrl,
                 .timestamp = toCdxTimestamp(response.timestamp),
+                .digest = cdxPayloadDigest(response.body),
+                .recordDigest = cdxRecordDigest(*responseGz),
                 .statusCode = response.statusCode,
                 .headers = response.headers,
                 .offset = offset,
@@ -567,6 +604,8 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
         WarcCdxRecord{
             .recordUrl = pageInfoUrl,
             .timestamp = toCdxTimestamp(pageTimestamp(exchange)),
+            .digest = cdxPayloadDigest(buildPageInfoJson(exchange)),
+            .recordDigest = cdxRecordDigest(*pageInfoGz),
             .statusCode = 200_i64,
             .headers = std::move(pageInfoHeaders),
             .offset = offset,
@@ -582,11 +621,9 @@ Expected<std::string, ArtifactFailure> buildWacz(
     const std::string &stdoutLog, const std::string &stderrLog
 )
 {
-    const auto cdxj = buildCdxj(warc.cdxRecords);
+    const auto cdx = buildCdx(warc.cdxRecords);
     const auto waczPages = buildWaczPages(pagesJsonl);
-    auto resources = buildWaczResources(
-        warc.bytes.size(), waczPages.size(), stdoutLog.size(), stderrLog.size(), cdxj.size()
-    );
+    auto resources = buildWaczResources(warc.bytes, waczPages, cdx);
     const auto datapackageJson = toJsonString(buildWaczDataPackage(run, std::move(resources)));
 
     arkhiv::ZipArchiveBuilder zip;
@@ -611,7 +648,7 @@ Expected<std::string, ArtifactFailure> buildWacz(
         return std::unexpected(ok.error());
     if (auto ok = addFile("logs/stderr.log", stderrLog); !ok)
         return std::unexpected(ok.error());
-    if (auto ok = addFile("indexes/index.cdxj", cdxj); !ok)
+    if (auto ok = addFile(kIndexPath, cdx); !ok)
         return std::unexpected(ok.error());
 
     const auto zipBytes = zip.finish(error);

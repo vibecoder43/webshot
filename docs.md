@@ -5,3 +5,4 @@ Browser resource limits are mandatory.
 Runtime design does not couple to systemd integration.
 Captures obey the denylist.
 A successful crawl emits WACZ.
+Nothing must proxy S3

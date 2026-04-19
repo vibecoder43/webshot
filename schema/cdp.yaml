@@ -145,6 +145,25 @@ components:
       properties:
         frameTree:
           $ref: "#/components/schemas/PageFrameTree"
+    PageCreateIsolatedWorldParams:
+      type: object
+      additionalProperties: false
+      required: [frameId]
+      properties:
+        frameId:
+          type: string
+        worldName:
+          type: string
+        grantUniveralAccess:
+          type: boolean
+    PageCreateIsolatedWorldResult:
+      type: object
+      additionalProperties: false
+      required: [executionContextId]
+      properties:
+        executionContextId:
+          type: integer
+          format: int64
     PageNavigateParams:
       type: object
       additionalProperties: false
@@ -287,6 +306,9 @@ components:
           type: boolean
         awaitPromise:
           type: boolean
+        contextId:
+          type: integer
+          format: int64
     RuntimeDomStateValue:
       type: object
       additionalProperties: false

@@ -20,10 +20,20 @@ using Uuid = boost::uuids::uuid;
 
 namespace v1 {
 enum class DenylistError;
+class Config;
 
 struct [[nodiscard]] ClientIpCooldown final {
     std::chrono::milliseconds retryAfter;
 };
+
+struct [[nodiscard]] CaptureRecord final {
+    Uuid uuid;
+    us::utils::datetime::TimePointTz createdAt;
+    String link;
+    Url replayUrl;
+};
+
+[[nodiscard]] Url buildCaptureDownloadUrl(Uuid uuid, const Config &config);
 
 /**
  * @brief Persistence and background-crawl facade.
@@ -61,8 +71,7 @@ public:
     [[nodiscard]] Expected<std::optional<ClientIpCooldown>, errors::CrudError>
     acquireClientIpCooldown(String clientIp);
     /** @brief Look up capture metadata by id. */
-    [[nodiscard]] Expected<std::optional<dto::CaptureDetails>, errors::CrudError>
-    findCapture(Uuid uuid);
+    [[nodiscard]] Expected<std::optional<CaptureRecord>, errors::CrudError> findCapture(Uuid uuid);
 
     /** @brief Look up a capture job by id. */
     [[nodiscard]] Expected<std::optional<dto::CaptureJob>, errors::CrudError>

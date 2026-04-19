@@ -89,6 +89,16 @@ using namespace v1;
 using namespace text::literals;
 using Uuid = boost::uuids::uuid;
 using chrono::system_clock;
+
+Url v1::buildCaptureDownloadUrl(Uuid uuid, const Config &config)
+{
+    const auto downloadUrlText =
+        String::fromBytes(std::format("{}/{}.wacz", config.publicBaseUrl(), uuid)).expect();
+    const auto downloadUrl = Url::fromText(downloadUrlText);
+    UINVARIANT(downloadUrl, "downloadUrl must parse");
+    return *downloadUrl;
+}
+
 namespace {
 constexpr i64 kCrawlerSeedAttemptsMax = 2_i64;
 constexpr i64 kGiB = 1024_i64 * 1024_i64 * 1024_i64;
@@ -608,10 +618,11 @@ struct [[nodiscard]] CrawlContext {
     String s3Key;
     std::optional<std::string> waczBytes;
     std::optional<std::string> contentSha256;
+    std::optional<Url> replayUrl;
     std::optional<String> failureMessage;
 
     CrawlContext(Uuid id, Link link, const Config &cfg)
-        : link(std::move(link)), id(id), keyOnly(text::format("{}", id)),
+        : link(std::move(link)), id(id), keyOnly(text::format("{}.wacz", id)),
           s3Key(text::format("{}/{}", cfg.s3Bucket(), keyOnly))
     {
     }
@@ -977,8 +988,12 @@ Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlConte
             run.contentSha256, "crawler did not provide content hash for a successful capture"
         );
         UINVARIANT(ssize(*run.contentSha256) == 32_i64, "content hash must be 32 bytes");
+        UINVARIANT(run.replayUrl, "crawler did not provide replayUrl for a successful capture");
+        const auto replayUrl = Url::fromText(*run.replayUrl);
+        UINVARIANT(replayUrl, "replayUrl must parse for a successful capture");
         ctx.waczBytes = *run.wacz;
         ctx.contentSha256 = *run.contentSha256;
+        ctx.replayUrl = *replayUrl;
         return true;
     };
 
@@ -1104,6 +1119,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
     const auto prefixKey = prefix::makePrefixKey(ctx.link);
     const auto prefixTree = prefix::makePrefixTree(prefixKey);
     const auto host = ctx.link.url.hostname();
+    UINVARIANT(ctx.replayUrl, "replayUrl must be set for a successful capture");
 
     const auto allowed = denylist.isAllowedPrefix(prefixKey);
     if (!allowed || !*allowed) {
@@ -1147,7 +1163,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
     try {
         auto snapshot = s3State.Read();
         snapshot->client->PutObject(
-            ctx.s3Key.view(), *ctx.waczBytes, {}, "application/zip", {}, {}
+            ctx.s3Key.view(), *ctx.waczBytes, {}, "application/wacz", {}, {}
         );
     } catch (const us::utils::TracefulException &e) {
         metrics.accountError(Metrics::Error::kS3PutObject);
@@ -1162,7 +1178,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
     auto row = readwrite(
         [&](auto &res) { return res.template AsSingleRow<Row>(pg::kRowTag); }, sql::kInsertCapture,
         ctx.id, ctx.link.normalized(), prefixKey, prefixTree,
-        pg::Bytea(std::string_view{*ctx.contentSha256})
+        pg::Bytea(std::string_view{*ctx.contentSha256}), ctx.replayUrl->href()
     );
     if (!row) {
         try {
@@ -1371,13 +1387,14 @@ Crud::acquireClientIpCooldown(String clientIp)
     return grabValueOf(acquired);
 }
 
-Expected<std::optional<dto::CaptureDetails>, errors::CrudError> Crud::findCapture(Uuid uuid)
+Expected<std::optional<CaptureRecord>, errors::CrudError> Crud::findCapture(Uuid uuid)
 {
     using enum errors::CrudError;
 
     struct Row {
         pg::TimePointTz createdAt;
         std::string link;
+        std::string replayUrl;
     };
     auto capture = impl->readonly(
         [&](auto &res) { return res.template AsOptionalSingleRow<Row>(pg::kRowTag); },
@@ -1398,14 +1415,17 @@ Expected<std::optional<dto::CaptureDetails>, errors::CrudError> Crud::findCaptur
     auto linkText = String::fromBytes(row.link);
     if (!linkText)
         return std::unexpected(kCorruptData);
-    const auto storageUrl = String::fromBytes(
-        std::format("{}/{}", impl->svcCfg.publicBaseUrl(), uuid)
-    );
-    if (!storageUrl)
+    auto replayUrlText = String::fromBytes(row.replayUrl);
+    if (!replayUrlText)
         return std::unexpected(kCorruptData);
-    return {dto::CaptureDetails{
-        uuid, us::utils::datetime::TimePointTz(row.createdAt.GetUnderlying()), row.link,
-        std::string(storageUrl->view())
+    auto replayUrl = Url::fromText(*replayUrlText);
+    if (!replayUrl)
+        return std::unexpected(kCorruptData);
+    return {CaptureRecord{
+        .uuid = uuid,
+        .createdAt = us::utils::datetime::TimePointTz(row.createdAt.GetUnderlying()),
+        .link = *linkText,
+        .replayUrl = *replayUrl,
     }};
 }
 

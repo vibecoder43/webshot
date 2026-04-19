@@ -93,5 +93,13 @@ std::string ById::HandleRequestThrow(
         return httpu::respondError(response, kNotFound, "capture not found"_t);
     }
 
-    return httpu::respondJson(response, kOk, **capture);
+    return httpu::respondJson(
+        response, kOk,
+        dto::CaptureDetails{
+            (**capture).uuid,
+            (**capture).createdAt,
+            std::string((**capture).link.view()),
+            std::string(buildCaptureDownloadUrl((**capture).uuid, config).href().view()),
+        }
+    );
 }

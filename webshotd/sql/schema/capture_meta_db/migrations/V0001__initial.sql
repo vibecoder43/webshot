@@ -4,6 +4,7 @@ create table capture (
     id uuid primary key,
     created_at timestamptz not null default now(),
     link text collate "C" not null,
+    replay_url text collate "C" not null,
     prefix_key text collate "C" not null,
     prefix_tree ltree not null,
     content_sha256 bytea not null,

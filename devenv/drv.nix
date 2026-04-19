@@ -145,10 +145,9 @@
       cp "$tmp/cst/package/dist/client-side-templates.min.js" "$out/client-side-templates.min.js"
       cp "$tmp/rt/package/dist/response-targets.min.js" "$out/response-targets.min.js"
       cp "$tmp/nunjucks/package/browser/nunjucks.min.js" "$out/nunjucks.min.js"
+      cp "$tmp/replaywebpage/package/index.html" "$out/replaywebpage/index.html"
       cp "$tmp/replaywebpage/package/ui.js" "$out/replaywebpage/ui.js"
       cp "$tmp/replaywebpage/package/sw.js" "$out/replaywebpage/sw.js"
-
-      ${nix.perl}/bin/perl -0pi -e 's@let f=function\(t\)\{const e=\["\\.warc","\\.warc\\.gz","\\.cdx","\\.cdxj","\\.har","\\.json","\\.wacz"\];for\(const r of e\)if\(t\.endsWith\(r\)\)return r;if\(t\.endsWith\("\\.wacz\\.zip"\)\)return"\\.wacz"\}\(n\.sourceName\);@let f="wacz"===n.extraConfig?.sourceType?".wacz":function(t){const e=[".warc",".warc.gz",".cdx",".cdxj",".har",".json",".wacz"];for(const r of e)if(t.endsWith(r))return r;if(t.endsWith(".wacz.zip"))return".wacz"}(n.sourceName);@' "$out/replaywebpage/sw.js"
 
       # Optional source maps reduce noisy devtools warnings when serving the UI locally.
       for f in \

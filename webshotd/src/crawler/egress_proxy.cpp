@@ -876,12 +876,14 @@ struct EgressProxy::Impl final {
             return;
         }
 
-        const auto auth = findHeaderValue(parsed->headers, "proxy-authorization");
-        const auto user = auth ? parseBasicAuthUser(*auth)
-                               : std::optional<std::pair<std::string, std::string>>{};
-        if (!user || user->first != config.runId) {
-            send407(client, deadline);
-            return;
+        if (config.requireAuth) {
+            const auto auth = findHeaderValue(parsed->headers, "proxy-authorization");
+            const auto user = auth ? parseBasicAuthUser(*auth)
+                                   : std::optional<std::pair<std::string, std::string>>{};
+            if (!user || user->first != config.runId) {
+                send407(client, deadline);
+                return;
+            }
         }
 
         if (absl::EqualsIgnoreCase(parsed->method, "CONNECT")) {

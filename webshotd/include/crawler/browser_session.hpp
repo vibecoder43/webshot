@@ -35,6 +35,7 @@ struct [[nodiscard]] BrowserSessionConfig final {
     std::chrono::milliseconds devtoolsPollInterval;
     std::chrono::milliseconds browserStopTimeout;
     i64 cdpMaxRemotePayloadBytes;
+    bool proxyRequireAuth;
     bool enableLocalFixtureRewrite;
     std::string cgroupNamePrefix;
 };

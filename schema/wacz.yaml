@@ -8,19 +8,26 @@ components:
     WaczIndexEntry:
       type: object
       additionalProperties: false
-      required: [url, status, mime, filename, length, offset]
+      required: [url, digest, mime, filename, length, offset, status, recordDigest]
       properties:
         url:
           type: string
-        status:
+        digest:
           type: string
+        status:
+          type: integer
+          format: int64
         mime:
           type: string
         filename:
           type: string
         length:
-          type: string
+          type: integer
+          format: int64
         offset:
+          type: integer
+          format: int64
+        recordDigest:
           type: string
     WaczPagesHeader:
       type: object
@@ -38,11 +45,13 @@ components:
     WaczResource:
       type: object
       additionalProperties: false
-      required: [name, path, bytes]
+      required: [name, path, hash, bytes]
       properties:
         name:
           type: string
         path:
+          type: string
+        hash:
           type: string
         bytes:
           type: integer
@@ -50,20 +59,23 @@ components:
     WaczDataPackage:
       type: object
       additionalProperties: false
-      required: [profile, created, wacz_version, software, title, resources]
+      required: [profile, resources, wacz_version, title, software, created, modified]
       properties:
         profile:
-          type: string
-        created:
-          type: string
-          format: date-time
-        wacz_version:
-          type: string
-        software:
-          type: string
-        title:
           type: string
         resources:
           type: array
           items:
             $ref: "#/components/schemas/WaczResource"
+        wacz_version:
+          type: string
+        title:
+          type: string
+        software:
+          type: string
+        created:
+          type: string
+          format: date-time
+        modified:
+          type: string
+          format: date-time

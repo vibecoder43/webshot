@@ -44,6 +44,7 @@ struct [[nodiscard]] CrawlerRunArtifacts {
     std::optional<std::string> wacz;
     std::optional<std::string> pagesJsonl;
     std::optional<std::string> contentSha256;
+    std::optional<String> replayUrl;
 };
 
 class [[nodiscard]] CrawlerRunner final {

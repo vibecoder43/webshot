@@ -1191,6 +1191,7 @@ public:
                   .devtoolsPollInterval = tunablesIn.devtoolsPollInterval,
                   .browserStopTimeout = tunablesIn.browserStopTimeout,
                   .cdpMaxRemotePayloadBytes = computeCdpMaxRemotePayloadBytes(maxArchiveBytesIn),
+                  .proxyRequireAuth = true,
                   .enableLocalFixtureRewrite = tunablesIn.enableLocalFixtureRewrite,
                   .cgroupNamePrefix = "webshotd_crawler",
               }
@@ -1849,6 +1850,7 @@ private:
             out.wacz.reset();
             out.pagesJsonl.reset();
             out.contentSha256.reset();
+            out.replayUrl.reset();
             return out;
         }
 
@@ -1898,6 +1900,7 @@ private:
             out.wacz.reset();
             out.pagesJsonl.reset();
             out.contentSha256.reset();
+            out.replayUrl.reset();
             out.stderrLog += std::string(detail.view()) + "\n";
             return out;
         }
@@ -1928,6 +1931,7 @@ private:
             out.wacz.reset();
             out.pagesJsonl.reset();
             out.contentSha256.reset();
+            out.replayUrl.reset();
             out.stderrLog += std::string(detail.view()) + "\n";
             return out;
         }
@@ -1951,6 +1955,7 @@ private:
         };
         out.wacz = grabValueOf(wacz);
         out.pagesJsonl = std::move(pages);
+        out.replayUrl = exchange.finalUrl;
         return out;
     } catch (const us::utils::TracefulException &e) {
         out.attempt.exitCode = 9;
@@ -1968,6 +1973,7 @@ private:
         out.wacz.reset();
         out.pagesJsonl.reset();
         out.contentSha256.reset();
+        out.replayUrl.reset();
         return out;
     }
 }

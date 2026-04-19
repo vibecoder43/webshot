@@ -25,7 +25,6 @@
 #include <userver/clients/dns/component.hpp>
 #include <userver/components/component.hpp>
 #include <userver/components/process_starter.hpp>
-#include <userver/engine/sleep.hpp>
 #include <userver/engine/task/current_task.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/value.hpp>
@@ -124,43 +123,171 @@ evaluateBoolExpression(crawler::CdpSession &cdpSession, const String &expression
     return *value;
 }
 
-void collectProbeEvents(
+[[nodiscard]] Expected<std::optional<dto::BrowserProbeFrameState>, String>
+evaluateFrameExpression(crawler::CdpSession &cdpSession, const String &expression)
+{
+    const auto value = evaluateExpression(cdpSession, expression);
+    if (!value)
+        return std::unexpected(value.error());
+    if (json::ToString(*value) == "null")
+        return std::optional<dto::BrowserProbeFrameState>{};
+
+    try {
+        return value->As<dto::BrowserProbeFrameState>();
+    } catch (const json::Exception &) {
+        return std::unexpected("expression returned invalid shape"_t);
+    }
+}
+
+[[nodiscard]] Expected<void, String> handleProbeEvent(
+    const crawler::CdpEvent &event, std::vector<std::string> &console,
+    std::vector<std::string> &pageErrors
+)
+{
+    if (!event.params)
+        return {};
+    if (event.method == "Runtime.consoleAPICalled"_t) {
+        console.push_back(json::ToString(event.params->extra));
+        return {};
+    }
+    if (event.method == "Runtime.exceptionThrown"_t) {
+        pageErrors.push_back(json::ToString(event.params->extra));
+        return {};
+    }
+    return {};
+}
+
+[[nodiscard]] Expected<void, String> drainProbeEvents(
     crawler::CdpSession &cdpSession, std::vector<std::string> &console,
     std::vector<std::string> &pageErrors
 )
 {
-    for (auto &event : cdpSession.drainAvailableEvents()) {
-        if (!event.params)
-            continue;
-        if (event.method == "Runtime.consoleAPICalled"_t) {
-            console.push_back(json::ToString(event.params->extra));
-            continue;
-        }
-        if (event.method == "Runtime.exceptionThrown"_t)
-            pageErrors.push_back(json::ToString(event.params->extra));
+    for (const auto &event : cdpSession.drainAvailableEvents()) {
+        const auto handled = handleProbeEvent(event, console, pageErrors);
+        if (!handled)
+            return std::unexpected(handled.error());
     }
+    return {};
 }
 
 [[nodiscard]] Expected<void, String> waitForExpression(
     crawler::CdpSession &cdpSession, const String &expression, us::engine::Deadline deadline,
-    std::vector<std::string> &console, std::vector<std::string> &pageErrors
+    chrono::milliseconds recheckInterval, std::vector<std::string> &console,
+    std::vector<std::string> &pageErrors
 )
 {
     std::optional<String> lastError;
+
+    const auto updateMatchState = [&]() -> Expected<bool, String> {
+        const auto matched = evaluateBoolExpression(cdpSession, expression);
+        if (matched)
+            return *matched;
+        lastError = matched.error();
+        return false;
+    };
+
+    if (const auto matched = updateMatchState(); matched) {
+        if (*matched)
+            return {};
+    } else {
+        return std::unexpected(matched.error());
+    }
+
     while (!deadline.IsReached()) {
-        if (const auto matched = evaluateBoolExpression(cdpSession, expression); matched) {
+        if (const auto drained = drainProbeEvents(cdpSession, console, pageErrors); !drained) {
+            return std::unexpected(drained.error());
+        }
+        if (const auto matched = updateMatchState(); matched) {
             if (*matched)
                 return {};
         } else {
-            lastError = matched.error();
+            return std::unexpected(matched.error());
         }
-        collectProbeEvents(cdpSession, console, pageErrors);
-        us::engine::SleepFor(chrono::milliseconds(50));
+
+        const auto eventDeadline = us::engine::Deadline::FromDuration(
+            std::min(
+                chrono::duration_cast<chrono::milliseconds>(deadline.TimeLeft()), recheckInterval
+            )
+        );
+        auto event = cdpSession.waitEvent(eventDeadline, "timed out waiting for expression"_t);
+        if (!event) {
+            if (event.error().code == crawler::CdpError::kTimeout)
+                continue;
+            return std::unexpected(
+                describeCdpFailure("wait for cdp event failed"_t, event.error())
+            );
+        }
+        if (const auto handled = handleProbeEvent(*event, console, pageErrors); !handled) {
+            return std::unexpected(handled.error());
+        }
     }
 
     if (lastError)
         return std::unexpected(text::format("timed out waiting for expression: {}", *lastError));
     return std::unexpected("timed out waiting for expression"_t);
+}
+
+[[nodiscard]] Expected<dto::BrowserProbeFrameState, String> waitForFrameExpression(
+    crawler::CdpSession &cdpSession, const String &expression, us::engine::Deadline deadline,
+    chrono::milliseconds recheckInterval, std::vector<std::string> &console,
+    std::vector<std::string> &pageErrors
+)
+{
+    std::optional<String> lastError;
+
+    const auto updateFrameState =
+        [&]() -> Expected<std::optional<dto::BrowserProbeFrameState>, String> {
+        auto frame = evaluateFrameExpression(cdpSession, expression);
+        if (frame)
+            return frame;
+        lastError = frame.error();
+        return std::optional<dto::BrowserProbeFrameState>{};
+    };
+
+    if (auto frame = updateFrameState(); frame) {
+        if (*frame)
+            return **frame;
+    } else {
+        return std::unexpected(frame.error());
+    }
+
+    while (!deadline.IsReached()) {
+        if (const auto drained = drainProbeEvents(cdpSession, console, pageErrors); !drained) {
+            return std::unexpected(drained.error());
+        }
+        if (auto frame = updateFrameState(); frame) {
+            if (*frame)
+                return **frame;
+        } else {
+            return std::unexpected(frame.error());
+        }
+
+        const auto eventDeadline = us::engine::Deadline::FromDuration(
+            std::min(
+                chrono::duration_cast<chrono::milliseconds>(deadline.TimeLeft()), recheckInterval
+            )
+        );
+        auto event = cdpSession.waitEvent(
+            eventDeadline, "timed out waiting for frame expression"_t
+        );
+        if (!event) {
+            if (event.error().code == crawler::CdpError::kTimeout)
+                continue;
+            return std::unexpected(
+                describeCdpFailure("wait for cdp event failed"_t, event.error())
+            );
+        }
+        if (const auto handled = handleProbeEvent(*event, console, pageErrors); !handled) {
+            return std::unexpected(handled.error());
+        }
+    }
+
+    if (lastError) {
+        return std::unexpected(
+            text::format("timed out waiting for frame expression: {}", *lastError)
+        );
+    }
+    return std::unexpected("timed out waiting for frame expression"_t);
 }
 
 [[nodiscard]] Expected<dto::BrowserProbeResponse, String> runProbe(
@@ -185,6 +312,7 @@ void collectProbeEvents(
             .devtoolsPollInterval = config.devtoolsPollInterval,
             .browserStopTimeout = config.browserStopTimeout,
             .cdpMaxRemotePayloadBytes = config.cdpMaxRemotePayloadBytes,
+            .proxyRequireAuth = false,
             .enableLocalFixtureRewrite = config.localFixtureRewrite,
             .cgroupNamePrefix = "webshotd_browser_probe",
         }
@@ -259,6 +387,30 @@ void collectProbeEvents(
         cleanup();
         return std::unexpected(detail);
     }
+    browser.markPhase("enable_network");
+    if (const auto ok = cdpSession->sendVoid("Network.enable"_t); !ok) {
+        const auto detail = browser.buildFailureDetail(
+            describeCdpFailure("Network.enable failed"_t, ok.error())
+        );
+        cleanup();
+        return std::unexpected(detail);
+    }
+    browser.markPhase("enable_lifecycle_events");
+    dto::PageSetLifecycleEventsEnabledParams lifecycleParams;
+    lifecycleParams.enabled = true;
+    if (const auto ok = cdpSession->sendVoid("Page.setLifecycleEventsEnabled"_t, lifecycleParams);
+        !ok) {
+        const auto detail = browser.buildFailureDetail(
+            describeCdpFailure("Page.setLifecycleEventsEnabled failed"_t, ok.error())
+        );
+        cleanup();
+        return std::unexpected(detail);
+    }
+    if (const auto drained = drainProbeEvents(*cdpSession, console, pageErrors); !drained) {
+        const auto detail = browser.buildFailureDetail(drained.error());
+        cleanup();
+        return std::unexpected(detail);
+    }
 
     browser.markPhase("navigate");
     dto::PageNavigateParams navigateParams;
@@ -280,17 +432,27 @@ void collectProbeEvents(
         cleanup();
         return std::unexpected(detail);
     }
+    if (const auto drained = drainProbeEvents(*cdpSession, console, pageErrors); !drained) {
+        const auto detail = browser.buildFailureDetail(drained.error());
+        cleanup();
+        return std::unexpected(detail);
+    }
 
     browser.markPhase("wait_expression");
     const auto waitExpression = String::fromBytes(request.wait_expression).expect();
-    if (const auto waited =
-            waitForExpression(*cdpSession, waitExpression, deadline, console, pageErrors);
+    if (const auto waited = waitForExpression(
+            *cdpSession, waitExpression, deadline, config.devtoolsPollInterval, console, pageErrors
+        );
         !waited) {
         const auto detail = browser.buildFailureDetail(waited.error());
         cleanup();
         return std::unexpected(detail);
     }
-    collectProbeEvents(*cdpSession, console, pageErrors);
+    if (const auto drained = drainProbeEvents(*cdpSession, console, pageErrors); !drained) {
+        const auto detail = browser.buildFailureDetail(drained.error());
+        cleanup();
+        return std::unexpected(detail);
+    }
 
     auto result = dto::BrowserProbeResponse{};
 
@@ -309,8 +471,8 @@ void collectProbeEvents(
 
     if (request.frame_expression) {
         const auto frameExpression = String::fromBytes(*request.frame_expression).expect();
-        auto frame = evaluateExpressionAs<dto::BrowserProbeFrameState>(
-            *cdpSession, frameExpression
+        auto frame = waitForFrameExpression(
+            *cdpSession, frameExpression, deadline, config.devtoolsPollInterval, console, pageErrors
         );
         if (!frame) {
             const auto detail = browser.buildFailureDetail(
@@ -321,7 +483,11 @@ void collectProbeEvents(
         }
         result.frame = grabValueOf(frame);
     }
-    collectProbeEvents(*cdpSession, console, pageErrors);
+    if (const auto drained = drainProbeEvents(*cdpSession, console, pageErrors); !drained) {
+        const auto detail = browser.buildFailureDetail(drained.error());
+        cleanup();
+        return std::unexpected(detail);
+    }
     result.console = std::move(console);
     result.page_errors = std::move(pageErrors);
 
