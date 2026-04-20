@@ -91,9 +91,7 @@ std::string Handler::HandleRequestThrow(
         const auto linkText = String::fromBytes(req->link);
         if (!linkText)
             return httpu::respondError(response, kBadRequest, "invalid parameter"_t);
-        auto parsed = Link::fromText(
-            *linkText, config.urlBytesMax(), Link::FromTextOptions::kStripPort
-        );
+        auto parsed = Link::fromText(*linkText, config.urlBytesMax());
         if (!parsed)
             return httpu::respondError(response, kBadRequest, "invalid parameter"_t);
         auto prefixKey = prefix::makePrefixKey(*parsed);
@@ -124,7 +122,7 @@ std::string Handler::HandleRequestThrow(
     auto str = String::fromBytes(arg);
     if (!str)
         return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
-    const auto link = Link::fromText(*str, config.urlBytesMax(), Link::FromTextOptions::kStripPort);
+    const auto link = Link::fromText(*str, config.urlBytesMax());
     if (!link)
         return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
     const std::string tokenArg = request.GetArg("page_token");

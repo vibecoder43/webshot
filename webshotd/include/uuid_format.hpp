@@ -20,4 +20,9 @@ template <> struct formatter<Uuid, char> : formatter<std::string_view, char> {
     }
 };
 
+[[nodiscard]] inline std::string to_string(const Uuid &value)
+{
+    return boost::uuids::to_string(value);
+}
+
 } // namespace std

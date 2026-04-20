@@ -5,7 +5,6 @@
 #include "url.hpp"
 
 #include <string>
-#include <type_traits>
 
 #include "text.hpp"
 
@@ -25,43 +24,21 @@ struct [[nodiscard]] LinkError final {
 };
 
 /**
- * @brief Parsed and normalized URL used as an index key.
+ * @brief Parsed and normalized link used at REST and denylist boundaries.
  *
- * This type encapsulates a normalized representation of a link.
+ * This type encapsulates request-facing link normalization semantics.
+ * Internal URL manipulation code should use Url directly.
  *
  * Invariants after construction via fromText:
  * - Scheme is http or https (defaulted to http when absent).
  * - Username/password are cleared; fragment/hash is stripped.
+ * - Port is stripped.
  * - Host is lower-cased, validated, and trailing dot removed; IP literals are rejected.
  * - Path/query are normalized; total URL byte length is limited by the caller.
  * - A scheme-less, trailing-slash-trimmed form is stored for lookups.
  */
 struct [[nodiscard]] Link {
     Url url;
-
-    enum class FromTextOptions {
-        kNone = 0,
-        kStripPort = 1 << 0,
-        kStripQuery = 1 << 1,
-    };
-
-    friend constexpr FromTextOptions operator|(FromTextOptions lhs, FromTextOptions rhs) noexcept
-    {
-        using U = std::underlying_type_t<FromTextOptions>;
-        return static_cast<FromTextOptions>(static_cast<U>(lhs) | static_cast<U>(rhs));
-    }
-
-    friend constexpr FromTextOptions operator&(FromTextOptions lhs, FromTextOptions rhs) noexcept
-    {
-        using U = std::underlying_type_t<FromTextOptions>;
-        return static_cast<FromTextOptions>(static_cast<U>(lhs) & static_cast<U>(rhs));
-    }
-
-    static constexpr bool hasOption(FromTextOptions options, FromTextOptions flag) noexcept
-    {
-        using U = std::underlying_type_t<FromTextOptions>;
-        return static_cast<U>(options & flag) != 0;
-    }
 
     /**
      * @brief Construct a Link from normalized UTF-8 text.
@@ -73,11 +50,9 @@ struct [[nodiscard]] Link {
      *
      * @param text Prevalidated, normalized UTF-8 text.
      * @param urlBytesMax Maximum allowed URL length in bytes.
-     * @param options Extra normalization options (for example strip port or query).
      * @return Normalized Link.
      */
-    [[nodiscard]] static Expected<Link, LinkError>
-    fromText(const String &text, usize urlBytesMax, FromTextOptions options);
+    [[nodiscard]] static Expected<Link, LinkError> fromText(const String &text, usize urlBytesMax);
 
     /** @return Normalized, lower-cased host, punycode if applicable. */
     [[nodiscard]] String host() const;

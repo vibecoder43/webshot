@@ -23,7 +23,7 @@ namespace v1::crud {
     const auto link = String::fromBytes(cur.l);
     if (!link)
         return {};
-    PrefixCursor out;
+    PrefixCursor out{};
     out.prefix = *prefix;
     out.link = *link;
     if (cur.t && cur.i) {
@@ -35,7 +35,7 @@ namespace v1::crud {
 
 [[nodiscard]] String encodePrefixCursor(const String &prefix, const String &link)
 {
-    dto::PaginationPrefixCursor cur(std::string(prefix.view()), std::string(link.view()));
+    dto::PaginationPrefixCursor cur(std::to_string(prefix), std::to_string(link));
     return encodeToken(cur);
 }
 
@@ -44,15 +44,13 @@ namespace v1::crud {
 )
 {
     const auto micros = timePointToMicros(createdAt);
-    dto::PaginationPrefixCursor cur(
-        std::string(prefix.view()), std::string(link.view()), micros, id
-    );
+    dto::PaginationPrefixCursor cur(std::to_string(prefix), std::to_string(link), micros, id);
     return encodeToken(cur);
 }
 
 [[nodiscard]] std::string upperExclusiveBound(String s)
 {
-    UINVARIANT(!s.empty(), "cannot be empty");
+    invariant(!s.empty(), "cannot be empty");
     auto view = s.view();
     std::string bytes(view);
     for (i64 i = ssize(bytes) - 1_i64; i >= 0_i64; i--) {

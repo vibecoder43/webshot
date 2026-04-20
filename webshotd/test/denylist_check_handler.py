@@ -54,3 +54,18 @@ async def test_denylist_check_denied_after_disallow_and_purge(monitor_client):
         data=f"http://{TEST_ASSET_HOST}:123/pixel".encode("ascii"),
     )
     assert resp.status == 403
+
+
+@pytest.mark.asyncio
+async def test_denylist_check_ignores_query_when_matching_prefix(monitor_client):
+    deny_resp = await monitor_client.post(
+        "/v1/denylist/disallow_and_purge",
+        params={"host": f"http://{TEST_ASSET_HOST}/pixel?cache=bust"},
+    )
+    assert deny_resp.status == 202
+
+    resp = await monitor_client.post(
+        "/v1/denylist/check",
+        data=f"http://{TEST_ASSET_HOST}/pixel?other=value".encode("ascii"),
+    )
+    assert resp.status == 403

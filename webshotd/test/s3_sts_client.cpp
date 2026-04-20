@@ -93,8 +93,8 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     v1::detail::StsExecutor exec = [&](const String &url, const String &body,
                                        const httpc::Headers &headers,
                                        std::chrono::milliseconds timeout) {
-        capturedUrl = std::string(url.view());
-        capturedBody = std::string(body.view());
+        capturedUrl = std::to_string(url);
+        capturedBody = std::to_string(body);
         capturedHeaders = headers;
         capturedTimeout = timeout;
         return makeValidXml();
@@ -132,4 +132,23 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     EXPECT_NE(capturedBody.find("Policy=%7B%22allow%22%3Atrue%7D"), std::string::npos);
 
     EXPECT_EQ(creds.accessKeyId.GetUnderlying(), "AKIA_TEST_KEY"_t);
+}
+
+UTEST(S3StsClient, InvalidEndpointReturnsError)
+{
+    v1::detail::StsExecutor exec =
+        [](const String &, const String &, const httpc::Headers &,
+           std::chrono::milliseconds) -> v1::Expected<std::string, v1::StsError> {
+        ADD_FAILURE() << "executor should not be called for invalid endpoint";
+        return std::string{};
+    };
+
+    const auto parsed = v1::detail::fetchStsWithExecutor(
+        exec, "https://["_t, v1::s3v4::AccessKeyId{"AKIA_STATIC"_t},
+        v1::s3v4::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
+        "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t, 900s,
+        1500ms
+    );
+    ASSERT_FALSE(parsed);
+    EXPECT_EQ(parsed.error(), v1::StsError::kInvalidEndpoint);
 }

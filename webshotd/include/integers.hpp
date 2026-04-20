@@ -1,5 +1,6 @@
 #pragma once
 
+#include "expected.hpp"
 #include "userver_namespaces.hpp"
 
 #include <boost/safe_numerics/checked_default.hpp>
@@ -20,8 +21,10 @@
 #include <format>
 #include <functional>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace integers {
 
@@ -86,22 +89,83 @@ template <typename T>
 concept NumericCastType = std::integral<std::remove_cvref_t<T>> ||
                           std::is_enum_v<std::remove_cvref_t<T>>;
 
+namespace detail {
+
+enum class NumericCastError {
+    kNegativeToUnsigned,
+    kNarrowingOverflow,
+    kEnumUnderlyingOverflow,
+};
+
+[[noreturn]] inline void abortNumericCastFailure(NumericCastError error) noexcept
+{
+    using enum NumericCastError;
+
+    switch (error) {
+    case kNegativeToUnsigned:
+        us::utils::AbortWithStacktrace("safe integer failure: negative to unsigned");
+    case kNarrowingOverflow:
+        us::utils::AbortWithStacktrace("safe integer failure: narrowing overflow");
+    case kEnumUnderlyingOverflow:
+        us::utils::AbortWithStacktrace("safe integer failure: enum underlying overflow");
+    default:
+        us::utils::AbortWithStacktrace("safe integer failure");
+    }
+}
+
 template <typename To, typename From>
     requires NumericCastType<To> && NumericCastType<From>
-[[nodiscard]] constexpr std::remove_cvref_t<To> numericCast(From value) noexcept
+[[nodiscard]] constexpr v1::Expected<std::remove_cvref_t<To>, NumericCastError>
+checkedNumericCast(From value) noexcept
 {
     using ToValue = std::remove_cvref_t<To>;
     using FromValue = std::remove_cvref_t<From>;
 
     if constexpr (std::is_enum_v<ToValue>) {
         using ToUnderlying = std::underlying_type_t<ToValue>;
-        return static_cast<ToValue>(numericCast<ToUnderlying>(value));
+        auto underlyingValue = checkedNumericCast<ToUnderlying>(value);
+        if (!underlyingValue)
+            return v1::Unex(NumericCastError::kEnumUnderlyingOverflow);
+        return static_cast<ToValue>(*underlyingValue);
     } else if constexpr (std::is_enum_v<FromValue>) {
-        using FromUnderlying = std::underlying_type_t<FromValue>;
-        return numericCast<ToValue>(static_cast<FromUnderlying>(value));
+        return checkedNumericCast<ToValue>(std::to_underlying(value));
     } else {
-        return static_cast<ToValue>(SafeInteger<ToValue>{SafeInteger<FromValue>{value}});
+        if constexpr (std::is_unsigned_v<ToValue> && std::is_signed_v<FromValue>) {
+            if (value < 0)
+                return v1::Unex(NumericCastError::kNegativeToUnsigned);
+        }
+        if (!std::in_range<ToValue>(value))
+            return v1::Unex(NumericCastError::kNarrowingOverflow);
+        return static_cast<ToValue>(value);
     }
+}
+
+template <typename To, typename T, typename PromotionPolicy, typename ExceptionPolicy>
+[[nodiscard]] constexpr v1::Expected<std::remove_cvref_t<To>, NumericCastError> checkedNumericCast(
+    const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value
+) noexcept
+    requires NumericCastType<To>
+{
+    using ToValue = std::remove_cvref_t<To>;
+
+    if constexpr (std::same_as<ToValue, T>) {
+        return static_cast<T>(value);
+    } else {
+        return checkedNumericCast<To>(static_cast<T>(value));
+    }
+}
+
+} // namespace detail
+
+template <typename To, typename From>
+    requires NumericCastType<To> && NumericCastType<From>
+[[nodiscard]] constexpr std::remove_cvref_t<To> numericCast(From value) noexcept
+{
+    using ToValue = std::remove_cvref_t<To>;
+    const auto converted = detail::checkedNumericCast<ToValue>(value);
+    if (!converted)
+        detail::abortNumericCastFailure(converted.error());
+    return *converted;
 }
 
 template <typename T, typename PromotionPolicy, typename ExceptionPolicy>
@@ -117,13 +181,10 @@ numericCast(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy
     requires NumericCastType<To> && (!std::same_as<std::remove_cvref_t<To>, T>)
 {
     using ToValue = std::remove_cvref_t<To>;
-
-    if constexpr (std::is_enum_v<ToValue>) {
-        using ToUnderlying = std::underlying_type_t<ToValue>;
-        return static_cast<ToValue>(numericCast<ToUnderlying>(numericCast(value)));
-    } else {
-        return static_cast<ToValue>(SafeInteger<ToValue>{numericCast(value)});
-    }
+    const auto converted = detail::checkedNumericCast<ToValue>(value);
+    if (!converted)
+        detail::abortNumericCastFailure(converted.error());
+    return *converted;
 }
 
 template <typename T, typename PromotionPolicy, typename ExceptionPolicy>
@@ -225,6 +286,31 @@ template <> struct formatter<i64, char> : formatter<int64_t, char> {
         return formatter<int64_t, char>::format(integers::raw(value), ctx);
     }
 };
+
+[[nodiscard]] inline std::string to_string(const u16 &value)
+{
+    return std::to_string(integers::raw(value));
+}
+
+[[nodiscard]] inline std::string to_string(const u32 &value)
+{
+    return std::to_string(integers::raw(value));
+}
+
+[[nodiscard]] inline std::string to_string(const i32 &value)
+{
+    return std::to_string(integers::raw(value));
+}
+
+[[nodiscard]] inline std::string to_string(const u64 &value)
+{
+    return std::to_string(integers::raw(value));
+}
+
+[[nodiscard]] inline std::string to_string(const i64 &value)
+{
+    return std::to_string(integers::raw(value));
+}
 
 template <> struct hash<u16> {
     size_t operator()(const u16 &value) const noexcept

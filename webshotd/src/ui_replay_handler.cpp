@@ -167,7 +167,7 @@ std::string UiReplayHandler::HandleRequestThrow(
         );
         response.SetStatus(kTooManyRequests);
         response.SetHeader(
-            us::http::headers::kRetryAfter, std::format("{}", retryAfterSeconds.count())
+            us::http::headers::kRetryAfter, std::to_string(retryAfterSeconds.count())
         );
         return renderErrorPage("client IP in cooldown");
     }

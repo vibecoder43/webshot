@@ -45,12 +45,13 @@ namespace {
 
     const auto retryAfterSeconds = std::chrono::ceil<std::chrono::seconds>(retryAfter).count();
     const auto retryAfterSecondsCount = std::max<i64>(1, i64(retryAfterSeconds));
-    dto::CaptureJobCooldownResponse body;
-    body.uuid = uuid;
-    body.retry_after_sec = retryAfterSecondsCount;
-    body.error = dto::CaptureJobCooldownResponse::Error{"client IP in cooldown"};
+    dto::CaptureJobCooldownResponse body{
+        .uuid = uuid,
+        .retry_after_sec = retryAfterSecondsCount,
+        .error = dto::CaptureJobCooldownResponse::Error{"client IP in cooldown"},
+    };
 
-    response.SetHeader(us::http::headers::kRetryAfter, std::format("{}", retryAfterSecondsCount));
+    response.SetHeader(us::http::headers::kRetryAfter, std::to_string(retryAfterSecondsCount));
     return httpu::respondJson(response, kTooManyRequests, body);
 }
 

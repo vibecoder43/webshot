@@ -20,10 +20,10 @@ namespace v1::crud {
 [[nodiscard]] std::optional<Cursor> decodeCursor(const String &token)
 {
     const auto cur = TRY(decodeToken<dto::PaginationCursor>(token));
-    Cursor out;
-    out.createdAt = microsToTimePoint(cur.t);
-    out.id = cur.i;
-    return out;
+    return Cursor{
+        .createdAt = microsToTimePoint(cur.t),
+        .id = cur.i,
+    };
 }
 
 } // namespace v1::crud

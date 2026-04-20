@@ -20,7 +20,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -74,10 +73,11 @@ struct [[nodiscard]] ProbeConfig final {
 [[nodiscard]] Expected<json::Value, String>
 evaluateExpression(crawler::CdpSession &cdpSession, const String &expression)
 {
-    dto::RuntimeEvaluateParams params;
-    params.expression = std::string(expression.view());
-    params.returnByValue = true;
-    params.awaitPromise = true;
+    dto::RuntimeEvaluateParams params{
+        .expression = std::to_string(expression),
+        .returnByValue = true,
+        .awaitPromise = true,
+    };
 
     const auto result = cdpSession.send<json::Value>("Runtime.evaluate"_t, params);
     if (!result)
@@ -310,7 +310,7 @@ evaluateFrameExpression(crawler::CdpSession &cdpSession, const String &expressio
 [[nodiscard]] Expected<dto::BrowserProbeResponse, String>
 runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng::Deadline deadline)
 {
-    auto browser = crawler::BrowserSession{
+    crawler::BrowserSession browser{
         config.dnsResolver, config.processStarter,
         crawler::BrowserSessionConfig{
             .urlBytesMax = config.svcConfig.urlBytesMax(),
@@ -342,7 +342,7 @@ runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
     if (!connected)
         return Unex(browser.buildFailureDetail(connected.error()));
     auto cdp = std::move(*connected);
-    auto pageSession = crawler::BrowserPageSession{*cdp};
+    crawler::BrowserPageSession pageSession{*cdp};
     auto *cdpSession = static_cast<crawler::CdpSession *>(nullptr);
 
     std::vector<std::string> console;
@@ -352,7 +352,7 @@ runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         if (const auto closedPage = pageSession.close(); !closedPage) {
             LOG_WARNING() << std::format(
                 "Suppressing page session close failure during probe cleanup: {}",
-                closedPage.error().view()
+                closedPage.error()
             );
         }
         if (const auto closed = cdp->close(); !closed) {
@@ -435,7 +435,7 @@ runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         return failProbe(browser.buildFailureDetail(settled.error()));
     }
 
-    auto result = dto::BrowserProbeResponse{};
+    dto::BrowserProbeResponse result{};
 
     const auto state = evaluateExpressionAs<dto::BrowserProbePageState>(
         *cdpSession,

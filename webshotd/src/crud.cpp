@@ -95,7 +95,7 @@ Url v1::buildCaptureDownloadUrl(Uuid uuid, const Config &config)
     const auto downloadUrlText =
         String::fromBytes(std::format("{}/{}.wacz", config.publicBaseUrl(), uuid)).expect();
     const auto downloadUrl = Url::fromText(downloadUrlText);
-    UINVARIANT(downloadUrl, "downloadUrl must parse");
+    invariant(downloadUrl, "downloadUrl must parse");
     return *downloadUrl;
 }
 
@@ -135,12 +135,12 @@ struct [[nodiscard]] ClientIpCooldownRow final {
     if (cpuCores == 0_i64 && memoryGib == 0_i64)
         return {};
 
-    UINVARIANT(cpuCores > 0_i64 && memoryGib > 0_i64, "crawler limits must be both > 0 or both 0");
+    invariant(cpuCores > 0_i64 && memoryGib > 0_i64, "crawler limits must be both > 0 or both 0");
     const auto maxI64 = std::numeric_limits<i64>::max();
     const auto maxMemoryGib = maxI64 / kGiB;
-    UINVARIANT(memoryGib <= maxMemoryGib, "memory GiB limit is too large");
+    invariant(memoryGib <= maxMemoryGib, "memory GiB limit is too large");
     const auto maxCpuCores = maxI64 / kCpuMaxPeriodUs;
-    UINVARIANT(cpuCores <= maxCpuCores, "cpu core limit is too large");
+    invariant(cpuCores <= maxCpuCores, "cpu core limit is too large");
     return crawler::CgroupLimits{.cpuCores = cpuCores, .memoryBytes = memoryGib * kGiB};
 }
 
@@ -149,7 +149,7 @@ makePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
 {
     return dto::CaptureJob{
         .uuid = uuid,
-        .link = std::string(link.view()),
+        .link = std::to_string(link),
         .status = dto::CaptureJob::Status::kPending,
         .created_at = createdAt,
     };
@@ -157,18 +157,18 @@ makePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
 
 [[nodiscard]] dto::CaptureJob makeCaptureJob(CaptureJobRow row)
 {
-    dto::CaptureJob job;
-    job.uuid = row.uuid;
-    job.link = std::string(row.link.view());
-    if (row.status == "pending")
-        job.status = dto::CaptureJob::Status::kPending;
-    else if (row.status == "running")
-        job.status = dto::CaptureJob::Status::kRunning;
-    else if (row.status == "succeeded")
-        job.status = dto::CaptureJob::Status::kSucceeded;
-    else
-        job.status = dto::CaptureJob::Status::kFailed;
-    job.created_at = datetime::TimePointTz(row.createdAt.GetUnderlying());
+    using enum dto::CaptureJob::Status;
+
+    const auto status = row.status == "pending"     ? kPending
+                        : row.status == "running"   ? kRunning
+                        : row.status == "succeeded" ? kSucceeded
+                                                    : kFailed;
+    dto::CaptureJob job{
+        .uuid = row.uuid,
+        .link = std::to_string(row.link),
+        .status = status,
+        .created_at = datetime::TimePointTz(row.createdAt.GetUnderlying()),
+    };
     if (row.startedAt)
         job.started_at = datetime::TimePointTz(row.startedAt->GetUnderlying());
     if (row.finishedAt)
@@ -176,7 +176,7 @@ makePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
     if (row.resultCreatedAt) {
         job.result_created_at = datetime::TimePointTz(row.resultCreatedAt->GetUnderlying());
     }
-    if (job.status == dto::CaptureJob::Status::kFailed) {
+    if (job.status == kFailed) {
         // Never expose internal diagnostics (crawler details, exception text, etc) to API clients.
         std::string message = "internal server error";
         if (row.errorCategory) {
@@ -191,8 +191,8 @@ makePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
         dto::ErrorEnvelope::Error err{std::move(message)};
         job.error = dto::ErrorEnvelope{err};
     }
-    if (job.status == dto::CaptureJob::Status::kSucceeded && job.result_created_at) {
-        UINVARIANT(row.resultCaptureId, "succeeded job must have result_capture_id");
+    if (job.status == kSucceeded && job.result_created_at) {
+        invariant(row.resultCaptureId, "succeeded job must have result_capture_id");
         job.result = dto::UuidWithTimeLink(*row.resultCaptureId, *job.result_created_at, job.link);
     }
     return job;
@@ -506,21 +506,21 @@ public:
     {
         const auto fixedTimingBudget = crawlerPostLoadDelay + crawlerNetIdleWait +
                                        crawlerPageExtraDelay + crawlerBehaviorTimeout;
-        UINVARIANT(
+        invariant(
             fixedTimingBudget <= crawlerRunTimeout,
             "crawler fixed timing budget must be <= crawler_run_timeout_sec"
         );
-        UINVARIANT(
+        invariant(
             crawlJobRetention >= linkCooldown,
             "crawl_job_retention_sec must be >= link_cooldown_sec"
         );
-        UINVARIANT(
+        invariant(
             s3CredentialsDuration > s3CredentialsRefreshMargin,
             "s3_credentials_duration_sec must be greater than s3_credentials_refresh_margin_sec"
         );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
         const auto &creds = secdist.Get<S3CredentialsSecdist>();
-        UINVARIANT(
+        invariant(
             creds.accessKeyId && creds.secretAccessKey, "missing required S3 secdist credentials"
         );
         staticAccessKeyId = *creds.accessKeyId;
@@ -530,15 +530,20 @@ public:
             initialState = fetchS3ClientStateFromSts();
             startS3RefreshTask();
         } else {
-            S3ClientState state;
-            state.creds = makeStaticS3Credentials(staticAccessKeyId, staticSecretAccessKey);
-            state.expiresAt = system_clock::time_point::max();
-            state.client = std::make_shared<s3v4::S3V4Client>(
-                httpClient,
-                s3v4::S3V4Config(svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), false),
-                state.creds, String()
+            const auto staticCreds = makeStaticS3Credentials(
+                staticAccessKeyId, staticSecretAccessKey
             );
-            initialState = std::move(state);
+            initialState = S3ClientState{
+                .creds = staticCreds,
+                .expiresAt = system_clock::time_point::max(),
+                .client = std::make_shared<s3v4::S3V4Client>(
+                    httpClient,
+                    s3v4::S3V4Config(
+                        svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), false
+                    ),
+                    staticCreds, String()
+                ),
+            };
         }
         s3State.Assign(initialState);
         startCrawlJobCleanupTask();
@@ -661,7 +666,7 @@ Crud::Impl::runCrawlJob(Uuid id, Link link)
         return Unex(errors::CrawlFailure{.code = kPersistMetadataFailed, .detail = {}});
     LOG_INFO() << std::format("Persisted metadata for job {} ({})", id, ctx.link.normalized());
     return dto::UuidWithTimeLink{
-        stored->id, stored->createdAt, std::string(ctx.link.normalized().view())
+        stored->id, stored->createdAt, std::to_string(ctx.link.normalized())
     };
 }
 
@@ -787,15 +792,18 @@ Crud::Impl::S3ClientState Crud::Impl::fetchS3ClientStateFromSts()
         us::utils::AbortWithStacktrace("failed to fetch STS credentials");
     }
 
-    S3ClientState state;
-    state.creds = s3v4::S3Credentials(sts->accessKeyId, sts->secretAccessKey, sts->sessionToken);
-    state.expiresAt = sts->expiresAt;
-    state.client = std::make_shared<s3v4::S3V4Client>(
-        httpClient,
-        s3v4::S3V4Config(svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), false),
-        state.creds, String()
+    const auto creds = s3v4::S3Credentials(
+        sts->accessKeyId, sts->secretAccessKey, sts->sessionToken
     );
-    return state;
+    return S3ClientState{
+        .creds = creds,
+        .expiresAt = sts->expiresAt,
+        .client = std::make_shared<s3v4::S3V4Client>(
+            httpClient,
+            s3v4::S3V4Config(svcCfg.s3Endpoint(), svcCfg.s3Region(), svcCfg.s3Timeout(), false),
+            creds, String()
+        ),
+    };
 }
 
 Expected<std::optional<dto::CaptureJob>, PgError>
@@ -970,14 +978,14 @@ Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlConte
     const auto tryStoreSuccess = [&ctx](const CrawlerRunArtifacts &run) -> bool {
         if (!crawler::isAttemptSuccess(run.attempt))
             return false;
-        UINVARIANT(run.wacz, "crawler reported wacz_exists=true but did not provide WACZ bytes");
-        UINVARIANT(
+        invariant(run.wacz, "crawler reported wacz_exists=true but did not provide WACZ bytes");
+        invariant(
             run.contentSha256, "crawler did not provide content hash for a successful capture"
         );
-        UINVARIANT(ssize(*run.contentSha256) == 32_i64, "content hash must be 32 bytes");
-        UINVARIANT(run.replayUrl, "crawler did not provide replayUrl for a successful capture");
+        invariant(ssize(*run.contentSha256) == 32_i64, "content hash must be 32 bytes");
+        invariant(run.replayUrl, "crawler did not provide replayUrl for a successful capture");
         const auto replayUrl = Url::fromText(*run.replayUrl);
-        UINVARIANT(replayUrl, "replayUrl must parse for a successful capture");
+        invariant(replayUrl, "replayUrl must parse for a successful capture");
         ctx.waczBytes = *run.wacz;
         ctx.contentSha256 = *run.contentSha256;
         ctx.replayUrl = *replayUrl;
@@ -1106,7 +1114,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
     const auto prefixKey = prefix::makePrefixKey(ctx.link);
     const auto prefixTree = prefix::makePrefixTree(prefixKey);
     const auto host = ctx.link.url.hostname();
-    UINVARIANT(ctx.replayUrl, "replayUrl must be set for a successful capture");
+    invariant(ctx.replayUrl, "replayUrl must be set for a successful capture");
 
     const auto allowed = denylist.isAllowedPrefix(prefixKey);
     if (!allowed || !*allowed) {
@@ -1119,9 +1127,9 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
         return {};
     }
 
-    UINVARIANT(ctx.waczBytes, "persistMetadataForContext called without WACZ bytes");
-    UINVARIANT(ctx.contentSha256, "persistMetadataForContext called without content hash");
-    UINVARIANT(ssize(*ctx.contentSha256) == 32_i64, "content hash must be 32 bytes");
+    invariant(ctx.waczBytes, "persistMetadataForContext called without WACZ bytes");
+    invariant(ctx.contentSha256, "persistMetadataForContext called without content hash");
+    invariant(ssize(*ctx.contentSha256) == 32_i64, "content hash must be 32 bytes");
 
     struct ExistingRow {
         Uuid id;
@@ -1362,7 +1370,7 @@ Crud::acquireClientIpCooldown(String clientIp)
 {
     using enum errors::CrudError;
 
-    UINVARIANT(!clientIp.empty(), "client IP must not be empty");
+    invariant(!clientIp.empty(), "client IP must not be empty");
     auto acquired = impl->acquireClientIpCooldownLocked(clientIp);
     if (!acquired) {
         us::utils::AbortWithStacktrace(
@@ -1459,7 +1467,7 @@ Crud::findCapturesByLinkPage(const Link &link, String pageToken)
             crud::Cursor cursor(tp, last.uuid);
             return dto::PagedFindCapturesByUrlResponse{
                 .items = std::move(items),
-                .next_page_token = std::string(crud::encodeCursor(cursor).view()),
+                .next_page_token = std::to_string(crud::encodeCursor(cursor)),
             };
         }
         return dto::PagedFindCapturesByUrlResponse{
@@ -1490,7 +1498,7 @@ Crud::findCapturesByLinkPage(const Link &link, String pageToken)
             crud::Cursor cursor(tp, last.uuid);
             return dto::PagedFindCapturesByUrlResponse{
                 .items = std::move(items),
-                .next_page_token = std::string(crud::encodeCursor(cursor).view()),
+                .next_page_token = std::to_string(crud::encodeCursor(cursor)),
             };
         }
         return dto::PagedFindCapturesByUrlResponse{
@@ -1596,7 +1604,7 @@ Crud::findCapturesByPrefixPage(String normalizedPrefix, String pageToken)
         }
         for (auto &&r : *rows) {
             items.emplace_back(
-                r.uuid, datetime::TimePointTz(r.tp.GetUnderlying()), std::string(link.view())
+                r.uuid, datetime::TimePointTz(r.tp.GetUnderlying()), std::to_string(link)
             );
         }
         if (!rows->empty()) {
@@ -1618,7 +1626,7 @@ Crud::findCapturesByPrefixPage(String normalizedPrefix, String pageToken)
                 crud::encodePrefixCursor(normalizedPrefix, lastLink, tp, lastRow->uuid).view()
             );
         } else {
-            next = std::string(crud::encodePrefixCursor(normalizedPrefix, lastLink).view());
+            next = std::to_string(crud::encodePrefixCursor(normalizedPrefix, lastLink));
         }
     }
     return dto::PagedFindCapturesByPrefixResponse{

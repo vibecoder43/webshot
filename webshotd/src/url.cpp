@@ -5,6 +5,16 @@
 
 namespace v1 {
 
+namespace {
+
+constexpr bool hasStripOption(Url::StripOptions options, Url::StripOptions flag) noexcept
+{
+    using U = std::underlying_type_t<Url::StripOptions>;
+    return static_cast<U>(options & flag) != 0;
+}
+
+} // namespace
+
 Url::Url(ada::url_aggregator adaUrl) : adaUrl(std::move(adaUrl)) {}
 
 std::optional<Url> Url::fromText(const String &text)
@@ -51,6 +61,16 @@ ada::scheme::type Url::schemeType() const { return adaUrl.type; }
 bool Url::isHttp() const { return adaUrl.type == ada::scheme::type::HTTP; }
 
 bool Url::isHttps() const { return adaUrl.type == ada::scheme::type::HTTPS; }
+
+Url Url::stripped(StripOptions options) const
+{
+    auto parsed = copyParsed();
+    if (hasStripOption(options, StripOptions::kStripPort))
+        parsed.clear_port();
+    if (hasStripOption(options, StripOptions::kStripQuery))
+        parsed.clear_search();
+    return Url::fromParsed(std::move(parsed));
+}
 
 ada::url_aggregator Url::copyParsed() const { return adaUrl; }
 

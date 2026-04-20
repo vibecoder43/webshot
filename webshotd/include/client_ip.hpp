@@ -35,7 +35,7 @@ resolve(const server::http::HttpRequest &request, const Config &config)
     case ClientIpSource::kTrustedHeader:
         return makeClientIp(request.GetHeader(config.clientIpHeaderName()));
     default:
-        UINVARIANT(false, "unknown client IP source");
+        invariant(false, "unknown client IP source");
         return {};
     }
 }

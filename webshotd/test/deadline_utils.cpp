@@ -24,7 +24,7 @@ UTEST(DeadlineUtils, TimeLeftOrThrowExpiredThrows)
 
 UTEST(DeadlineUtils, TimeLeftOrZeroUnreachableIsMax)
 {
-    const auto unreachable = Deadline{};
+    const Deadline unreachable{};
     EXPECT_FALSE(unreachable.IsReachable());
     EXPECT_EQ(v1::timeLeftOrZeroMs(unreachable), std::chrono::milliseconds::max());
 }

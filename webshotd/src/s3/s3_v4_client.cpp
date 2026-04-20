@@ -6,10 +6,10 @@
  * and presign helpers. It relies on userver HTTP client for transport.
  */
 #include "s3/s3_v4_client.hpp"
+#include "s3/s3_url_utils.hpp"
 #include "s3/sigv4_signer.hpp"
 
 #include "integers.hpp"
-#include "link.hpp"
 #include "text.hpp"
 #include "userver_namespaces.hpp"
 
@@ -38,21 +38,25 @@ namespace detail {
 
 EndpointParts parseEndpoint(const String &ep)
 {
-    // Link::fromText may insert "http://" when scheme is absent; allow that overhead.
-    constexpr auto kDefaultSchemeBytes = 7_i64; // "http://"
-    const auto urlBytesMax = numericCast<size_t>(i64{ep.sizeBytes()} + kDefaultSchemeBytes);
-    const auto link = Link::fromText(ep, urlBytesMax, Link::FromTextOptions::kNone).expect();
-    const auto &url = link.url;
+    const auto url = parseUrlWithDefaultHttpScheme(ep);
+    invariant(url, "S3 endpoint must parse");
 
-    UINVARIANT(url.isHttp() || url.isHttps(), "S3 endpoint must be http or https");
+    invariant(url->isHttp() || url->isHttps(), "S3 endpoint must be http or https");
 
-    UINVARIANT(!url.hasSearch(), "S3 endpoint must not include query");
-    std::string path{url.pathname().view()};
+    invariant(!url->hasSearch(), "S3 endpoint must not include query");
+    std::string path{url->pathname().view()};
     if (path.empty())
         path = "/";
-    UINVARIANT(path == "/", "S3 endpoint path must be root");
+    invariant(path == "/", "S3 endpoint path must be root");
 
-    return {url, url.host(), url.hostname(), url.hasPort() ? url.port() : String{}, "/"_t};
+    return {*url, url->host(), url->hostname(), url->hasPort() ? url->port() : String{}, "/"_t};
+}
+
+Expected<void, VirtualHostPresignError> validateVirtualHostBucketName(const String &bucketName)
+{
+    if (bucketName.empty())
+        return Unex(VirtualHostPresignError::kMissingBucket);
+    return {};
 }
 } // namespace detail
 
@@ -121,7 +125,7 @@ S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &reques
     httpc::Headers headers;
     const auto payloadHash = sha256Hex("");
     signRequest("HEAD"_t, built.rawPath, built.host, headers, payloadHash);
-    const auto url = std::string(built.href.view());
+    const auto url = std::to_string(built.href);
     auto resp = httpClient.CreateNotSignedRequest()
                     .head(url)
                     .headers(headers)
@@ -270,7 +274,6 @@ std::string S3V4Client::GenerateDownloadUrlVirtualHostAddressing(
     std::string_view protocol
 ) const
 {
-    UINVARIANT(!bucketName.empty(), "presign requires non-empty bucket");
     auto method = "GET"_t;
     auto pathText = String::fromBytes(path).expect();
     auto protocolText = String::fromBytes(protocol).expect();
@@ -282,7 +285,6 @@ std::string S3V4Client::GenerateUploadUrlVirtualHostAddressing(
     const std::chrono::system_clock::time_point &expiresAt, std::string_view protocol
 ) const
 {
-    UINVARIANT(!bucketName.empty(), "presign requires non-empty bucket");
     httpc::Headers hdrs;
     hdrs[us::http::headers::kContentType] = std::string(contentType);
     // we use UNSIGNED-PAYLOAD for presign
@@ -310,7 +312,7 @@ std::chrono::seconds S3V4Client::computePresignTtl(
 SigV4Params S3V4Client::makeSigV4Params(const std::chrono::system_clock::time_point &now) const
 {
     return {
-        std::string(config.region.view()),
+        std::to_string(config.region),
         "s3",
         creds.accessKeyId,
         creds.secretAccessKey,
@@ -326,7 +328,7 @@ void S3V4Client::signRequest(
 {
     const auto now = datetime::Now();
     const auto params = makeSigV4Params(now);
-    auto prepared = prepareSignedHeaders(std::string(host.view()), headers);
+    auto prepared = prepareSignedHeaders(std::to_string(host), headers);
 
     std::vector<std::pair<String, String>> headersText;
     headersText.reserve(prepared.size());
@@ -343,9 +345,9 @@ void S3V4Client::signRequest(
 
 String S3V4Client::buildRawPath(String path, IncludeBucket includeBucket) const
 {
-    const auto basePath = std::string(endpoint.basePath.view());
-    const auto bucket = std::string(bucketName.view());
-    const auto pathBytes = std::string(path.view());
+    const auto basePath = std::to_string(endpoint.basePath);
+    const auto bucket = std::to_string(bucketName);
+    const auto pathBytes = std::to_string(path);
 
     std::string raw;
     raw.reserve(numericCast<size_t>(ssize(basePath) + ssize(bucket) + ssize(pathBytes) + 2_i64));
@@ -371,45 +373,49 @@ String S3V4Client::buildRawPath(String path, IncludeBucket includeBucket) const
 detail::BuiltUrl
 S3V4Client::makePathStyleUrl(String path, std::optional<String> protocolOverride) const
 {
-    detail::BuiltUrl out;
-    out.rawPath = buildRawPath(std::move(path), IncludeBucket::kYes);
+    auto rawPath = buildRawPath(std::move(path), IncludeBucket::kYes);
 
     auto url = endpoint.url.copyParsed();
     if (protocolOverride) {
-        const auto proto = std::string(protocolOverride->view());
-        UINVARIANT(url.set_protocol(proto), "invalid protocol override");
+        const auto proto = std::to_string(*protocolOverride);
+        invariant(url.set_protocol(proto), "invalid protocol override");
     }
-    UINVARIANT(url.set_pathname(out.rawPath.view()), "failed to set path for S3 request");
+    invariant(url.set_pathname(rawPath.view()), "failed to set path for S3 request");
     url.set_search("");
     url.clear_hash();
 
-    out.host = endpoint.host;
-    out.href = String::fromBytes(url.get_href()).expect();
-    return out;
+    return detail::BuiltUrl{
+        .href = String::fromBytes(url.get_href()).expect(),
+        .host = endpoint.host,
+        .rawPath = std::move(rawPath),
+    };
 }
 
 detail::BuiltUrl S3V4Client::makeVirtualHostUrl(String path, String protocol) const
 {
-    detail::BuiltUrl out;
-    out.rawPath = buildRawPath(std::move(path), IncludeBucket::kNo);
+    const auto bucketValidated = detail::validateVirtualHostBucketName(bucketName);
+    invariant(bucketValidated, "presign requires non-empty bucket");
+
+    auto rawPath = buildRawPath(std::move(path), IncludeBucket::kNo);
 
     auto url = endpoint.url.copyParsed();
-    const auto proto = std::string(protocol.view());
-    UINVARIANT(url.set_protocol(proto), "invalid protocol for S3 presign");
-    UINVARIANT(
-        url.set_hostname(std::format("{}.{}", bucketName.view(), endpoint.hostname.view())),
-        "bad hostname"
+    const auto proto = std::to_string(protocol);
+    invariant(url.set_protocol(proto), "invalid protocol for S3 presign");
+    invariant(
+        url.set_hostname(std::format("{}.{}", bucketName, endpoint.hostname)), "bad hostname"
     );
     if (!endpoint.port.empty())
-        UINVARIANT(url.set_port(std::string(endpoint.port.view())), "bad port");
+        invariant(url.set_port(std::to_string(endpoint.port)), "bad port");
     else
         url.set_port("");
-    UINVARIANT(url.set_pathname(out.rawPath.view()), "failed to set path for S3 presign");
+    invariant(url.set_pathname(rawPath.view()), "failed to set path for S3 presign");
     url.set_search("");
     url.clear_hash();
-    out.host = String::fromBytes(url.get_host()).expect();
-    out.href = String::fromBytes(url.get_href()).expect();
-    return out;
+    return detail::BuiltUrl{
+        .href = String::fromBytes(url.get_href()).expect(),
+        .host = String::fromBytes(url.get_host()).expect(),
+        .rawPath = std::move(rawPath),
+    };
 }
 
 String S3V4Client::presignVirtualHost(
@@ -423,7 +429,7 @@ String S3V4Client::presignVirtualHost(
     const SigV4Params params = makeSigV4Params(now);
 
     httpc::Headers extra = extraHeaders.value_or(httpc::Headers{});
-    auto prepared = prepareSignedHeaders(std::string(built.host.view()), extra);
+    auto prepared = prepareSignedHeaders(std::to_string(built.host), extra);
 
     std::vector<std::pair<String, String>> headersText;
     headersText.reserve(prepared.size());
@@ -444,7 +450,7 @@ String S3V4Client::presignPathStyle(
     auto now = datetime::Now();
     auto built = makePathStyleUrl(std::move(path), std::move(protocol));
     SigV4Params params = makeSigV4Params(now);
-    auto prepared = prepareSignedHeaders(std::string(built.host.view()), httpc::Headers{});
+    auto prepared = prepareSignedHeaders(std::to_string(built.host), httpc::Headers{});
 
     std::vector<std::pair<String, String>> headersText;
     headersText.reserve(prepared.size());
@@ -470,19 +476,17 @@ String S3V4Client::buildPresignedUrl(
         "X-Amz-Credential", std::format("{}/{}", params.accessKeyId.GetUnderlying(), scope)
     );
     query.emplace_back("X-Amz-Date", params.amzDate);
-    query.emplace_back(
-        "X-Amz-Expires", std::format("{}", computePresignTtl(now, expiresAt).count())
-    );
+    query.emplace_back("X-Amz-Expires", std::to_string(computePresignTtl(now, expiresAt).count()));
 
     std::vector<std::pair<std::string, std::string>> headersUtf8;
     headersUtf8.reserve(headers.size());
     for (const auto &kv : headers)
-        headersUtf8.emplace_back(std::string(kv.first.view()), std::string(kv.second.view()));
+        headersUtf8.emplace_back(std::to_string(kv.first), std::to_string(kv.second));
     const std::string signedHeaders = buildSignedHeaders(headersUtf8);
     query.emplace_back("X-Amz-SignedHeaders", signedHeaders);
     if (params.sessionToken)
         query.emplace_back(
-            "X-Amz-Security-Token", std::string(params.sessionToken->GetUnderlying().view())
+            "X-Amz-Security-Token", std::to_string(params.sessionToken->GetUnderlying())
         );
 
     const auto cr = buildCanonicalRequest(
@@ -494,7 +498,7 @@ String S3V4Client::buildPresignedUrl(
     const std::string signature = computeSignature(params, stringToSign);
     query.emplace_back("X-Amz-Signature", signature);
 
-    auto url = std::string(built.href.view());
+    auto url = std::to_string(built.href);
     url.push_back('?');
     url.append(canonicalizeQuery(query));
     return String::fromBytes(url).expect();

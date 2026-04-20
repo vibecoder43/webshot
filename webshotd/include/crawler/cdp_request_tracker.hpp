@@ -62,7 +62,7 @@ public:
     void markIgnoreResponse(i64 id)
     {
         auto *request = find(id);
-        UINVARIANT(request != nullptr, "cannot ignore unknown cdp request");
+        invariant(request != nullptr, "cannot ignore unknown cdp request");
         request->ignoreResponse = true;
     }
 
@@ -76,7 +76,7 @@ private:
     void insert(i64 id, CdpPendingRequest request)
     {
         const auto [_, inserted] = requests.emplace(id, std::move(request));
-        UINVARIANT(inserted, "duplicate cdp request id");
+        invariant(inserted, "duplicate cdp request id");
     }
 
     std::unordered_map<i64, CdpPendingRequest> requests;

@@ -8,7 +8,27 @@
 #include "text.hpp"
 
 using v1::s3v4::decodeQueryString;
+using v1::s3v4::parseUrlWithDefaultHttpScheme;
 using namespace text::literals;
+
+UTEST(S3UrlUtils, ParsesUrlWithExistingScheme)
+{
+    const auto url = parseUrlWithDefaultHttpScheme("https://example.com/path?a=1"_t);
+    ASSERT_TRUE(url);
+    EXPECT_EQ(url->href(), "https://example.com/path?a=1"_t);
+}
+
+UTEST(S3UrlUtils, DefaultsMissingSchemeToHttp)
+{
+    const auto url = parseUrlWithDefaultHttpScheme("example.com/path?a=1"_t);
+    ASSERT_TRUE(url);
+    EXPECT_EQ(url->href(), "http://example.com/path?a=1"_t);
+}
+
+UTEST(S3UrlUtils, RejectsInvalidUrlEvenAfterDefaultScheme)
+{
+    EXPECT_FALSE(parseUrlWithDefaultHttpScheme("https://["_t));
+}
 
 UTEST(S3UrlUtils, EmptyAndQuestionOnly)
 {

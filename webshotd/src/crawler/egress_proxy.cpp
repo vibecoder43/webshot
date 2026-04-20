@@ -235,8 +235,8 @@ parseAuthority(std::string_view authority, u16 defaultPort, PortMode portMode) n
     if (authority.empty())
         return {};
 
-    auto host = std::string_view{};
-    auto remainder = std::string_view{};
+    std::string_view host{};
+    std::string_view remainder{};
 
     if (authority.front() == '[') {
         const auto close = authority.find(']');
@@ -280,7 +280,7 @@ parseAuthority(std::string_view authority, u16 defaultPort, PortMode portMode) n
     addr4.sin_family = AF_INET;
     addr4.sin_port = htons(raw(port));
     const auto hostText = std::string(host);
-    UINVARIANT(inet_pton(AF_INET, hostText.c_str(), &addr4.sin_addr) == 1, "invalid ipv4 addr");
+    invariant(inet_pton(AF_INET, hostText.c_str(), &addr4.sin_addr) == 1, "invalid ipv4 addr");
     return eng::io::Sockaddr(&addr4);
 }
 
@@ -293,7 +293,7 @@ parseAuthority(std::string_view authority, u16 defaultPort, PortMode portMode) n
     addr6.sin6_family = AF_INET6;
     addr6.sin6_port = htons(raw(port));
     const auto hostText = std::string(candidate);
-    UINVARIANT(inet_pton(AF_INET6, hostText.c_str(), &addr6.sin6_addr) == 1, "invalid ipv6 addr");
+    invariant(inet_pton(AF_INET6, hostText.c_str(), &addr6.sin6_addr) == 1, "invalid ipv6 addr");
     return eng::io::Sockaddr(&addr6);
 }
 
@@ -334,7 +334,7 @@ resolveTcp(dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadli
         if (addrs.empty())
             return Unex(text::format("dns resolve returned no addresses for {}", hostText));
 
-        auto resolved = std::vector<ResolvedTcpAddress>{};
+        std::vector<ResolvedTcpAddress> resolved{};
         resolved.reserve(addrs.size());
         for (auto &addr : addrs) {
             addr.SetPort(raw(port));
@@ -562,7 +562,7 @@ struct EgressProxy::Impl final {
             return 0_uz;
         }
 
-        const auto allowed = std::min(remaining, i64(bytes.size()));
+        const auto allowed = std::min(remaining, ssize(bytes));
         try {
             const auto sent = sock.SendAll(bytes.data(), numericCast<size_t>(allowed), deadline);
             accountDownBytes(i64{sent});
@@ -631,10 +631,10 @@ struct EgressProxy::Impl final {
         if (!addrs)
             return Unex(std::move(addrs).error());
 
-        auto errors = std::vector<std::string>{};
+        std::vector<std::string> errors{};
         errors.reserve(addrs->size());
         for (const auto &addr : *addrs) {
-            auto socket = eng::io::Socket{addr.sockaddr.Domain(), eng::io::SocketType::kStream};
+            eng::io::Socket socket{addr.sockaddr.Domain(), eng::io::SocketType::kStream};
             try {
                 socket.Connect(addr.sockaddr, deadline);
                 return socket;
@@ -643,7 +643,7 @@ struct EgressProxy::Impl final {
             }
         }
 
-        auto details = std::string{};
+        std::string details{};
         for (const auto &error : errors) {
             if (!details.empty())
                 details.append("; ");
@@ -662,12 +662,10 @@ struct EgressProxy::Impl final {
     ) noexcept
     {
         std::array<char, kIoBufferBytes> storage{};
-        auto buffer = std::span<char>{storage};
+        std::span<char> buffer{storage};
         try {
             while (!isClosed()) {
-                const auto received = usize{
-                    client.RecvSome(buffer.data(), buffer.size(), deadline)
-                };
+                const usize received{client.RecvSome(buffer.data(), buffer.size(), deadline)};
                 if (received == 0_uz) {
                     shutdownWriteQuietly(upstream);
                     return;
@@ -688,18 +686,16 @@ struct EgressProxy::Impl final {
     )
     {
         std::array<char, kIoBufferBytes> storage{};
-        auto buffer = std::span<char>{storage};
+        std::span<char> buffer{storage};
         try {
             while (!isClosed()) {
-                const auto received = usize{
-                    upstream.RecvSome(buffer.data(), buffer.size(), deadline)
-                };
+                const usize received{upstream.RecvSome(buffer.data(), buffer.size(), deadline)};
                 if (received == 0_uz) {
                     shutdownWriteQuietly(client);
                     return;
                 }
 
-                auto pending = std::span<const char>{buffer.data(), raw(received)};
+                std::span<const char> pending{buffer.data(), raw(received)};
                 while (!pending.empty() && !isClosed()) {
                     const auto sent = sendBudgeted(client, pending, deadline);
                     if (sent == 0_uz)
@@ -743,7 +739,7 @@ struct EgressProxy::Impl final {
         remainingBody -= ssize(alreadyBuffered);
 
         std::array<char, kIoBufferBytes> storage{};
-        auto buffer = std::span<char>{storage};
+        std::span<char> buffer{storage};
         while (remainingBody > 0_i64 && !isClosed()) {
             const auto want = numericCast<size_t>(std::min(remainingBody, ssize(buffer)));
             auto received = 0_uz;
@@ -800,7 +796,7 @@ struct EgressProxy::Impl final {
             return;
         }
 
-        i64 contentLength = 0_i64;
+        i64 contentLength{0};
         if (const auto header = findHeaderValue(req.headers, "content-length")) {
             auto parsedContentLength = parseContentLength(*header);
             if (!parsedContentLength) {
@@ -842,7 +838,7 @@ struct EgressProxy::Impl final {
         std::string header;
         header.reserve(2048);
         std::array<char, kIoBufferBytes> storage{};
-        auto buffer = std::span<char>{storage};
+        std::span<char> buffer{storage};
         try {
             while (header.find("\r\n\r\n") == std::string::npos) {
                 if (usz(header) > kMaxHeaderBytes) {
@@ -850,9 +846,7 @@ struct EgressProxy::Impl final {
                     client.Close();
                     return;
                 }
-                const auto received = usize{
-                    client.RecvSome(buffer.data(), buffer.size(), deadline)
-                };
+                const usize received{client.RecvSome(buffer.data(), buffer.size(), deadline)};
                 if (received == 0_uz)
                     return;
                 header.append(buffer.data(), raw(received));
@@ -938,15 +932,15 @@ struct EgressProxy::Impl final {
 
 EgressProxy::EgressProxy(EgressProxyConfig config) : impl{std::make_unique<Impl>(std::move(config))}
 {
-    UINVARIANT(!impl->config.socketPath.empty(), "proxy socket path must not be empty");
-    UINVARIANT(!impl->config.runId.empty(), "proxy runId must not be empty");
+    invariant(!impl->config.socketPath.empty(), "proxy socket path must not be empty");
+    invariant(!impl->config.runId.empty(), "proxy runId must not be empty");
 }
 
 EgressProxy::~EgressProxy() noexcept { close(); }
 
 Expected<void, String> EgressProxy::start(dns::Resolver &resolver, eng::Deadline deadline)
 {
-    UINVARIANT(deadline.IsReachable(), "proxy start deadline must be reachable");
+    invariant(deadline.IsReachable(), "proxy start deadline must be reachable");
     if (impl->acceptTask)
         return Unex("proxy already started"_t);
 

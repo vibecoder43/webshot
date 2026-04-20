@@ -98,8 +98,8 @@ std::string ById::HandleRequestThrow(
         dto::CaptureDetails{
             (**capture).uuid,
             (**capture).createdAt,
-            std::string((**capture).link.view()),
-            std::string(buildCaptureDownloadUrl((**capture).uuid, config).href().view()),
+            std::to_string((**capture).link),
+            std::to_string(buildCaptureDownloadUrl((**capture).uuid, config).href()),
         }
     );
 }

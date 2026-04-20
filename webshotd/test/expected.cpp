@@ -88,7 +88,7 @@ UTEST(Expected, TransformAndThenAndTransformErrorStillWork)
 
 UTEST(Expected, AcceptsStdUnexpectedForCompatibility)
 {
-    const auto value = v1::Expected<int, TestError>{std::unexpected(TestError::kBeta)};
+    const v1::Expected<int, TestError> value{std::unexpected(TestError::kBeta)};
     ASSERT_FALSE(value);
     EXPECT_EQ(value.error(), TestError::kBeta);
 }

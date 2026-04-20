@@ -3,6 +3,7 @@
 #include "text.hpp"
 
 #include <optional>
+#include <type_traits>
 
 #include <ada.h>
 #include <ada/url_aggregator.h>
@@ -11,6 +12,24 @@ namespace v1 {
 
 class [[nodiscard]] Url final {
 public:
+    enum class StripOptions {
+        kNone = 0,
+        kStripPort = 1 << 0,
+        kStripQuery = 1 << 1,
+    };
+
+    friend constexpr StripOptions operator|(StripOptions lhs, StripOptions rhs) noexcept
+    {
+        using U = std::underlying_type_t<StripOptions>;
+        return static_cast<StripOptions>(static_cast<U>(lhs) | static_cast<U>(rhs));
+    }
+
+    friend constexpr StripOptions operator&(StripOptions lhs, StripOptions rhs) noexcept
+    {
+        using U = std::underlying_type_t<StripOptions>;
+        return static_cast<StripOptions>(static_cast<U>(lhs) & static_cast<U>(rhs));
+    }
+
     [[nodiscard]] static std::optional<Url> fromText(const String &text);
     [[nodiscard]] static Url fromParsed(ada::url_aggregator url);
 
@@ -29,6 +48,7 @@ public:
     [[nodiscard]] ada::scheme::type schemeType() const;
     [[nodiscard]] bool isHttp() const;
     [[nodiscard]] bool isHttps() const;
+    [[nodiscard]] Url stripped(StripOptions options) const;
 
     [[nodiscard]] ada::url_aggregator copyParsed() const;
 

@@ -1,11 +1,8 @@
 #include "integers.hpp"
-#include "subprocess_probe.hpp"
 
-#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <string>
 
 #include <userver/utest/utest.hpp>
 
@@ -33,37 +30,32 @@ UTEST(Integers, NumericCastSupportsEnumConversions)
 
 UTEST(Integers, NumericCastSupportsSafeIntegerSources)
 {
-    const auto value = i64{123};
-    const auto enumValue = u16{2};
+    const i64 value{123};
+    const u16 enumValue{2};
 
     EXPECT_EQ(numericCast<int64_t>(value), int64_t{123});
     EXPECT_EQ(numericCast<SmallEnum>(enumValue), SmallEnum::kTwo);
 }
 
-UTEST(Integers, NumericCastAbortsOnNegativeToUnsigned)
+UTEST(Integers, CheckedNumericCastReportsNegativeToUnsigned)
 {
-    const auto result = test::subprocess_probe::run(
-        "integers_abort_probe", {"negative-to-unsigned"}
-    );
-    EXPECT_TRUE(result.signaled());
-    EXPECT_EQ(result.termSignal, SIGABRT);
-    EXPECT_NE(result.output.find("safe integer failure"), std::string::npos);
+    const auto result = integers::detail::checkedNumericCast<size_t>(-1);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), integers::detail::NumericCastError::kNegativeToUnsigned);
 }
 
-UTEST(Integers, NumericCastAbortsOnNarrowingOverflow)
+UTEST(Integers, CheckedNumericCastReportsNarrowingOverflow)
 {
-    const auto result = test::subprocess_probe::run("integers_abort_probe", {"narrowing-overflow"});
-    EXPECT_TRUE(result.signaled());
-    EXPECT_EQ(result.termSignal, SIGABRT);
-    EXPECT_NE(result.output.find("safe integer failure"), std::string::npos);
+    const auto result = integers::detail::checkedNumericCast<int>(
+        std::numeric_limits<int64_t>::max()
+    );
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), integers::detail::NumericCastError::kNarrowingOverflow);
 }
 
-UTEST(Integers, NumericCastAbortsOnEnumUnderlyingOverflow)
+UTEST(Integers, CheckedNumericCastReportsEnumUnderlyingOverflow)
 {
-    const auto result = test::subprocess_probe::run(
-        "integers_abort_probe", {"enum-underlying-overflow"}
-    );
-    EXPECT_TRUE(result.signaled());
-    EXPECT_EQ(result.termSignal, SIGABRT);
-    EXPECT_NE(result.output.find("safe integer failure"), std::string::npos);
+    const auto result = integers::detail::checkedNumericCast<SmallEnum>(std::uint16_t{256});
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), integers::detail::NumericCastError::kEnumUnderlyingOverflow);
 }

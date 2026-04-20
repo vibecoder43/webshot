@@ -7,7 +7,7 @@ namespace {
 
 UTEST(BrowserPageSessionLifecycle, HappyPathTransitions)
 {
-    auto lifecycle = BrowserPageSessionLifecycle{};
+    BrowserPageSessionLifecycle lifecycle{};
 
     EXPECT_TRUE(lifecycle.markBrowserContextCreated());
     EXPECT_TRUE(lifecycle.markTargetCreated());
@@ -20,7 +20,7 @@ UTEST(BrowserPageSessionLifecycle, HappyPathTransitions)
 
 UTEST(BrowserPageSessionLifecycle, RejectsInvalidOrder)
 {
-    auto lifecycle = BrowserPageSessionLifecycle{};
+    BrowserPageSessionLifecycle lifecycle{};
 
     EXPECT_FALSE(lifecycle.markTargetCreated());
     EXPECT_TRUE(lifecycle.markBrowserContextCreated());
@@ -34,7 +34,7 @@ UTEST(BrowserPageSessionLifecycle, RejectsInvalidOrder)
 
 UTEST(BrowserPageSessionLifecycle, CleanupTransitionsAreIdempotent)
 {
-    auto lifecycle = BrowserPageSessionLifecycle{};
+    BrowserPageSessionLifecycle lifecycle{};
 
     EXPECT_TRUE(lifecycle.markClosed());
     EXPECT_TRUE(lifecycle.markClosed());
@@ -42,7 +42,7 @@ UTEST(BrowserPageSessionLifecycle, CleanupTransitionsAreIdempotent)
     EXPECT_TRUE(lifecycle.markDisposed());
     EXPECT_TRUE(lifecycle.markClosed());
 
-    auto attachedLifecycle = BrowserPageSessionLifecycle{};
+    BrowserPageSessionLifecycle attachedLifecycle{};
     EXPECT_TRUE(attachedLifecycle.markBrowserContextCreated());
     EXPECT_TRUE(attachedLifecycle.markTargetCreated());
     EXPECT_TRUE(attachedLifecycle.markAttached());

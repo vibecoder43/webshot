@@ -118,7 +118,7 @@ Metrics::~Metrics() = default;
 void Metrics::accountError(Error which) noexcept
 {
     const auto idx = numericCast<size_t>(which);
-    UINVARIANT(idx < errors.size(), "invalid Metrics::Error value");
+    invariant(idx < errors.size(), "invalid Metrics::Error value");
     errors[idx]++;
 }
 
@@ -126,7 +126,7 @@ void Metrics::accountCaptureJobCreated() noexcept { capture.jobsCreated++; }
 
 void Metrics::accountCaptureCompleted(bool succeeded, std::chrono::milliseconds duration) noexcept
 {
-    UINVARIANT(duration.count() >= 0, "capture duration must be non-negative");
+    invariant(duration.count() >= 0, "capture duration must be non-negative");
     const auto ms = numericCast<std::uint64_t>(duration.count());
     if (succeeded) {
         capture.succeeded++;

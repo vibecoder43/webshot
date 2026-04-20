@@ -44,13 +44,8 @@ namespace v1 {
 
 namespace {
 
-Expected<Link, LinkError>
-fromTextImpl(const String &text, usize urlBytesMax, Link::FromTextOptions options)
+Expected<Link, LinkError> fromTextImpl(const String &text, usize urlBytesMax)
 {
-    using enum Link::FromTextOptions;
-    const bool stripPort = Link::hasOption(options, kStripPort);
-    const bool stripQuery = Link::hasOption(options, kStripQuery);
-
     std::string in(text.view());
     absl::StripAsciiWhitespace(&in);
     if (in.rfind("//", 0) == 0)
@@ -83,10 +78,7 @@ fromTextImpl(const String &text, usize urlBytesMax, Link::FromTextOptions option
     url->set_username("");
     url->set_password("");
     url->clear_hash();
-    if (stripPort)
-        url->clear_port();
-    if (stripQuery)
-        url->set_search("");
+    url->clear_port();
 
     if (auto hostname = url->get_hostname(); !hostname.empty() && hostname.back() == '.')
         url->set_hostname(std::string(begin(hostname), end(hostname) - 1));
@@ -96,10 +88,9 @@ fromTextImpl(const String &text, usize urlBytesMax, Link::FromTextOptions option
 
 } // namespace
 
-Expected<Link, LinkError>
-Link::fromText(const String &text, usize urlBytesMax, FromTextOptions options)
+Expected<Link, LinkError> Link::fromText(const String &text, usize urlBytesMax)
 {
-    return fromTextImpl(text, urlBytesMax, options);
+    return fromTextImpl(text, urlBytesMax);
 }
 
 String Link::host() const { return url.hostname(); }

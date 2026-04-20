@@ -72,7 +72,7 @@ respondClientIpCooldown(server::http::HttpResponse &resp, std::chrono::milliseco
     using namespace text::literals;
 
     const auto retryAfterSeconds = std::chrono::ceil<std::chrono::seconds>(retryAfter);
-    resp.SetHeader(us::http::headers::kRetryAfter, std::format("{}", retryAfterSeconds.count()));
+    resp.SetHeader(us::http::headers::kRetryAfter, std::to_string(retryAfterSeconds.count()));
     return respondError(
         resp, server::http::HttpStatus::kTooManyRequests, "client IP in cooldown"_t
     );

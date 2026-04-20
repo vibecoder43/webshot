@@ -24,7 +24,7 @@ Config::Config(
               return ClientIpSource::kPeer;
           if (source == "trusted_header")
               return ClientIpSource::kTrustedHeader;
-          UINVARIANT(false, "client_ip_source must be peer or trusted_header");
+          invariant(false, "client_ip_source must be peer or trusted_header");
           return ClientIpSource::kPeer;
       }()),
       clientIpHeaderNameValue(config["client_ip_header_name"].As<std::string>()),
@@ -34,8 +34,8 @@ Config::Config(
       publicBaseUrlValue(String::fromBytes(config["public_base_url"].As<std::string>()).expect()),
       s3TimeoutDuration(config["s3_timeout_ms"].As<int>() * 1ms)
 {
-    UINVARIANT(!stateDirValue.empty(), "state_dir must not be empty");
-    UINVARIANT(
+    invariant(!stateDirValue.empty(), "state_dir must not be empty");
+    invariant(
         clientIpSourceValue != ClientIpSource::kTrustedHeader || !clientIpHeaderNameValue.empty(),
         "client_ip_header_name must be set when client_ip_source is trusted_header"
     );

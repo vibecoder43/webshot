@@ -94,7 +94,7 @@ sleepWithinDeadline(eng::Deadline deadline, std::chrono::milliseconds delay)
 {
     using namespace std::chrono_literals;
 
-    UINVARIANT(deadline.IsReachable(), "sleepUntilDeadline requires a reachable deadline");
+    invariant(deadline.IsReachable(), "sleepUntilDeadline requires a reachable deadline");
 
     const auto remaining = TRY(timeLeftMs(deadline));
     if (remaining <= 0ms)

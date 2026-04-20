@@ -87,7 +87,7 @@ template <typename T> [[nodiscard]] std::string toJsonString(const T &value)
 {
     return String::fromBytes(
                datetime::UtcTimestring(
-                   datetime::FromRfc3339StringSaturating(std::string(iso.view())), "%Y%m%d%H%M%S"
+                   datetime::FromRfc3339StringSaturating(std::to_string(iso)), "%Y%m%d%H%M%S"
                )
     )
         .expect();
@@ -295,11 +295,11 @@ serializeRecordPair(const SerializableResponse &response)
 [[nodiscard]] std::string buildPageInfoJson(const CapturedExchange &exchange)
 {
     json::ValueBuilder pageInfo(json::Type::kObject);
-    pageInfo["pageid"] = std::string(exchange.pageId.view());
+    pageInfo["pageid"] = std::to_string(exchange.pageId);
     pageInfo["url"] = std::string(
         (exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl).view()
     );
-    pageInfo["ts"] = std::string(pageTimestamp(exchange).view());
+    pageInfo["ts"] = std::to_string(pageTimestamp(exchange));
 
     json::ValueBuilder urls(json::Type::kObject);
     const auto appendUrl = [&urls](
@@ -313,8 +313,8 @@ serializeRecordPair(const SerializableResponse &response)
         if (!mime.empty())
             value["mime"] = mime;
         if (resourceType && !resourceType->empty())
-            value["type"] = std::string(resourceType->view());
-        urls[std::string(url.view())] = value.ExtractValue();
+            value["type"] = std::to_string(*resourceType);
+        urls[std::to_string(url)] = value.ExtractValue();
     };
 
     for (const auto &redirect : exchange.mainDocumentRedirects)
@@ -365,7 +365,7 @@ serializeRecordPair(const SerializableResponse &response)
     if (defaultPort == 0)
         return true;
 
-    const auto defaultPortText = String::fromBytes(std::format("{}", defaultPort)).expect();
+    const auto defaultPortText = String::fromBytes(std::to_string(defaultPort)).expect();
     return url.port() != defaultPortText;
 }
 
@@ -413,7 +413,7 @@ serializeRecordPair(const SerializableResponse &response)
         surtHost += parts[index];
     }
 
-    auto path = std::string(maybeUrl->pathWithSearch().view());
+    auto path = std::to_string(maybeUrl->pathWithSearch());
     if (shouldIncludePort(*maybeUrl))
         surtHost += ":" + port;
     return String::fromBytes(surtHost + ")" + path).expect();
@@ -422,14 +422,14 @@ serializeRecordPair(const SerializableResponse &response)
 [[nodiscard]] std::string makeWaczIndexJson(const WarcCdxRecord &record)
 {
     json::ValueBuilder recordEntry(json::Type::kObject);
-    recordEntry["url"] = std::string(record.recordUrl.view());
-    recordEntry["digest"] = std::string(record.digest.view());
+    recordEntry["url"] = std::to_string(record.recordUrl);
+    recordEntry["digest"] = std::to_string(record.digest);
     recordEntry["mime"] = contentTypeForHeaders(record.headers);
     recordEntry["filename"] = std::string(kWarcFilename);
     recordEntry["offset"] = raw(record.offset);
     recordEntry["length"] = raw(record.length);
     recordEntry["status"] = raw(record.statusCode);
-    recordEntry["recordDigest"] = std::string(record.recordDigest.view());
+    recordEntry["recordDigest"] = std::to_string(record.recordDigest);
     return json::ToString(recordEntry.ExtractValue());
 }
 
@@ -446,8 +446,8 @@ serializeRecordPair(const SerializableResponse &response)
     for (const auto &record : records) {
         lines.push_back(
             CdxLine{
-                .key = std::string(toSurtKey(record.recordUrl).view()),
-                .timestamp = std::string(record.timestamp.view()),
+                .key = std::to_string(toSurtKey(record.recordUrl)),
+                .timestamp = std::to_string(record.timestamp),
                 .json = makeWaczIndexJson(record),
             }
         );
@@ -483,12 +483,12 @@ serializeRecordPair(const SerializableResponse &response)
 [[nodiscard]] dto::WaczResource
 makeWaczResource(std::string_view name, std::string_view path, std::string_view body)
 {
-    dto::WaczResource item;
-    item.name = std::string(name);
-    item.path = std::string(path);
-    item.hash = sha256PrefixedHex(body, "sha256:");
-    item.bytes = numericCast<int64_t>(body.size());
-    return item;
+    return dto::WaczResource{
+        .name = std::string(name),
+        .path = std::string(path),
+        .hash = sha256PrefixedHex(body, "sha256:"),
+        .bytes = numericCast<int64_t>(body.size()),
+    };
 }
 
 [[nodiscard]] std::vector<dto::WaczResource> buildWaczResources(
@@ -506,31 +506,32 @@ makeWaczResource(std::string_view name, std::string_view path, std::string_view 
 [[nodiscard]] dto::WaczDataPackage
 buildWaczDataPackage(const RunRequest &run, std::vector<dto::WaczResource> resources)
 {
-    dto::WaczDataPackage datapackage;
-    datapackage.profile = "data-package";
-    datapackage.created = datetime::TimePointTz(datetime::Now());
-    datapackage.modified = datetime::TimePointTz(datetime::Now());
-    datapackage.wacz_version = "1.1.1";
-    datapackage.software = "webshotd";
-    datapackage.title = std::string(run.seedUrl.view());
-    datapackage.resources = std::move(resources);
-    return datapackage;
+    const auto created = datetime::TimePointTz(datetime::Now());
+    return dto::WaczDataPackage{
+        .profile = "data-package",
+        .resources = std::move(resources),
+        .wacz_version = "1.1.1",
+        .title = std::to_string(run.seedUrl),
+        .software = "webshotd",
+        .created = created,
+        .modified = created,
+    };
 }
 
 } // namespace
 
 std::string buildPagesJsonl(const CapturedExchange &exchange)
 {
-    dto::BrowsertrixPageEntry entry;
-    entry.id = std::string(exchange.pageId.view());
-    entry.url = std::string(exchange.finalUrl.view());
-    entry.title = exchange.title ? std::string(exchange.title->view())
-                                 : extractHtmlTitle(exchange.body);
-    entry.loadState = exchange.statusCode >= 200_i64 && exchange.statusCode < 400_i64 ? 2 : 0;
-    entry.mime = contentTypeForHeaders(exchange.headers);
-    entry.seed = true;
+    dto::BrowsertrixPageEntry entry{
+        .id = std::to_string(exchange.pageId),
+        .url = std::to_string(exchange.finalUrl),
+        .title = exchange.title ? std::to_string(*exchange.title) : extractHtmlTitle(exchange.body),
+        .loadState = exchange.statusCode >= 200_i64 && exchange.statusCode < 400_i64 ? 2 : 0,
+        .mime = contentTypeForHeaders(exchange.headers),
+        .seed = true,
+    };
     entry.ts = datetime::TimePointTz(
-        datetime::FromRfc3339StringSaturating(std::string(pageTimestamp(exchange).view()))
+        datetime::FromRfc3339StringSaturating(std::to_string(pageTimestamp(exchange)))
     );
     entry.status = raw(exchange.statusCode);
     entry.depth = 0;
@@ -563,7 +564,7 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
     const auto responses = collectSerializableResponses(exchange);
 
     WarcBuildOutput out;
-    auto offset = 0_i64;
+    i64 offset{0};
     for (const auto &response : responses) {
         auto [responseBytes, requestBytes] = serializeRecordPair(response);
         auto responseGz = TRY(gzipMember(responseBytes));
@@ -577,7 +578,7 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
                 .statusCode = response.statusCode,
                 .headers = response.headers,
                 .offset = offset,
-                .length = i64(responseGz.size()),
+                .length = ssize(responseGz),
             }
         );
         out.bytes.append(responseGz);
@@ -588,7 +589,7 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
     const auto pageInfoUrl = text::format(
         "urn:pageinfo:{}", exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl
     );
-    auto pageInfoHeaders = std::unordered_map<std::string, std::string>{
+    std::unordered_map<std::string, std::string> pageInfoHeaders{
         {"content-type", "application/json"},
     };
     const auto pageInfoBytes = serializePageInfoRecord(exchange);
@@ -602,7 +603,7 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
             .statusCode = 200_i64,
             .headers = std::move(pageInfoHeaders),
             .offset = offset,
-            .length = i64(pageInfoGz.size()),
+            .length = ssize(pageInfoGz),
         }
     );
     out.bytes.append(pageInfoGz);
@@ -663,7 +664,7 @@ std::string computeContentSha256(const CapturedExchange &exchange)
         if (const auto it = exchange.headers.find("content-type"); it != std::end(exchange.headers))
             contentType = it->second;
         const auto urlDigest = sha256Bytes(exchange.finalUrl.view());
-        const auto status = std::format("{}", exchange.statusCode);
+        const auto status = std::to_string(exchange.statusCode);
         const auto statusDigest = sha256Bytes(status);
         const auto contentTypeDigest = sha256Bytes(contentType);
         const auto bodyDigest = sha256Bytes(exchange.body);
@@ -682,7 +683,7 @@ std::string computeContentSha256(const CapturedExchange &exchange)
         if (const auto it = redirect.headers.find("location"); it != std::end(redirect.headers))
             location = it->second;
         const auto urlDigest = sha256Bytes(redirect.redirectUrl.view());
-        const auto status = std::format("{}", redirect.statusCode);
+        const auto status = std::to_string(redirect.statusCode);
         const auto statusDigest = sha256Bytes(status);
         const auto locationDigest = sha256Bytes(location);
         itemDigests.emplace_back(sha256Bytes({
@@ -702,7 +703,7 @@ std::string computeContentSha256(const CapturedExchange &exchange)
             contentType = it->second;
         const auto urlDigest = sha256Bytes(resource.resourceUrl.view());
         const auto methodDigest = sha256Bytes(method);
-        const auto status = std::format("{}", resource.statusCode);
+        const auto status = std::to_string(resource.statusCode);
         const auto statusDigest = sha256Bytes(status);
         const auto resourceTypeDigest = sha256Bytes(resourceType);
         const auto contentTypeDigest = sha256Bytes(contentType);

@@ -31,7 +31,11 @@ void appendEncodedSegment(std::string &out, std::string_view bytes)
 
 [[nodiscard]] String makePrefixKey(const Link &link)
 {
-    auto host = link.url.hostname();
+    const auto normalizedUrl = link.url.stripped(
+        Url::StripOptions::kStripPort | Url::StripOptions::kStripQuery
+    );
+
+    auto host = normalizedUrl.hostname();
     auto hostView = host.view();
     std::string hostStr(hostView);
     std::vector<std::string> labels;
@@ -51,16 +55,13 @@ void appendEncodedSegment(std::string &out, std::string_view bytes)
             hostRev.push_back('.');
         hostRev += labels[i];
     }
-    auto normalized = link.normalized();
-    auto normView = normalized.view();
-    auto slashPos = normView.find('/');
+    auto path = std::to_string(normalizedUrl.pathname());
+    if (path == "/")
+        path.clear();
+    else if (!path.empty() && path.back() == '/')
+        path.pop_back();
     auto key = hostRev;
-    if (slashPos != std::string::npos) {
-        auto pathAndQuery = normView.substr(slashPos);
-        auto qPos = pathAndQuery.find('?');
-        auto path = qPos == std::string::npos ? pathAndQuery : pathAndQuery.substr(0, qPos);
-        key.append(std::begin(path), std::end(path));
-    }
+    key.append(std::begin(path), std::end(path));
     return String::fromBytes(key).expect();
 }
 

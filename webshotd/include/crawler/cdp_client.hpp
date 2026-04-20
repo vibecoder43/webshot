@@ -200,28 +200,28 @@ public:
 
     template <typename T> [[nodiscard]] Expected<T, CdpFailure> send(const String &method)
     {
-        UINVARIANT(client != nullptr, "cdp session is not attached");
+        invariant(client != nullptr, "cdp session is not attached");
         return client->send<T>(method, sessionIdValue);
     }
 
     template <typename T, typename Params>
     [[nodiscard]] Expected<T, CdpFailure> send(const String &method, const Params &params)
     {
-        UINVARIANT(client != nullptr, "cdp session is not attached");
+        invariant(client != nullptr, "cdp session is not attached");
         return client->send<T>(method, params, sessionIdValue);
     }
 
     template <typename Params>
     [[nodiscard]] Expected<void, CdpFailure> sendVoid(const String &method, const Params &params)
     {
-        UINVARIANT(client != nullptr, "cdp session is not attached");
+        invariant(client != nullptr, "cdp session is not attached");
         TRY(client->send<dto::CdpEmptyObject>(method, params, sessionIdValue));
         return {};
     }
 
     [[nodiscard]] Expected<void, CdpFailure> sendVoid(const String &method)
     {
-        UINVARIANT(client != nullptr, "cdp session is not attached");
+        invariant(client != nullptr, "cdp session is not attached");
         TRY(client->send<dto::CdpEmptyObject>(method, sessionIdValue));
         return {};
     }

@@ -1,6 +1,3 @@
-#include "subprocess_probe.hpp"
-
-#include <csignal>
 #include <map>
 #include <string>
 #include <vector>
@@ -216,14 +213,11 @@ UTEST(S3SigV4Client, PresignPathStyleEncodesObjectKey)
     EXPECT_EQ(path, std::string{"/examplebucket/folder/file%20with%20space.txt"});
 }
 
-UTEST(S3SigV4Client, VirtualHostRequiresBucket)
+UTEST(S3SigV4Client, ValidateVirtualHostBucketNameRequiresBucket)
 {
-    const auto result = test::subprocess_probe::run(
-        "s3_v4_client_abort_probe", {"virtual-host-requires-bucket"}
-    );
-    EXPECT_TRUE(result.signaled());
-    EXPECT_EQ(result.termSignal, SIGABRT);
-    EXPECT_NE(result.output.find("presign requires non-empty bucket"), std::string::npos);
+    const auto result = v1::s3v4::detail::validateVirtualHostBucketName(String{});
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), v1::s3v4::detail::VirtualHostPresignError::kMissingBucket);
 }
 
 UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)

@@ -140,21 +140,21 @@ canonicalizeCapturedLocationHeader(const String &responseUrl, std::string_view l
         return std::string(locationValue);
     if (location->empty() || location->startsWith('/') || location->startsWith('?') ||
         location->startsWith("//")) {
-        return std::string(location->view());
+        return std::to_string(*location);
     }
 
     const auto canonicalLocation = canonicalizeCapturedUrl(*location);
     const auto maybeCanonicalUrl = Url::fromText(canonicalLocation);
     const auto maybeResponseUrl = Url::fromText(responseUrl);
     if (!maybeCanonicalUrl || !maybeResponseUrl)
-        return std::string(canonicalLocation.view());
+        return std::to_string(canonicalLocation);
 
     if (maybeCanonicalUrl->isHttp() == maybeResponseUrl->isHttp() &&
         maybeCanonicalUrl->host() == maybeResponseUrl->host()) {
-        return std::string(maybeCanonicalUrl->pathWithSearch().view());
+        return std::to_string(maybeCanonicalUrl->pathWithSearch());
     }
 
-    return std::string(canonicalLocation.view());
+    return std::to_string(canonicalLocation);
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::string>
@@ -198,9 +198,9 @@ template <typename T>
 [[nodiscard]] Expected<T, String> parseEventParams(const crawler::CdpEvent &event)
 {
     if (!event.params)
-        return Unex(text::format("{} missing params", event.method.view()));
+        return Unex(text::format("{} missing params", event.method));
     return exu::json::as<T>(
-        event.params->extra, text::format("{} has invalid params", event.method.view())
+        event.params->extra, text::format("{} has invalid params", event.method)
     );
 }
 
@@ -222,7 +222,7 @@ struct [[nodiscard]] CaptureWithNetwork final {
 [[nodiscard]] Expected<std::string, String>
 retainBody(const std::string &body, RetainedBodyBudget &budget)
 {
-    const auto nextRetainedBytes = budget.retainedBytes + i64(body.size());
+    const auto nextRetainedBytes = budget.retainedBytes + ssize(body);
     if (nextRetainedBytes > budget.maxBytes)
         return Unex(
             text::format(
@@ -298,43 +298,58 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
     return canonicalizeCapturedUrl(requestUrl);
 }
 
-[[nodiscard]] std::optional<String> normalizeInterceptedUrlForDenylist(const String &requestUrl)
+[[nodiscard]] Expected<std::optional<Link>, String>
+normalizeInterceptedLinkForDenylist(const Config &config, const String &requestUrl)
 {
     if (requestUrl.startsWith("ws://")) {
-        auto normalized = String::fromBytes("http://" + std::string(requestUrl.view().substr(5)));
-        if (!normalized)
+        const auto parsed = Url::fromText(requestUrl);
+        if (!parsed)
             return {};
-        return grabValueOf(normalized);
+
+        auto normalized = parsed->copyParsed();
+        normalized.set_protocol("http");
+        const auto link = Link::fromText(
+            Url::fromParsed(std::move(normalized)).href(), config.urlBytesMax()
+        );
+        if (!link)
+            return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
+        return *link;
     }
     if (requestUrl.startsWith("wss://")) {
-        auto normalized = String::fromBytes("https://" + std::string(requestUrl.view().substr(6)));
-        if (!normalized)
+        const auto parsed = Url::fromText(requestUrl);
+        if (!parsed)
             return {};
-        return grabValueOf(normalized);
+
+        auto normalized = parsed->copyParsed();
+        normalized.set_protocol("https");
+        const auto link = Link::fromText(
+            Url::fromParsed(std::move(normalized)).href(), config.urlBytesMax()
+        );
+        if (!link)
+            return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
+        return *link;
     }
 
-    const auto parsed = TRY(Url::fromText(requestUrl));
-    if (!parsed.isHttp() && !parsed.isHttps())
+    const auto parsed = Url::fromText(requestUrl);
+    if (!parsed || (!parsed->isHttp() && !parsed->isHttps()))
         return {};
-    return requestUrl;
+
+    const auto link = Link::fromText(requestUrl, config.urlBytesMax());
+    if (!link)
+        return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
+    return *link;
 }
 
 [[nodiscard]] Expected<bool, String>
 isAllowedByDenylist(Denylist &denylist, const Config &config, const String &requestUrl)
 {
-    const auto normalized = normalizeInterceptedUrlForDenylist(requestUrl);
+    const auto normalized = normalizeInterceptedLinkForDenylist(config, requestUrl);
     if (!normalized)
+        return Unex(normalized.error());
+    if (!*normalized)
         return true;
 
-    const auto link = Link::fromText(
-        *normalized, config.urlBytesMax(), Link::FromTextOptions::kStripPort
-    );
-    if (!link)
-        return Unex(
-            text::format("failed to normalize intercepted request url {}", normalized->view())
-        );
-
-    const auto allowed = denylist.isAllowedPrefix(prefix::makePrefixKey(*link));
+    const auto allowed = denylist.isAllowedPrefix(prefix::makePrefixKey(**normalized));
     if (!allowed)
         return Unex("denylist check failed during fetch interception"_t);
     return *allowed;
@@ -352,7 +367,7 @@ isAllowedByDenylist(Denylist &denylist, const Config &config, const String &requ
     headers.push_back(
         dto::FetchHeaderEntry{
             .name = "Content-Length",
-            .value = std::format("{}", bodyBytes),
+            .value = std::to_string(bodyBytes),
         }
     );
     headers.push_back(
@@ -531,7 +546,7 @@ public:
         const auto state = data.Lock();
         if (const auto *request = resolvedMainRequest(*state);
             request != nullptr && request->statusCode) {
-            const auto loadState = request->loaded && !state->mainRequestFailure ? 2_i64 : 0_i64;
+            const i64 loadState{request->loaded && !state->mainRequestFailure ? 2_i64 : 0_i64};
             return crawler::SeedPageProbe{
                 .status = raw(*request->statusCode),
                 .loadState = raw(loadState),
@@ -575,7 +590,7 @@ public:
 
         try {
             dto::NetworkGetResponseBodyParams params;
-            params.requestId = std::string(bodyRequestId->view());
+            params.requestId = std::to_string(*bodyRequestId);
             const auto body = cdpSession.send<dto::NetworkGetResponseBodyResult>(
                 "Network.getResponseBody"_t, params
             );
@@ -593,8 +608,8 @@ public:
     [[nodiscard]] Expected<std::vector<crawler::CapturedResource>, String>
     readResources(crawler::CdpSession &cdpSession, RetainedBodyBudget &budget) const
     {
-        auto resources = std::vector<crawler::CapturedResource>{};
-        auto requests = std::vector<std::pair<String, TrackedRequest>>{};
+        std::vector<crawler::CapturedResource> resources{};
+        std::vector<std::pair<String, TrackedRequest>> requests{};
         {
             const auto state = data.Lock();
             resources = state->redirectedResources;
@@ -626,7 +641,7 @@ public:
 
             try {
                 dto::NetworkGetResponseBodyParams params;
-                params.requestId = std::string(requestId.view());
+                params.requestId = std::to_string(requestId);
                 const auto bodyValue = cdpSession.send<dto::NetworkGetResponseBodyResult>(
                     "Network.getResponseBody"_t, params
                 );
@@ -734,7 +749,7 @@ private:
     )
     {
         const auto response = selectMainResponse(state, finalUrl);
-        UINVARIANT(response, "missing main response while building exchange");
+        invariant(response, "missing main response while building exchange");
         exchange.statusCode = response->statusCode;
         exchange.statusMessage = response->statusMessage;
         exchange.headers = response->headers;
@@ -756,7 +771,7 @@ private:
 
     [[nodiscard]] static MainResponse toMainResponse(const TrackedRequest &request)
     {
-        UINVARIANT(
+        invariant(
             request.statusCode && request.statusMessage && request.headers && request.timestamp,
             "tracked request missing response"
         );
@@ -848,7 +863,7 @@ private:
 
         auto isTrackedMainDocument = false;
         if (isMainFrameDocumentRequest(state, requestWillBeSent)) {
-            UINVARIANT(
+            invariant(
                 state.seedNavigationStarted,
                 "main document request observed before seed navigation started"
             );
@@ -916,11 +931,11 @@ private:
         const auto requestIt = state.activeRequests.find(requestIdText);
         if (requestIt == std::end(state.activeRequests)) {
             if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-                UINVARIANT(
-                    false, std::format(
-                               "main document response received for unknown request id {}",
-                               requestIdText.view()
-                           )
+                invariant(
+                    false,
+                    std::format(
+                        "main document response received for unknown request id {}", requestIdText
+                    )
                 );
             }
             return;
@@ -960,11 +975,10 @@ private:
                 state.mainResponseRequestId = requestIdText;
             }
         } else if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-            UINVARIANT(
-                false,
-                std::format(
-                    "main document loading finished for unknown request id {}", requestIdText.view()
-                )
+            invariant(
+                false, std::format(
+                           "main document loading finished for unknown request id {}", requestIdText
+                       )
             );
         }
     }
@@ -978,11 +992,11 @@ private:
         const auto requestIt = state.activeRequests.find(requestIdText);
         if (requestIt == std::end(state.activeRequests)) {
             if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-                UINVARIANT(
-                    false, std::format(
-                               "main document loading failed for unknown request id {}",
-                               requestIdText.view()
-                           )
+                invariant(
+                    false,
+                    std::format(
+                        "main document loading failed for unknown request id {}", requestIdText
+                    )
                 );
             }
             return;
@@ -1005,14 +1019,14 @@ private:
         const std::optional<dto::NetworkResponse> &redirectResponse
     )
     {
-        UINVARIANT(
+        invariant(
             redirectResponse && redirectResponse->status, "redirect response must include status"
         );
 
         const auto requestIt = state.activeRequests.find(requestId);
-        UINVARIANT(
+        invariant(
             requestIt != std::end(state.activeRequests),
-            std::format("redirect response for unknown request id {}", requestId.view())
+            std::format("redirect response for unknown request id {}", requestId)
         );
 
         auto request = std::move(requestIt->second);
@@ -1037,19 +1051,18 @@ private:
 
     static void recordMainDocumentRedirect(Data &state, const TrackedRequest &request)
     {
-        UINVARIANT(
+        invariant(
             hasResponse(request),
-            std::format(
-                "main redirect request missing response fields for {}", request.requestUrl.view()
-            )
+            std::format("main redirect request missing response fields for {}", request.requestUrl)
         );
 
-        crawler::CapturedMainDocumentRedirect redirect;
-        redirect.redirectUrl = request.requestUrl;
-        redirect.statusCode = *request.statusCode;
-        redirect.statusMessage = *request.statusMessage;
-        redirect.headers = *request.headers;
-        redirect.timestamp = *request.timestamp;
+        crawler::CapturedMainDocumentRedirect redirect{
+            .redirectUrl = request.requestUrl,
+            .statusCode = *request.statusCode,
+            .statusMessage = *request.statusMessage,
+            .headers = *request.headers,
+            .timestamp = *request.timestamp,
+        };
 
         if (!state.mainDocumentRedirects.empty()) {
             const auto &previous = state.mainDocumentRedirects.back();
@@ -1063,11 +1076,11 @@ private:
 
     static void recordResourceRedirect(Data &state, const TrackedRequest &request)
     {
-        UINVARIANT(
-            hasResponse(request), std::format(
-                                      "resource redirect request missing response fields for {}",
-                                      request.requestUrl.view()
-                                  )
+        invariant(
+            hasResponse(request),
+            std::format(
+                "resource redirect request missing response fields for {}", request.requestUrl
+            )
         );
 
         state.redirectedResources.push_back({
@@ -1093,12 +1106,13 @@ struct [[nodiscard]] DomState {
 
 [[nodiscard]] Expected<DomState, String> readDomState(crawler::CdpSession &cdpSession)
 {
-    dto::RuntimeEvaluateParams params;
-    params.expression =
-        "(() => ({ finalUrl: location.href, title: document.title || undefined, html: "
-        "document.documentElement ? document.documentElement.outerHTML : \"\" }))()";
-    params.returnByValue = true;
-    params.awaitPromise = false;
+    dto::RuntimeEvaluateParams params{
+        .expression =
+            "(() => ({ finalUrl: location.href, title: document.title || undefined, html: "
+            "document.documentElement ? document.documentElement.outerHTML : \"\" }))()",
+        .returnByValue = true,
+        .awaitPromise = false,
+    };
 
     const auto result = cdpSession.send<dto::RuntimeEvaluateDomStateResult>(
         "Runtime.evaluate"_t, params
@@ -1125,7 +1139,7 @@ struct [[nodiscard]] DomState {
 
 Expected<void, String> runSiteBehavior(crawler::CdpSession &cdpSession, eng::Deadline deadline)
 {
-    UINVARIANT(deadline.IsReachable(), "site behavior deadline must be reachable");
+    invariant(deadline.IsReachable(), "site behavior deadline must be reachable");
     auto budgetExpected = timeLeftMs(deadline);
     if (!budgetExpected)
         return Unex("timed out running site behavior"_t);
@@ -1417,7 +1431,7 @@ private:
 
         browser.markPhase("navigate");
         dto::PageNavigateParams navigateParams;
-        navigateParams.url = std::string(run.seedUrl.view());
+        navigateParams.url = std::to_string(run.seedUrl);
         pageTracker().beginSeedNavigation(run.seedUrl);
         auto navigateResult = cdpSession().send<dto::PageNavigateResult>(
             "Page.navigate"_t, navigateParams
@@ -1529,7 +1543,7 @@ private:
             if (const auto closedPage = pageSession->close(); !closedPage) {
                 LOG_WARNING() << std::format(
                     "Suppressing page session close failure during capture cleanup: {}",
-                    closedPage.error().view()
+                    closedPage.error()
                 );
             }
             pageSession.reset();
@@ -1557,19 +1571,19 @@ private:
 
     [[nodiscard]] crawler::CdpClient &cdpClient() const
     {
-        UINVARIANT(cdp, "cdp client is not connected");
+        invariant(cdp, "cdp client is not connected");
         return *cdp;
     }
 
     [[nodiscard]] PageTracker &pageTracker() const
     {
-        UINVARIANT(tracker, "page tracker is not attached");
+        invariant(tracker, "page tracker is not attached");
         return *tracker;
     }
 
     [[nodiscard]] crawler::CdpSession &cdpSession() const
     {
-        UINVARIANT(pageSession, "cdp session is not attached");
+        invariant(pageSession, "cdp session is not attached");
         return pageSession->cdpSession();
     }
 
@@ -1662,12 +1676,13 @@ private:
         }
 
         static constexpr std::string_view kBody = "Blocked by webshot denylist\n";
-        dto::FetchFulfillRequestParams params;
-        params.requestId = paused->requestId;
-        params.responseCode = 403;
-        params.responsePhrase = "Forbidden";
-        params.responseHeaders = buildBlockedFetchHeaders(kBody.size());
-        params.body = us::crypto::base64::Base64Encode(kBody);
+        dto::FetchFulfillRequestParams params{
+            .requestId = paused->requestId,
+            .responseCode = 403,
+            .responseHeaders = buildBlockedFetchHeaders(kBody.size()),
+            .body = us::crypto::base64::Base64Encode(kBody),
+            .responsePhrase = "Forbidden",
+        };
         const auto fulfilled = cdpSession().sendVoid("Fetch.fulfillRequest"_t, params);
         if (!fulfilled)
             noteInterceptionFailure(
@@ -1677,7 +1692,7 @@ private:
 
     struct EventProgressState final {
         eng::ConditionVariable cv;
-        i64 version{0_i64};
+        i64 version{0};
     };
 
     Denylist &denylist;
@@ -1792,7 +1807,7 @@ private:
                 out.attempt.failureDetail = captured.error().detail;
             }
             out.stdoutLog.clear();
-            out.stderrLog = std::string(captured.error().detail.view()) + "\n";
+            out.stderrLog = std::to_string(captured.error().detail) + "\n";
             out.wacz.reset();
             out.pagesJsonl.reset();
             out.contentSha256.reset();
@@ -1814,7 +1829,7 @@ private:
                 run, exchange, 0_i64, crawler::ReusedBrowser::kNo
             );
             if (!log)
-                UINVARIANT(false, log.error().detail);
+                invariant(false, log.error().detail);
             out.stdoutLog = grabValueOf(log);
         }
         out.stderrLog.clear();
@@ -1847,7 +1862,7 @@ private:
             out.pagesJsonl.reset();
             out.contentSha256.reset();
             out.replayUrl.reset();
-            out.stderrLog += std::string(detail.view()) + "\n";
+            out.stderrLog += std::to_string(detail) + "\n";
             return out;
         }
 
@@ -1878,12 +1893,12 @@ private:
             out.pagesJsonl.reset();
             out.contentSha256.reset();
             out.replayUrl.reset();
-            out.stderrLog += std::string(detail.view()) + "\n";
+            out.stderrLog += std::to_string(detail) + "\n";
             return out;
         }
 
-        const auto exitCode = exchange.statusCode >= 400_i64 ? 9_i64 : 0_i64;
-        const auto loadState = exitCode != 0_i64 || exchange.statusCode >= 400_i64 ? 0_i64 : 2_i64;
+        const i64 exitCode{exchange.statusCode >= 400_i64 ? 9_i64 : 0_i64};
+        const i64 loadState{exitCode != 0_i64 || exchange.statusCode >= 400_i64 ? 0_i64 : 2_i64};
         if (exchange.statusCode >= 400_i64) {
             out.attempt.failureDetail = text::format("seed returned HTTP {}", exchange.statusCode);
         }

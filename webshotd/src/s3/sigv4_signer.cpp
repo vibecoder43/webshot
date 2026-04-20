@@ -87,7 +87,7 @@ std::string canonicalizeQueryImpl(const std::vector<std::pair<std::string, std::
 std::vector<std::pair<std::string, std::string>>
 toUtf8Pairs(const std::vector<std::pair<String, String>> &in)
 {
-    auto out = std::vector<std::pair<std::string, std::string>>{};
+    std::vector<std::pair<std::string, std::string>> out{};
     out.reserve(in.size());
     for (const auto &[k, v] : in) {
         out.emplace_back(std::string{k.view()}, std::string{v.view()});
@@ -213,13 +213,13 @@ std::unordered_map<std::string, std::string> signHeaders(
     auto queryUtf8 = toUtf8Pairs(query);
     auto headersUtf8 = toUtf8Pairs(headersLowerTrimmed);
     auto headers = headersUtf8;
-    auto out = std::unordered_map<std::string, std::string>{};
+    std::unordered_map<std::string, std::string> out{};
 
-    auto payloadHex = std::string(payloadSha256Hex.view());
+    auto payloadHex = std::to_string(payloadSha256Hex);
     out["x-amz-date"] = p.amzDate;
     out["x-amz-content-sha256"] = payloadHex;
     if (p.sessionToken)
-        out["x-amz-security-token"] = std::string(p.sessionToken->GetUnderlying().view());
+        out["x-amz-security-token"] = std::to_string(p.sessionToken->GetUnderlying());
     for (const auto &[name, value] : out)
         headers.emplace_back(name, value);
     std::ranges::sort(headers, [](const auto &a, const auto &b) { return a.first < b.first; });

@@ -31,7 +31,7 @@ Use these rules whenever making C++ changes in this repository.
 - Never call `std::chrono::system_clock::now()`; use `userver::utils::datetime::Now()` instead.
 - Mutable lambdas are forbidden; capture-by-mutable is not allowed in this codebase.
 - Catch-all exception handlers are forbidden; do not use `catch (...)`.
-- Exceptions are forbidden in new C++ code (no `throw`); use `UINVARIANT` (and other fail-fast primitives already used in the codebase) instead.
+- Exceptions are forbidden in new C++ code (no `throw`); use `invariant` (and other fail-fast primitives already used in the codebase) instead.
 - Never use `return ReturnType(...)`; when constructing a value to return, prefer `return {...};` wherever it compiles.
 - Never use `std::*stream*`; use `fmt` or userver I/O functionality.
 - Never use `static_cast<IntType>`; use `numericCast` instead.

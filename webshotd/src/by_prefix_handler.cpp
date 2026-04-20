@@ -74,9 +74,7 @@ std::string ByPrefixHandler::HandleRequestThrow(
     if (!prefix)
         return httpu::respondParamError(response, kBadRequest, "prefix"_t, "invalid parameter"_t);
 
-    const auto parsed = Link::fromText(
-        *prefix, cfg.urlBytesMax(), Link::FromTextOptions::kStripPort
-    );
+    const auto parsed = Link::fromText(*prefix, cfg.urlBytesMax());
     if (!parsed)
         return httpu::respondParamError(response, kBadRequest, "prefix"_t, "invalid parameter"_t);
 

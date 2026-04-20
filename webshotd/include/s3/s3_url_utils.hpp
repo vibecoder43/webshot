@@ -2,6 +2,7 @@
 
 #include "expected.hpp"
 #include "text.hpp"
+#include "url.hpp"
 
 #include <utility>
 #include <vector>
@@ -15,6 +16,7 @@ enum class QueryStringError {
     kInvalidUtf8Value,
 };
 
+[[nodiscard]] std::optional<Url> parseUrlWithDefaultHttpScheme(const String &text);
 [[nodiscard]] Expected<std::vector<std::pair<String, String>>, QueryStringError>
 decodeQueryString(String search);
 

@@ -1,12 +1,12 @@
 #include "s3/s3_sts_client.hpp"
 
 #include "integers.hpp"
-#include "link.hpp"
 #include "s3/s3_url_utils.hpp"
 #include "s3/sigv4_signer.hpp"
 #include "s3_credentials_types.hpp"
 #include "text.hpp"
 #include "try.hpp"
+#include "url.hpp"
 #include "userver_namespaces.hpp"
 
 #include <format>
@@ -54,8 +54,7 @@ parseExpiration(const String &expiration)
 {
     std::chrono::system_clock::time_point expiresAt;
     if (!cctz::parse(
-            datetime::kRfc3339Format, std::string(expiration.view()), cctz::utc_time_zone(),
-            &expiresAt
+            datetime::kRfc3339Format, std::to_string(expiration), cctz::utc_time_zone(), &expiresAt
         )) {
         return Unex(StsError::kInvalidExpiration);
     }
@@ -88,24 +87,20 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
     std::chrono::milliseconds timeout
 )
 {
-    // Link::fromText may insert "http://" when scheme is absent; allow that overhead.
-    constexpr size_t kDefaultSchemeBytes = 7UL; // "http://"
-    const auto stsLink = Link::fromText(
-                             stsEndpoint, stsEndpoint.sizeBytes() + kDefaultSchemeBytes,
-                             Link::FromTextOptions::kNone
-    )
-                             .expect();
-    UINVARIANT(stsLink.url.isHttps(), "STS endpoint must use https scheme");
+    const auto stsUrl = s3v4::parseUrlWithDefaultHttpScheme(stsEndpoint);
+    if (!stsUrl)
+        return Unex(StsError::kInvalidEndpoint);
+    invariant(stsUrl->isHttps(), "STS endpoint must use https scheme");
 
-    const auto host = stsLink.url.host();
+    const auto host = stsUrl->host();
 
-    auto path = stsLink.url.pathname();
+    auto path = stsUrl->pathname();
     if (path.empty())
         path = "/"_t;
 
     std::vector<std::pair<String, String>> query;
-    if (stsLink.url.hasSearch()) {
-        const auto search = stsLink.url.search();
+    if (stsUrl->hasSearch()) {
+        const auto search = stsUrl->search();
         auto decoded = s3v4::decodeQueryString(search);
         if (!decoded)
             return Unex(StsError::kInvalidQuery);
@@ -130,7 +125,7 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
 
     const auto now = datetime::Now();
     s3v4::SigV4Params params(
-        std::string(region.view()), "sts", staticAccessKeyId, staticSecretAccessKey, {}, now
+        std::to_string(region), "sts", staticAccessKeyId, staticSecretAccessKey, {}, now
     );
 
     std::vector<std::pair<String, String>> headersToSign;
@@ -141,11 +136,11 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
         params, "POST"_t, path, query, headersToSign, payloadHash
     );
     httpc::Headers headers;
-    headers[us::http::headers::kHost] = std::string(host.view());
-    headers[us::http::headers::kContentType] = std::string(kUrlEncoded.view());
+    headers[us::http::headers::kHost] = std::to_string(host);
+    headers[us::http::headers::kContentType] = std::to_string(kUrlEncoded);
     for (const auto &kv : signedHeaders)
         headers[kv.first] = kv.second;
-    const auto response = TRY(exec(stsLink.httpsUrl(), body, headers, timeout));
+    const auto response = TRY(exec(stsUrl->href(), body, headers, timeout));
 
     const auto responseXml = String::fromBytes(response);
     if (!responseXml)
@@ -165,8 +160,8 @@ Expected<StsCredentials, StsError> fetchStsCredentials(
                                    const httpc::Headers &headers,
                                    std::chrono::milliseconds timeoutMs
                                ) -> Expected<std::string, StsError> {
-        auto urlBytes = std::string(url.view());
-        auto bodyBytes = std::string(body.view());
+        auto urlBytes = std::to_string(url);
+        auto bodyBytes = std::to_string(body);
         auto resp = httpClient.CreateNotSignedRequest()
                         .post(urlBytes, std::move(bodyBytes))
                         .headers(headers)

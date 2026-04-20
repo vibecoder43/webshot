@@ -1,5 +1,6 @@
 #pragma once
 
+#include "expected.hpp"
 #include "s3_credentials_types.hpp"
 #include "text.hpp"
 #include "url.hpp"
@@ -33,6 +34,13 @@ struct BuiltUrl {
     String host;    // host header value
     String rawPath; // unencoded path used for canonicalization (starts with '/')
 };
+
+enum class VirtualHostPresignError {
+    kMissingBucket,
+};
+
+[[nodiscard]] Expected<void, VirtualHostPresignError>
+validateVirtualHostBucketName(const String &bucketName);
 } // namespace detail
 
 /**

@@ -14,7 +14,7 @@ namespace v1::errors {
 
 json::Value makeError(String message)
 {
-    dto::ErrorEnvelope::Error err(std::string(message.view()));
+    dto::ErrorEnvelope::Error err(std::to_string(message));
     dto::ErrorEnvelope env(err);
     return json::ValueBuilder(env).ExtractValue();
 }

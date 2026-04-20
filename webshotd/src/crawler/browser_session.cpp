@@ -7,6 +7,7 @@
 #include "grab_value.hpp"
 #include "try.hpp"
 #include "userver_namespaces.hpp"
+#include "uuid_format.hpp"
 
 #include <generated/browser_sandbox.sh.hpp>
 
@@ -43,9 +44,9 @@ namespace v1::crawler {
 namespace {
 
 constexpr auto kMaxLogBytes = 64_i64 * 1024_i64;
-constexpr auto kManagedCgroupPrefix = std::string_view{"webshotd-"};
-constexpr auto kManagedCgroupScopeSuffix = std::string_view{".scope"};
-constexpr auto kManagedCgroupServiceSubgroup = std::string_view{"/service"};
+constexpr std::string_view kManagedCgroupPrefix{"webshotd-"};
+constexpr std::string_view kManagedCgroupScopeSuffix{".scope"};
+constexpr std::string_view kManagedCgroupServiceSubgroup{"/service"};
 
 [[nodiscard]] const std::string &browserSandboxScript()
 {
@@ -68,7 +69,7 @@ constexpr auto kManagedCgroupServiceSubgroup = std::string_view{"/service"};
 [[nodiscard]] std::string readSelfCgroupV2Path()
 {
     const auto raw = us::fs::blocking::ReadFileContents("/proc/self/cgroup");
-    auto remaining = std::string_view{raw};
+    std::string_view remaining{raw};
     while (true) {
         const auto next = remaining.find('\n');
         const auto line = next == std::string::npos ? remaining : remaining.substr(0, next);
@@ -209,32 +210,33 @@ struct [[nodiscard]] BrowserPaths final {
 
 [[nodiscard]] BrowserPaths createBrowserPaths(std::string_view browserRunsRoot)
 {
-    BrowserPaths paths;
     auto tempRoot = normalizeDirPath(std::string(browserRunsRoot));
     us::fs::blocking::CreateDirectories(tempRoot);
 
-    paths.runId = std::format("{}", us::utils::generators::GenerateBoostUuid());
-    paths.rootDir = std::format("{}/browser-{}", tempRoot, paths.runId);
+    const auto runId = std::to_string(us::utils::generators::GenerateBoostUuid());
+    const auto rootDir = std::format("{}/browser-{}", tempRoot, runId);
+    BrowserPaths paths{
+        .rootDir = rootDir,
+        .runId = runId,
+        .userDataDir = rootDir + "/profile",
+        .xdgConfigHome = rootDir + "/xdg-config",
+        .xdgCacheHome = rootDir + "/xdg-cache",
+        .crashpadDir = rootDir + "/crashpad",
+        .proxySocketPath = rootDir + "/proxy.sock",
+        .cdpSocketPath = rootDir + "/cdp.sock",
+        .websocketPathFilePath = rootDir + "/websocket_path.txt",
+        .netlogPath = rootDir + "/netlog.json",
+        .cdpTracePath = rootDir + "/cdp-trace.jsonl",
+        .stdoutLogPath = rootDir + "/stdout.log",
+        .stderrLogPath = rootDir + "/stderr.log",
+        .chromiumStderrLogPath = rootDir + "/chromium-stderr.log",
+        .bwrapStatusFilePath = rootDir + "/bwrap-status.jsonl",
+        .phaseFilePath = rootDir + "/phase.txt",
+        .devNullPath = rootDir + "/devnull",
+        .localFixtureTrustDbDir = rootDir + "/.pki/nssdb",
+    };
     us::fs::blocking::CreateDirectories(paths.rootDir);
-
-    const auto rootDir = paths.rootDir;
     us::fs::blocking::RewriteFileContents(rootDir + "/browser_sandbox.sh", browserSandboxScript());
-    paths.userDataDir = rootDir + "/profile";
-    paths.xdgConfigHome = rootDir + "/xdg-config";
-    paths.xdgCacheHome = rootDir + "/xdg-cache";
-    paths.crashpadDir = rootDir + "/crashpad";
-    paths.proxySocketPath = rootDir + "/proxy.sock";
-    paths.cdpSocketPath = rootDir + "/cdp.sock";
-    paths.websocketPathFilePath = rootDir + "/websocket_path.txt";
-    paths.netlogPath = rootDir + "/netlog.json";
-    paths.cdpTracePath = rootDir + "/cdp-trace.jsonl";
-    paths.stdoutLogPath = rootDir + "/stdout.log";
-    paths.stderrLogPath = rootDir + "/stderr.log";
-    paths.chromiumStderrLogPath = rootDir + "/chromium-stderr.log";
-    paths.bwrapStatusFilePath = rootDir + "/bwrap-status.jsonl";
-    paths.phaseFilePath = rootDir + "/phase.txt";
-    paths.devNullPath = rootDir + "/devnull";
-    paths.localFixtureTrustDbDir = rootDir + "/.pki/nssdb";
 
     for (const auto &path : std::array{
              paths.userDataDir,
@@ -286,9 +288,7 @@ void truncateLogBuffer(std::string &value)
 
 void writePhaseMarker(const std::string &path, std::string_view phase)
 {
-    us::fs::blocking::RewriteFileContents(
-        path, std::format("{} {}\n", currentTimestamp().view(), phase)
-    );
+    us::fs::blocking::RewriteFileContents(path, std::format("{} {}\n", currentTimestamp(), phase));
 }
 
 [[nodiscard]] std::string formatBrowserLogs(const std::pair<std::string, std::string> &logs)
@@ -374,12 +374,12 @@ void removeBrowserRunDir(const std::string &path) noexcept
     std::string_view cgroupNamePrefix
 )
 {
-    const auto cpuCores = cgroupLimits ? cgroupLimits->cpuCores : 0_i64;
-    const auto memoryBytes = cgroupLimits ? cgroupLimits->memoryBytes : 0_i64;
+    const i64 cpuCores{cgroupLimits ? cgroupLimits->cpuCores : 0_i64};
+    const i64 memoryBytes{cgroupLimits ? cgroupLimits->memoryBytes : 0_i64};
     const auto cgroupName = std::format("{}_{}", cgroupNamePrefix, paths.runId);
 
     auto chromiumArgs = buildChromiumArgs(paths.userDataDir, paths.netlogPath);
-    auto bwrapArgs = std::vector<std::string>{
+    std::vector<std::string> bwrapArgs{
         "bwrap",
         "--json-status-fd",
         "3",
@@ -442,7 +442,7 @@ void removeBrowserRunDir(const std::string &path) noexcept
     };
     bwrapArgs.insert(std::end(bwrapArgs), std::begin(chromiumArgs), std::end(chromiumArgs));
 
-    auto args = std::vector<std::string>{
+    std::vector<std::string> args{
         "-c",
         std::string(kBwrapStatusWrapperScript),
         "bash",
@@ -553,7 +553,7 @@ struct BrowserSession::Impl final {
 
     [[nodiscard]] String buildFailureDetail(const String &message)
     {
-        auto diagnostics = String{};
+        String diagnostics{};
 
         if (const auto browserLogs =
                 summarizeProcessOutputs(paths.stdoutLogPath, paths.stderrLogPath)) {
@@ -622,7 +622,7 @@ struct BrowserSession::Impl final {
 
     [[nodiscard]] Expected<String, String> waitForDevtoolsPath(eng::Deadline deadline)
     {
-        UINVARIANT(deadline.IsReachable(), "devtools deadline must be reachable");
+        invariant(deadline.IsReachable(), "devtools deadline must be reachable");
         auto sawCdpSocket = false;
         auto sawWebsocketPath = false;
         while (!deadline.IsReached()) {
@@ -740,7 +740,7 @@ Expected<void, String> BrowserPageSession::createBrowserContext()
         sendCdp<dto::TargetCreateBrowserContextResult>(cdpClient, "Target.createBrowserContext"_t)
     );
     browserContextIdValue = String::fromBytes(browserContext.browserContextId).expect();
-    UINVARIANT(
+    invariant(
         lifecycle.markBrowserContextCreated(),
         "invalid browser page lifecycle transition after creating browser context"
     );
@@ -749,16 +749,17 @@ Expected<void, String> BrowserPageSession::createBrowserContext()
 
 Expected<void, String> BrowserPageSession::createBlankTarget()
 {
-    UINVARIANT(browserContextIdValue, "browser context must exist before creating a target");
+    invariant(browserContextIdValue, "browser context must exist before creating a target");
 
-    dto::TargetCreateTargetParams targetParams;
-    targetParams.url = "about:blank";
-    targetParams.browserContextId = std::string(browserContextIdValue->view());
+    dto::TargetCreateTargetParams targetParams{
+        .url = "about:blank",
+        .browserContextId = std::to_string(*browserContextIdValue),
+    };
     const auto target = TRY(
         sendCdp<dto::TargetCreateTargetResult>(cdpClient, "Target.createTarget"_t, targetParams)
     );
     targetIdValue = String::fromBytes(target.targetId).expect();
-    UINVARIANT(
+    invariant(
         lifecycle.markTargetCreated(),
         "invalid browser page lifecycle transition after creating target"
     );
@@ -767,11 +768,12 @@ Expected<void, String> BrowserPageSession::createBlankTarget()
 
 Expected<void, String> BrowserPageSession::attachToTarget()
 {
-    UINVARIANT(targetIdValue, "target must exist before attaching");
+    invariant(targetIdValue, "target must exist before attaching");
 
-    dto::TargetAttachToTargetParams attachParams;
-    attachParams.targetId = std::string(targetIdValue->view());
-    attachParams.flatten = true;
+    dto::TargetAttachToTargetParams attachParams{
+        .targetId = std::to_string(*targetIdValue),
+        .flatten = true,
+    };
     const auto attached = TRY(
         sendCdp<dto::TargetAttachToTargetResult>(cdpClient, "Target.attachToTarget"_t, attachParams)
     );
@@ -783,7 +785,7 @@ Expected<void, String> BrowserPageSession::attachToTarget()
         );
     sessionIdValue = std::move(sessionId);
     cdpSessionValue = grabValueOf(cdpSession);
-    UINVARIANT(
+    invariant(
         lifecycle.markAttached(), "invalid browser page lifecycle transition after attaching target"
     );
     return {};
@@ -815,7 +817,7 @@ BrowserPageSession::enableBaseDomains(const std::function<void(std::string_view)
     lifecycleParams.enabled = true;
     TRY(sendCdpVoid(cdpSession(), "Page.setLifecycleEventsEnabled"_t, lifecycleParams));
 
-    UINVARIANT(
+    invariant(
         lifecycle.markBaseDomainsEnabled(),
         "invalid browser page lifecycle transition after enabling base CDP domains"
     );
@@ -842,11 +844,11 @@ Expected<void, String> BrowserPageSession::detach()
         return {};
 
     dto::TargetDetachFromTargetParams detachParams;
-    detachParams.sessionId = std::string(sessionIdValue->view());
+    detachParams.sessionId = std::to_string(*sessionIdValue);
     TRY(sendCdpVoid(cdpClient, "Target.detachFromTarget"_t, detachParams));
     cdpSessionValue.reset();
     sessionIdValue.reset();
-    UINVARIANT(
+    invariant(
         lifecycle.markDetached(), "invalid browser page lifecycle transition after detaching target"
     );
     return {};
@@ -858,11 +860,11 @@ Expected<void, String> BrowserPageSession::disposeBrowserContext()
         return {};
 
     dto::TargetDisposeBrowserContextParams disposeParams;
-    disposeParams.browserContextId = std::string(browserContextIdValue->view());
+    disposeParams.browserContextId = std::to_string(*browserContextIdValue);
     TRY(sendCdpVoid(cdpClient, "Target.disposeBrowserContext"_t, disposeParams));
     browserContextIdValue.reset();
     targetIdValue.reset();
-    UINVARIANT(
+    invariant(
         lifecycle.markDisposed(),
         "invalid browser page lifecycle transition after disposing browser context"
     );
@@ -873,7 +875,7 @@ Expected<void, String> BrowserPageSession::close()
 {
     TRY(detach());
     TRY(disposeBrowserContext());
-    UINVARIANT(
+    invariant(
         lifecycle.markClosed(),
         "invalid browser page lifecycle transition after closing page session"
     );
@@ -882,32 +884,32 @@ Expected<void, String> BrowserPageSession::close()
 
 const String &BrowserPageSession::browserContextId() const
 {
-    UINVARIANT(browserContextIdValue, "browser context is not created");
+    invariant(browserContextIdValue, "browser context is not created");
     return *browserContextIdValue;
 }
 
 CdpSession &BrowserPageSession::cdpSession() const
 {
-    UINVARIANT(cdpSessionValue, "target session is not attached");
+    invariant(cdpSessionValue, "target session is not attached");
     return *cdpSessionValue;
 }
 
 const String &BrowserPageSession::targetId() const
 {
-    UINVARIANT(targetIdValue, "target is not created");
+    invariant(targetIdValue, "target is not created");
     return *targetIdValue;
 }
 
 const String &BrowserPageSession::sessionId() const
 {
-    UINVARIANT(sessionIdValue, "target is not attached");
+    invariant(sessionIdValue, "target is not attached");
     return *sessionIdValue;
 }
 
 std::string buildBrowserRunsRoot(std::string stateDir)
 {
     auto root = normalizeDirPath(std::move(stateDir));
-    UINVARIANT(!root.empty(), "state_dir must not be empty");
+    invariant(!root.empty(), "state_dir must not be empty");
     if (root == "/")
         return "/browser_runs";
     return std::format("{}/browser_runs", root);

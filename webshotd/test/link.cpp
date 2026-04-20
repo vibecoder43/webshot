@@ -4,73 +4,51 @@
 #include <userver/utest/utest.hpp>
 
 #include "link.hpp"
+#include "prefix_utils.hpp"
 
 namespace {
 constexpr auto kUrlBytesMax = 4096_uz;
 
 using v1::Link;
+using v1::Url;
+using enum Url::StripOptions;
 using namespace text::literals;
+
+[[nodiscard]] String toText(std::string_view input) { return String::fromBytes(input).expect(); }
+
+[[nodiscard]] Link parseLink(std::string_view input)
+{
+    return Link::fromText(toText(input), kUrlBytesMax).expect();
+}
+
+[[nodiscard]] bool canParseLink(std::string_view input)
+{
+    return Link::fromText(toText(input), kUrlBytesMax).hasValue();
+}
 
 [[nodiscard]] std::string normalizeKey(std::string_view input)
 {
-    auto text = String::fromBytes(input);
-    if (!text) {
-        ADD_FAILURE() << "String::fromBytes failed";
-        return {};
-    }
-    const auto link = Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone);
-    if (!link) {
-        ADD_FAILURE() << "Link::fromText failed";
-        return {};
-    }
-    const auto normalizedText = link->normalized();
-    return std::string(normalizedText.view());
+    return std::to_string(parseLink(input).normalized());
 }
 
 [[nodiscard]] std::string normalizeKeyFromBytes(const std::vector<char> &bytes)
 {
-    std::string input(std::begin(bytes), std::end(bytes));
-    auto text = String::fromBytes(input);
-    if (!text) {
-        ADD_FAILURE() << "String::fromBytes failed";
-        return {};
-    }
-    const auto link = Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone);
-    if (!link) {
-        ADD_FAILURE() << "Link::fromText failed";
-        return {};
-    }
-    const auto normalizedText = link->normalized();
-    return std::string(normalizedText.view());
+    const auto text = String::fromBytes(std::string_view(bytes.data(), bytes.size())).expect();
+    return std::to_string(Link::fromText(text, kUrlBytesMax).expect().normalized());
 }
 } // namespace
 
 UTEST(LinkFromText, AcceptsHttpsWithHostname)
 {
-    auto text = String::fromBytes(std::string{"https://example.com/"});
-    ASSERT_TRUE(text);
-    if (!text)
-        return;
-    const auto link = Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone);
-    ASSERT_TRUE(link);
-    EXPECT_EQ(link->url.hostname(), "example.com"_t);
-    EXPECT_EQ(link->httpUrl(), "http://example.com"_t);
-    EXPECT_EQ(link->normalized(), "example.com"_t);
+    const auto link = parseLink("https://example.com/");
+    EXPECT_EQ(link.url.hostname(), "example.com"_t);
+    EXPECT_EQ(link.httpUrl(), "http://example.com"_t);
+    EXPECT_EQ(link.normalized(), "example.com"_t);
 }
 
-UTEST(LinkFromText, RejectsUnsupportedScheme)
-{
-    auto text = String::fromBytes(std::string{"ftp://example.com/"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
-}
+UTEST(LinkFromText, RejectsUnsupportedScheme) { EXPECT_FALSE(canParseLink("ftp://example.com/")); }
 
-UTEST(LinkFromText, RejectsMissingHostname)
-{
-    auto text = String::fromBytes(std::string{"http:///"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
-}
+UTEST(LinkFromText, RejectsMissingHostname) { EXPECT_FALSE(canParseLink("http:///")); }
 
 UTEST(LinkFromText, AcceptsUrlAtLimit)
 {
@@ -88,9 +66,7 @@ UTEST(LinkFromText, RejectsUrlOverLimit)
     std::string urlString{"https://example.com/?"};
     ASSERT_LT(urlString.size(), kUrlBytesMax);
     urlString.append(kUrlBytesMax - urlString.size() + 1, 'a');
-    auto text = String::fromBytes(urlString);
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
+    EXPECT_FALSE(Link::fromText(toText(urlString), kUrlBytesMax));
 }
 
 UTEST(LinkFromText, NormalizesScheme)
@@ -129,31 +105,17 @@ UTEST(LinkFromText, PreservesQueryWithinLimit)
 
 UTEST(LinkFromText, RejectsNetworkPathReference)
 {
-    auto text = String::fromBytes(std::string{"//example.com/path"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
+    EXPECT_FALSE(canParseLink("//example.com/path"));
 }
 
 UTEST(LinkFromText, RejectsOverlargePort)
 {
-    auto text = String::fromBytes(std::string{"http://example.com:99999/"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
+    EXPECT_FALSE(canParseLink("http://example.com:99999/"));
 }
 
-UTEST(LinkFromText, RejectsIPv6Host)
-{
-    auto text = String::fromBytes(std::string{"http://[::1]/"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
-}
+UTEST(LinkFromText, RejectsIPv6Host) { EXPECT_FALSE(canParseLink("http://[::1]/")); }
 
-UTEST(LinkFromText, RejectsIPv4Host)
-{
-    auto text = String::fromBytes(std::string{"http://192.0.2.1/"});
-    ASSERT_TRUE(text);
-    EXPECT_FALSE(Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kNone));
-}
+UTEST(LinkFromText, RejectsIPv4Host) { EXPECT_FALSE(canParseLink("http://192.0.2.1/")); }
 
 UTEST(LinkFromText, KeepsEscapedSlashInPath)
 {
@@ -198,15 +160,44 @@ UTEST(LinkFromText, ResolvesDotSegments)
 
 UTEST(LinkMembers, HostAndHttpUrlNormalized)
 {
-    auto text = String::fromBytes(std::string{"https://Example.com:8081/Path/"});
-    ASSERT_TRUE(text);
-    if (!text)
-        return;
-    const auto link = Link::fromText(*text, kUrlBytesMax, Link::FromTextOptions::kStripPort);
-    ASSERT_TRUE(link);
-    EXPECT_EQ(link->url.hostname(), "example.com"_t);
-    EXPECT_EQ(link->httpUrl(), "http://example.com/Path"_t);
-    EXPECT_EQ(link->normalized(), "example.com/Path"_t);
+    const auto link = parseLink("https://Example.com:8081/Path/");
+    EXPECT_EQ(link.url.hostname(), "example.com"_t);
+    EXPECT_EQ(link.httpUrl(), "http://example.com/Path"_t);
+    EXPECT_EQ(link.normalized(), "example.com/Path"_t);
+}
+
+UTEST(LinkMembers, PreservesQueryAndStripsPort)
+{
+    const auto link = parseLink("https://Example.com:8081/Path?a=1");
+    EXPECT_EQ(link.url.hostname(), "example.com"_t);
+    EXPECT_EQ(link.normalized(), "example.com/Path?a=1"_t);
+}
+
+UTEST(UrlStrip, RemovesPortOnly)
+{
+    const auto stripped = parseLink("https://example.com:8081/path?a=1").url.stripped(kStripPort);
+    EXPECT_EQ(stripped.href(), "https://example.com/path?a=1"_t);
+}
+
+UTEST(UrlStrip, RemovesQueryOnly)
+{
+    const auto stripped = parseLink("https://example.com:8081/path?a=1").url.stripped(kStripQuery);
+    EXPECT_EQ(stripped.href(), "https://example.com:8081/path"_t);
+}
+
+UTEST(UrlStrip, RemovesPortAndQuery)
+{
+    const auto stripped =
+        parseLink("https://example.com:8081/path?a=1").url.stripped(kStripPort | kStripQuery);
+    EXPECT_EQ(stripped.href(), "https://example.com/path"_t);
+}
+
+UTEST(PrefixKey, IgnoresPortAndQuery)
+{
+    EXPECT_EQ(
+        v1::prefix::makePrefixKey(parseLink("https://Example.com:8081/Path?a=1")),
+        "com.example/Path"_t
+    );
 }
 
 UTEST(LinkFromTextBytes, MatchesUtf8Normalization)

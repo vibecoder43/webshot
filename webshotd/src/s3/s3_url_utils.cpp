@@ -1,5 +1,6 @@
 #include "s3/s3_url_utils.hpp"
 
+#include <cctype>
 #include <expected>
 #include <stddef.h>
 #include <string>
@@ -7,6 +8,36 @@
 #include <ada/unicode.h>
 
 namespace v1::s3v4 {
+
+using namespace text::literals;
+
+namespace {
+
+[[nodiscard]] bool hasExplicitScheme(std::string_view text)
+{
+    const auto schemePos = text.find("://");
+    if (schemePos == std::string_view::npos || schemePos == 0)
+        return false;
+    if (!std::isalpha(static_cast<unsigned char>(text.front())))
+        return false;
+    for (const char c : text.substr(1, schemePos - 1)) {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' || c == '.'))
+            return false;
+    }
+    return true;
+}
+
+} // namespace
+
+std::optional<Url> parseUrlWithDefaultHttpScheme(const String &text)
+{
+    if (const auto url = Url::fromText(text))
+        return url;
+    if (hasExplicitScheme(text.view()))
+        return {};
+    const auto withScheme = "http://"_t + text;
+    return Url::fromText(withScheme);
+}
 
 Expected<std::vector<std::pair<String, String>>, QueryStringError> decodeQueryString(String search)
 {

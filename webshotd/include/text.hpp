@@ -64,7 +64,7 @@ public:
     {
         if (prefix.data.size() > data.size())
             return false;
-        const auto dataPrefix = std::string_view{data}.substr(0, prefix.data.size());
+        const std::string_view dataPrefix{std::string_view{data}.substr(0, prefix.data.size())};
         return std::ranges::equal(prefix.data, dataPrefix);
     }
 
@@ -159,6 +159,12 @@ template <> struct std::formatter<text::String, char> : std::formatter<std::stri
         return std::formatter<std::string_view, char>::format(text.view(), ctx);
     }
 };
+
+namespace std {
+
+[[nodiscard]] inline string to_string(const text::String &text) { return string{text.view()}; }
+
+} // namespace std
 
 template <> struct std::hash<String> {
     size_t operator()(const String &text) const noexcept
