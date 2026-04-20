@@ -127,9 +127,7 @@ normalizeHeaders(const dto::CdpHeaders &headers)
     if (!matchesFixturePort)
         return urlText;
 
-    auto parsed = maybeUrl->copyParsed();
-    parsed.clear_port();
-    return Url::fromParsed(std::move(parsed)).href();
+    return maybeUrl->stripped(Url::StripOptions::kStripPort).href();
 }
 
 [[nodiscard]] std::string
@@ -248,7 +246,7 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
     if (!maybeUrl.isHttp() && !maybeUrl.isHttps())
         return {};
 
-    return text::format("{}://{}", maybeUrl.isHttps() ? "https" : "http", maybeUrl.host());
+    return maybeUrl.origin();
 }
 
 [[nodiscard]] String resolveRedirectTargetUrl(
@@ -291,7 +289,7 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
         if (!maybeBaseUrl)
             return canonicalizeCapturedUrl(requestUrl);
         return canonicalizeCapturedUrl(
-            text::format("{}{}{}", *origin, maybeBaseUrl->pathname(), *location)
+            maybeBaseUrl->withoutSearch().withoutHash().withSearch(*location).href()
         );
     }
 
@@ -305,11 +303,8 @@ normalizeInterceptedLinkForDenylist(const Config &config, const String &requestU
         const auto parsed = Url::fromText(requestUrl);
         if (!parsed)
             return {};
-
-        auto normalized = parsed->copyParsed();
-        normalized.set_protocol("http");
         const auto link = Link::fromText(
-            Url::fromParsed(std::move(normalized)).href(), config.urlBytesMax()
+            parsed->withProtocol("http"_t).href(), config.urlBytesMax()
         );
         if (!link)
             return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
@@ -319,11 +314,8 @@ normalizeInterceptedLinkForDenylist(const Config &config, const String &requestU
         const auto parsed = Url::fromText(requestUrl);
         if (!parsed)
             return {};
-
-        auto normalized = parsed->copyParsed();
-        normalized.set_protocol("https");
         const auto link = Link::fromText(
-            Url::fromParsed(std::move(normalized)).href(), config.urlBytesMax()
+            parsed->withProtocol("https"_t).href(), config.urlBytesMax()
         );
         if (!link)
             return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));

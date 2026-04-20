@@ -375,17 +375,11 @@ S3V4Client::makePathStyleUrl(String path, std::optional<String> protocolOverride
 {
     auto rawPath = buildRawPath(std::move(path), IncludeBucket::kYes);
 
-    auto url = endpoint.url.copyParsed();
-    if (protocolOverride) {
-        const auto proto = std::to_string(*protocolOverride);
-        invariant(url.set_protocol(proto), "invalid protocol override");
-    }
-    invariant(url.set_pathname(rawPath.view()), "failed to set path for S3 request");
-    url.set_search("");
-    url.clear_hash();
+    auto url = protocolOverride ? endpoint.url.withProtocol(*protocolOverride) : endpoint.url;
+    url = url.withPathname(rawPath).withoutSearch().withoutHash();
 
     return detail::BuiltUrl{
-        .href = String::fromBytes(url.get_href()).expect(),
+        .href = url.href(),
         .host = endpoint.host,
         .rawPath = std::move(rawPath),
     };
@@ -397,23 +391,12 @@ detail::BuiltUrl S3V4Client::makeVirtualHostUrl(String path, String protocol) co
     invariant(bucketValidated, "presign requires non-empty bucket");
 
     auto rawPath = buildRawPath(std::move(path), IncludeBucket::kNo);
-
-    auto url = endpoint.url.copyParsed();
-    const auto proto = std::to_string(protocol);
-    invariant(url.set_protocol(proto), "invalid protocol for S3 presign");
-    invariant(
-        url.set_hostname(std::format("{}.{}", bucketName, endpoint.hostname)), "bad hostname"
-    );
-    if (!endpoint.port.empty())
-        invariant(url.set_port(std::to_string(endpoint.port)), "bad port");
-    else
-        url.set_port("");
-    invariant(url.set_pathname(rawPath.view()), "failed to set path for S3 presign");
-    url.set_search("");
-    url.clear_hash();
+    const auto hostname = text::format("{}.{}", bucketName, endpoint.hostname);
+    auto url = endpoint.url.withProtocol(protocol).withHostname(hostname).withPort(endpoint.port);
+    url = url.withPathname(rawPath).withoutSearch().withoutHash();
     return detail::BuiltUrl{
-        .href = String::fromBytes(url.get_href()).expect(),
-        .host = String::fromBytes(url.get_host()).expect(),
+        .href = url.href(),
+        .host = url.host(),
         .rawPath = std::move(rawPath),
     };
 }

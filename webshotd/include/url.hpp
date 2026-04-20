@@ -40,15 +40,25 @@ public:
     [[nodiscard]] String search() const;
     [[nodiscard]] String pathWithSearch() const;
     [[nodiscard]] String href() const;
+    [[nodiscard]] String origin() const;
+    [[nodiscard]] String surt() const;
 
     [[nodiscard]] bool hasHostname() const;
     [[nodiscard]] bool hasPort() const;
+    [[nodiscard]] bool hasNonDefaultPort() const;
     [[nodiscard]] bool hasSearch() const;
     [[nodiscard]] bool hasValidDomain() const;
     [[nodiscard]] ada::scheme::type schemeType() const;
     [[nodiscard]] bool isHttp() const;
     [[nodiscard]] bool isHttps() const;
     [[nodiscard]] Url stripped(StripOptions options) const;
+    [[nodiscard]] Url withProtocol(const String &protocol) const;
+    [[nodiscard]] Url withHostname(const String &hostname) const;
+    [[nodiscard]] Url withPort(const String &port) const;
+    [[nodiscard]] Url withPathname(const String &pathname) const;
+    [[nodiscard]] Url withSearch(const String &search) const;
+    [[nodiscard]] Url withoutSearch() const;
+    [[nodiscard]] Url withoutHash() const;
 
     [[nodiscard]] ada::url_aggregator copyParsed() const;
 

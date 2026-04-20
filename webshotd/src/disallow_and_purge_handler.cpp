@@ -76,7 +76,7 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
         LOG_INFO() << "invalid host";
         return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
     }
-    LOG_INFO() << std::format("invoked for: {}", link->url.hostname());
+    LOG_INFO() << std::format("invoked for: {}", link->host());
     auto prefixKey = prefix::makePrefixKey(*link);
     auto clientIp = client_ip::resolve(request, config);
     if (!clientIp)
@@ -87,7 +87,7 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
 
     auto ok = crud.disallowAndPurgePrefix(prefixKey);
     if (!ok) {
-        LOG_ERROR() << std::format("disallow_and_purge failed for {}", link->url.hostname());
+        LOG_ERROR() << std::format("disallow_and_purge failed for {}", link->host());
         return httpu::respondError(response, kInternalServerError, "internal server error"_t);
     }
     response.SetStatus(kAccepted);

@@ -42,9 +42,10 @@ function(add_cpp_helper target)
   _add_cpp_test_target(${target} ${ARGN})
 endfunction()
 
-add_cpp_test(link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
-             ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/prefix_utils.cpp
-             ${CMAKE_SOURCE_DIR}/src/url.cpp)
+add_cpp_test(
+  link_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/link.cpp
+  ${CMAKE_SOURCE_DIR}/src/link.cpp ${CMAKE_SOURCE_DIR}/src/prefix_utils.cpp
+  ${CMAKE_SOURCE_DIR}/src/url.cpp)
 
 add_cpp_test(
   s3_v4_client_test

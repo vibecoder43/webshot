@@ -21,6 +21,8 @@ using namespace text::literals;
     return Link::fromText(toText(input), kUrlBytesMax).expect();
 }
 
+[[nodiscard]] Url parseUrl(std::string_view input) { return Url::fromText(toText(input)).value(); }
+
 [[nodiscard]] bool canParseLink(std::string_view input)
 {
     return Link::fromText(toText(input), kUrlBytesMax).hasValue();
@@ -175,20 +177,20 @@ UTEST(LinkMembers, PreservesQueryAndStripsPort)
 
 UTEST(UrlStrip, RemovesPortOnly)
 {
-    const auto stripped = parseLink("https://example.com:8081/path?a=1").url.stripped(kStripPort);
+    const auto stripped = parseUrl("https://example.com:8081/path?a=1").stripped(kStripPort);
     EXPECT_EQ(stripped.href(), "https://example.com/path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesQueryOnly)
 {
-    const auto stripped = parseLink("https://example.com:8081/path?a=1").url.stripped(kStripQuery);
+    const auto stripped = parseUrl("https://example.com:8081/path?a=1").stripped(kStripQuery);
     EXPECT_EQ(stripped.href(), "https://example.com:8081/path"_t);
 }
 
 UTEST(UrlStrip, RemovesPortAndQuery)
 {
     const auto stripped =
-        parseLink("https://example.com:8081/path?a=1").url.stripped(kStripPort | kStripQuery);
+        parseUrl("https://example.com:8081/path?a=1").stripped(kStripPort | kStripQuery);
     EXPECT_EQ(stripped.href(), "https://example.com/path"_t);
 }
 

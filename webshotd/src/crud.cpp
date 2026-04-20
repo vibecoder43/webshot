@@ -1113,7 +1113,7 @@ std::optional<StoredCapture> Crud::Impl::persistMetadataForContext(CrawlContext 
 {
     const auto prefixKey = prefix::makePrefixKey(ctx.link);
     const auto prefixTree = prefix::makePrefixTree(prefixKey);
-    const auto host = ctx.link.url.hostname();
+    const auto host = ctx.link.host();
     invariant(ctx.replayUrl, "replayUrl must be set for a successful capture");
 
     const auto allowed = denylist.isAllowedPrefix(prefixKey);

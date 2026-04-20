@@ -356,19 +356,6 @@ serializeRecordPair(const SerializableResponse &response)
     );
 }
 
-[[nodiscard]] bool shouldIncludePort(const Url &url)
-{
-    if (!url.hasPort())
-        return false;
-
-    const auto defaultPort = ada::scheme::get_special_port(url.schemeType());
-    if (defaultPort == 0)
-        return true;
-
-    const auto defaultPortText = String::fromBytes(std::to_string(defaultPort)).expect();
-    return url.port() != defaultPortText;
-}
-
 [[nodiscard]] String cdxPayloadDigest(std::string_view payload)
 {
     return String::fromBytes(sha256PrefixedHex(payload, "sha-256:")).expect();
@@ -388,35 +375,7 @@ serializeRecordPair(const SerializableResponse &response)
     if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
         return urlText;
 
-    std::string host(maybeUrl->hostname().view());
-    std::string port(maybeUrl->port().view());
-    while (!host.empty() && host.back() == '.')
-        host.pop_back();
-
-    std::vector<std::string> parts;
-    size_t offset = 0;
-    while (offset <= host.size()) {
-        const auto next = host.find('.', offset);
-        if (next == std::string::npos) {
-            parts.emplace_back(host.substr(offset));
-            break;
-        }
-        parts.emplace_back(host.substr(offset, next - offset));
-        offset = next + 1;
-    }
-    std::ranges::reverse(parts);
-
-    std::string surtHost;
-    for (size_t index = 0; index < parts.size(); index++) {
-        if (index > 0)
-            surtHost += ",";
-        surtHost += parts[index];
-    }
-
-    auto path = std::to_string(maybeUrl->pathWithSearch());
-    if (shouldIncludePort(*maybeUrl))
-        surtHost += ":" + port;
-    return String::fromBytes(surtHost + ")" + path).expect();
+    return maybeUrl->surt();
 }
 
 [[nodiscard]] std::string makeWaczIndexJson(const WarcCdxRecord &record)
