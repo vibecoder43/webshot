@@ -349,10 +349,7 @@ void removeBrowserRunDir(const std::string &path) noexcept
     absl::StripTrailingAsciiWhitespace(&value);
     if (value.empty())
         return {};
-    auto parsed = String::fromBytes(value);
-    if (!parsed)
-        return {};
-    return grabValueOf(parsed);
+    return TRY(String::fromBytes(value));
 }
 
 [[nodiscard]] eng::subprocess::ChildProcess spawnProcess(
@@ -505,33 +502,36 @@ struct BrowserSession::Impl final {
             config.proxyRequireAuth,
             config.enableLocalFixtureRewrite,
         });
-        auto proxyStarted = proxy->start(dnsResolver, devtoolsDeadline);
-        if (!proxyStarted)
-            return Unex(text::format("proxy failed to start: {}", proxyStarted.error()));
+        TRY_MAP_ERR(proxy->start(dnsResolver, devtoolsDeadline), [](auto detail) {
+            return text::format("proxy failed to start: {}", detail);
+        });
 
         process.emplace(spawnSandboxedBrowser(
             processStarter, paths, config.cgroupRootPath, config.cgroupLimits,
             config.cgroupNamePrefix
         ));
-        auto ready = waitForDevtoolsPath(devtoolsDeadline);
-        if (!ready)
-            return Unex(buildFailureDetail(ready.error()));
-        websocketPath = grabValueOf(ready);
+        websocketPath = TRY_MAP_ERR(waitForDevtoolsPath(devtoolsDeadline), [this](auto detail) {
+            return buildFailureDetail(std::move(detail));
+        });
         return {};
     }
 
     [[nodiscard]] Expected<std::unique_ptr<CdpClient>, String>
     connectCdp(eng::Deadline overallDeadline) const
     {
-        auto cdp = CdpClient::connect(
-            paths.cdpSocketPath, websocketPath, paths.cdpTracePath, overallDeadline,
-            config.cdpHandshakeTimeout, config.cdpCommandTimeout, config.cdpMaxRemotePayloadBytes
+        return TRY_MAP_ERR(
+            CdpClient::connect(
+                paths.cdpSocketPath, websocketPath, paths.cdpTracePath, overallDeadline,
+                config.cdpHandshakeTimeout, config.cdpCommandTimeout,
+                config.cdpMaxRemotePayloadBytes
+            ),
+            [this](auto failure) {
+                const auto detail = describeCdpFailure(
+                    "devtools websocket handshake failed"_t, std::move(failure)
+                );
+                return text::format("{} ({})", detail, currentLaunchLogs());
+            }
         );
-        if (!cdp) {
-            auto detail = describeCdpFailure("devtools websocket handshake failed"_t, cdp.error());
-            return Unex(text::format("{} ({})", detail, currentLaunchLogs()));
-        }
-        return grabValueOf(cdp);
     }
 
     [[nodiscard]] std::pair<std::string, std::string> drainBrowserLogs() const
@@ -716,10 +716,11 @@ namespace {
 template <typename T, typename... Args>
 [[nodiscard]] Expected<T, String> sendCdp(auto &cdpEndpoint, const String &method, Args &&...args)
 {
-    auto result = cdpEndpoint.template send<T>(method, std::forward<Args>(args)...);
-    if (!result)
-        return Unex(describeCdpFailure(text::format("{} failed", method), result.error()));
-    return grabValueOf(result);
+    return TRY_MAP_ERR(
+        cdpEndpoint.template send<T>(method, std::forward<Args>(args)...), [&method](auto failure) {
+            return describeCdpFailure(text::format("{} failed", method), std::move(failure));
+        }
+    );
 }
 
 template <typename... Args>

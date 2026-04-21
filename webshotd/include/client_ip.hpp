@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "ip_utils.hpp"
 #include "text.hpp"
+#include "try.hpp"
 #include "userver_namespaces.hpp"
 
 #include <optional>
@@ -20,10 +21,7 @@ namespace v1::client_ip {
     absl::StripAsciiWhitespace(&text);
     if (!isIpLiteralHostname(text))
         return {};
-    auto clientIp = String::fromBytes(text);
-    if (!clientIp)
-        return {};
-    return *clientIp;
+    return TRY(String::fromBytes(text));
 }
 
 [[nodiscard]] inline std::optional<String>

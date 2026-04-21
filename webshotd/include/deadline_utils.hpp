@@ -97,8 +97,7 @@ sleepWithinDeadline(eng::Deadline deadline, std::chrono::milliseconds delay)
     invariant(deadline.IsReachable(), "sleepUntilDeadline requires a reachable deadline");
 
     const auto remaining = TRY(timeLeftMs(deadline));
-    if (remaining <= 0ms)
-        return Unex(DeadlineError::kTimeout);
+    ENSURE(remaining > 0ms, DeadlineError::kTimeout);
 
     eng::SleepFor(remaining);
     return {};

@@ -17,15 +17,9 @@ namespace v1::crud {
 [[nodiscard]] std::optional<PrefixCursor> decodePrefixCursor(const String &token)
 {
     const auto cur = TRY(decodeToken<dto::PaginationPrefixCursor>(token));
-    const auto prefix = String::fromBytes(cur.p);
-    if (!prefix)
-        return {};
-    const auto link = String::fromBytes(cur.l);
-    if (!link)
-        return {};
     PrefixCursor out{};
-    out.prefix = *prefix;
-    out.link = *link;
+    out.prefix = TRY(String::fromBytes(cur.p));
+    out.link = TRY(String::fromBytes(cur.l));
     if (cur.t && cur.i) {
         out.createdAt = microsToTimePoint(*cur.t);
         out.id = *cur.i;

@@ -124,6 +124,82 @@ struct MoveOnly final {
     return *value;
 }
 
+[[nodiscard]] v1::Expected<int, TestError> mapExpectedValue(bool ok)
+{
+    return TRY_MAP(makeValue(ok), [](int value) { return value * 2; }) + 1;
+}
+
+[[nodiscard]] v1::Expected<int, int> mapExpectedError(bool ok)
+{
+    return TRY_MAP_ERR(makeValue(ok), [](auto err) { return err == TestError::kAlpha ? 10 : 20; }) *
+           2;
+}
+
+[[nodiscard]] v1::Expected<int, int> mapVoidError(bool ok)
+{
+    TRY_MAP_ERR(makeVoid(ok), [](auto err) { return err == TestError::kBeta ? 30 : 40; });
+    return 9;
+}
+
+[[nodiscard]] v1::Expected<int, int> replaceExpectedError(bool ok, int &errCalls)
+{
+    return TRY_ERR_AS(makeValue(ok), ([&]() {
+                          errCalls++;
+                          return 95;
+                      })()) +
+           1;
+}
+
+[[nodiscard]] v1::Expected<int, int> replaceVoidError(bool ok)
+{
+    TRY_ERR_AS(makeVoid(ok), 96);
+    return 9;
+}
+
+[[nodiscard]] v1::Expected<int, int>
+mapErrorSingleEvaluation(int &exprCalls, int &mapperCalls, bool ok)
+{
+    return TRY_MAP_ERR(
+               ([&]() -> v1::Expected<int, TestError> {
+                   exprCalls++;
+                   if (!ok)
+                       return v1::Unex(TestError::kAlpha);
+                   return 4;
+               })(),
+               [&](auto err) {
+                   mapperCalls++;
+                   return err == TestError::kAlpha ? 50 : 60;
+               }
+           ) +
+           1;
+}
+
+[[nodiscard]] v1::Expected<int, int> okOrOptional(bool ok)
+{
+    return TRY_OK_OR(maybeValue(ok), 70) + 1;
+}
+
+[[nodiscard]] v1::Expected<int, int> okOrElseOptional(bool ok, int &errCalls)
+{
+    return TRY_OK_OR_ELSE(
+               maybeValue(ok),
+               [&]() {
+                   errCalls++;
+                   return 80;
+               }
+           ) +
+           1;
+}
+
+[[nodiscard]] v1::Expected<int, int> ensureValue(bool ok, int &errCalls)
+{
+    ENSURE(ok, ([&]() {
+               errCalls++;
+               return 90;
+           })());
+    return 3;
+}
+
 } // namespace
 
 UTEST(Try, PropagatesExpectedValueErrors)
@@ -270,4 +346,136 @@ UTEST(Try, PropagatesEmptyOptionalForMoveOnlyValues)
 {
     const auto value = unwrapOptionalMoveOnly(false);
     ASSERT_FALSE(value);
+}
+
+UTEST(Try, MapPreservesExpectedFailure)
+{
+    const auto value = mapExpectedValue(false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), TestError::kAlpha);
+}
+
+UTEST(Try, MapTransformsExpectedSuccessValue)
+{
+    const auto value = mapExpectedValue(true);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 43);
+}
+
+UTEST(Try, MapErrPreservesExpectedSuccessValue)
+{
+    const auto value = mapExpectedError(true);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 42);
+}
+
+UTEST(Try, MapErrMapsExpectedFailure)
+{
+    const auto value = mapExpectedError(false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 10);
+}
+
+UTEST(Try, MapErrSupportsExpectedVoid)
+{
+    const auto value = mapVoidError(false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 30);
+}
+
+UTEST(Try, ErrAsPreservesExpectedSuccessValue)
+{
+    int errCalls = 0;
+    const auto value = replaceExpectedError(true, errCalls);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 22);
+    EXPECT_EQ(errCalls, 0);
+}
+
+UTEST(Try, ErrAsReplacesExpectedFailure)
+{
+    int errCalls = 0;
+    const auto value = replaceExpectedError(false, errCalls);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 95);
+    EXPECT_EQ(errCalls, 1);
+}
+
+UTEST(Try, ErrAsSupportsExpectedVoid)
+{
+    const auto value = replaceVoidError(false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 96);
+}
+
+UTEST(Try, MapErrEvaluatesExpressionOnceOnSuccess)
+{
+    int exprCalls = 0;
+    int mapperCalls = 0;
+    const auto value = mapErrorSingleEvaluation(exprCalls, mapperCalls, true);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 5);
+    EXPECT_EQ(exprCalls, 1);
+    EXPECT_EQ(mapperCalls, 0);
+}
+
+UTEST(Try, MapErrEvaluatesExpressionAndMapperOnceOnFailure)
+{
+    int exprCalls = 0;
+    int mapperCalls = 0;
+    const auto value = mapErrorSingleEvaluation(exprCalls, mapperCalls, false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 50);
+    EXPECT_EQ(exprCalls, 1);
+    EXPECT_EQ(mapperCalls, 1);
+}
+
+UTEST(Try, OkOrUnwrapsOptionalSuccess)
+{
+    const auto value = okOrOptional(true);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 8);
+}
+
+UTEST(Try, OkOrMapsOptionalFailure)
+{
+    const auto value = okOrOptional(false);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 70);
+}
+
+UTEST(Try, OkOrElseBuildsErrorOnceOnFailure)
+{
+    int errCalls = 0;
+    const auto value = okOrElseOptional(false, errCalls);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 80);
+    EXPECT_EQ(errCalls, 1);
+}
+
+UTEST(Try, OkOrElseSkipsErrorFactoryOnSuccess)
+{
+    int errCalls = 0;
+    const auto value = okOrElseOptional(true, errCalls);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 8);
+    EXPECT_EQ(errCalls, 0);
+}
+
+UTEST(Try, EnsureReturnsSuccessWhenConditionMatches)
+{
+    int errCalls = 0;
+    const auto value = ensureValue(true, errCalls);
+    ASSERT_TRUE(value);
+    EXPECT_EQ(*value, 3);
+    EXPECT_EQ(errCalls, 0);
+}
+
+UTEST(Try, EnsureReturnsMappedFailureWhenConditionFails)
+{
+    int errCalls = 0;
+    const auto value = ensureValue(false, errCalls);
+    ASSERT_FALSE(value);
+    EXPECT_EQ(value.error(), 90);
+    EXPECT_EQ(errCalls, 1);
 }

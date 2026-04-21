@@ -37,16 +37,13 @@ namespace {
     std::string close = "</";
     close.append(tagBytes.data(), tagBytes.size()).push_back('>');
     const auto startPos = xmlBytes.find(open);
-    if (startPos == std::string::npos)
-        return Unex(StsError::kXmlMissingTag);
+    ENSURE(startPos != std::string::npos, StsError::kXmlMissingTag);
     const auto valuePos = startPos + open.size();
     const auto endPos = xmlBytes.find(close, valuePos);
-    if (endPos == std::string::npos)
-        return Unex(StsError::kXmlMissingClosingTag);
-    const auto extracted = String::fromBytes(xmlBytes.substr(valuePos, endPos - valuePos));
-    if (!extracted)
-        return Unex(StsError::kInvalidUtf8);
-    return *extracted;
+    ENSURE(endPos != std::string::npos, StsError::kXmlMissingClosingTag);
+    return TRY_ERR_AS(
+        String::fromBytes(xmlBytes.substr(valuePos, endPos - valuePos)), StsError::kInvalidUtf8
+    );
 }
 
 [[nodiscard]] Expected<std::chrono::system_clock::time_point, StsError>
@@ -87,24 +84,21 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
     std::chrono::milliseconds timeout
 )
 {
-    const auto stsUrl = s3v4::parseUrlWithDefaultHttpScheme(stsEndpoint);
-    if (!stsUrl)
-        return Unex(StsError::kInvalidEndpoint);
-    invariant(stsUrl->isHttps(), "STS endpoint must use https scheme");
+    const auto stsUrl = TRY_OK_OR(
+        s3v4::parseUrlWithDefaultHttpScheme(stsEndpoint), StsError::kInvalidEndpoint
+    );
+    invariant(stsUrl.isHttps(), "STS endpoint must use https scheme");
 
-    const auto host = stsUrl->host();
+    const auto host = stsUrl.host();
 
-    auto path = stsUrl->pathname();
+    auto path = stsUrl.pathname();
     if (path.empty())
         path = "/"_t;
 
     std::vector<std::pair<String, String>> query;
-    if (stsUrl->hasSearch()) {
-        const auto search = stsUrl->search();
-        auto decoded = s3v4::decodeQueryString(search);
-        if (!decoded)
-            return Unex(StsError::kInvalidQuery);
-        query = std::move(*decoded);
+    if (stsUrl.hasSearch()) {
+        const auto search = stsUrl.search();
+        query = TRY_ERR_AS(s3v4::decodeQueryString(search), StsError::kInvalidQuery);
     }
     String body;
     auto appendParam = [&body](const String &name, const String &value) {
@@ -140,12 +134,9 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
     headers[us::http::headers::kContentType] = std::to_string(kUrlEncoded);
     for (const auto &kv : signedHeaders)
         headers[kv.first] = kv.second;
-    const auto response = TRY(exec(stsUrl->href(), body, headers, timeout));
+    const auto response = TRY(exec(stsUrl.href(), body, headers, timeout));
 
-    const auto responseXml = String::fromBytes(response);
-    if (!responseXml)
-        return Unex(StsError::kInvalidUtf8);
-    return StsCredentials::fromXml(*responseXml);
+    return StsCredentials::fromXml(TRY_ERR_AS(String::fromBytes(response), StsError::kInvalidUtf8));
 }
 
 Expected<StsCredentials, StsError> fetchStsCredentials(

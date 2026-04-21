@@ -2,6 +2,7 @@
 
 #include "grab_value.hpp"
 
+#include <functional>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -96,6 +97,33 @@ template <typename T> [[nodiscard]] inline auto tryFailure(T &&value)
     }
 }
 
+template <typename T, typename F> [[nodiscard]] constexpr auto tryMapError(T &&value, F &&mapError)
+{
+    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP_ERR only supports v1::Expected");
+    return std::forward<T>(value).transformError(std::forward<F>(mapError));
+}
+
+template <typename T, typename F> [[nodiscard]] constexpr auto tryMap(T &&value, F &&mapValue)
+{
+    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP only supports v1::Expected");
+    return std::forward<T>(value).transform(std::forward<F>(mapValue));
+}
+
+template <typename T, typename F>
+[[nodiscard]] constexpr auto tryOkOrElse(T &&value, F &&makeError)
+    -> Expected<typename RemoveCvref<T>::value_type, RemoveCvref<std::invoke_result_t<F>>>
+{
+    static_assert(IsOptional<RemoveCvref<T>>::value, "TRY_OK_OR_ELSE only supports std::optional");
+
+    using Optional = RemoveCvref<T>;
+    using Value = typename Optional::value_type;
+    using Error = RemoveCvref<std::invoke_result_t<F>>;
+
+    if (value)
+        return Expected<Value, Error>{std::forward<T>(value).value()};
+    return Expected<Value, Error>{Unex(std::invoke(std::forward<F>(makeError)))};
+}
+
 } // namespace v1::detail
 
 #if defined(__clang__)
@@ -117,6 +145,30 @@ template <typename T> [[nodiscard]] inline auto tryFailure(T &&value)
 #error "TRY is already defined"
 #endif
 
+#ifdef TRY_MAP_ERR
+#error "TRY_MAP_ERR is already defined"
+#endif
+
+#ifdef TRY_ERR_AS
+#error "TRY_ERR_AS is already defined"
+#endif
+
+#ifdef TRY_MAP
+#error "TRY_MAP is already defined"
+#endif
+
+#ifdef TRY_OK_OR
+#error "TRY_OK_OR is already defined"
+#endif
+
+#ifdef TRY_OK_OR_ELSE
+#error "TRY_OK_OR_ELSE is already defined"
+#endif
+
+#ifdef ENSURE
+#error "ENSURE is already defined"
+#endif
+
 #define TRY(...)                                                                                   \
     V1_TRY_DIAGNOSTIC_PUSH V1_TRY_DIAGNOSTIC_IGNORE({                                              \
         auto &&_temporaryTryResult = (__VA_ARGS__);                                                \
@@ -133,3 +185,19 @@ template <typename T> [[nodiscard]] inline auto tryFailure(T &&value)
             std::forward<decltype(_temporaryTryResult)>(_temporaryTryResult)                       \
         );                                                                                         \
     }) V1_TRY_DIAGNOSTIC_POP
+
+#define TRY_MAP_ERR(expr, mapper) TRY(::v1::detail::tryMapError((expr), (mapper)))
+
+#define TRY_ERR_AS(expr, err) TRY_MAP_ERR((expr), [&](auto &&) { return (err); })
+
+#define TRY_MAP(expr, mapper) TRY(::v1::detail::tryMap((expr), (mapper)))
+
+#define TRY_OK_OR(opt, err) TRY(::v1::detail::tryOkOrElse((opt), [&]() { return (err); }))
+
+#define TRY_OK_OR_ELSE(opt, makeError) TRY(::v1::detail::tryOkOrElse((opt), (makeError)))
+
+#define ENSURE(cond, err)                                                                          \
+    do {                                                                                           \
+        if (!(cond)) [[unlikely]]                                                                  \
+            return ::v1::Unex((err));                                                              \
+    } while (false)

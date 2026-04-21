@@ -176,10 +176,7 @@ normalizeHeadersForCapture(const std::optional<dto::CdpHeaders> &headers, const 
 {
     if (!value)
         return {};
-    auto parsed = String::fromBytes(*value);
-    if (!parsed)
-        return {};
-    return grabValueOf(parsed);
+    return TRY(String::fromBytes(*value));
 }
 
 [[nodiscard]] String generatePageId()
@@ -335,13 +332,11 @@ normalizeInterceptedLinkForDenylist(const Config &config, const String &requestU
 [[nodiscard]] Expected<bool, String>
 isAllowedByDenylist(Denylist &denylist, const Config &config, const String &requestUrl)
 {
-    const auto normalized = normalizeInterceptedLinkForDenylist(config, requestUrl);
+    const auto normalized = TRY(normalizeInterceptedLinkForDenylist(config, requestUrl));
     if (!normalized)
-        return Unex(normalized.error());
-    if (!*normalized)
         return true;
 
-    const auto allowed = denylist.isAllowedPrefix(prefix::makePrefixKey(**normalized));
+    const auto allowed = denylist.isAllowedPrefix(prefix::makePrefixKey(*normalized));
     if (!allowed)
         return Unex("denylist check failed during fetch interception"_t);
     return *allowed;
@@ -1106,24 +1101,24 @@ struct [[nodiscard]] DomState {
         .awaitPromise = false,
     };
 
-    const auto result = cdpSession.send<dto::RuntimeEvaluateDomStateResult>(
-        "Runtime.evaluate"_t, params
+    const auto result = TRY_MAP_ERR(
+        cdpSession.send<dto::RuntimeEvaluateDomStateResult>("Runtime.evaluate"_t, params),
+        [](auto failure) {
+            return describeCdpFailure("failed to read dom state"_t, std::move(failure));
+        }
     );
-    if (!result)
-        return Unex(describeCdpFailure("failed to read dom state"_t, result.error()));
-    const auto &value = result->result.value;
+    const auto &value = result.result.value;
     auto title = value.title.transform([](const auto &t) -> std::optional<String> {
-        auto parsed = String::fromBytes(t);
-        if (!parsed)
-            return {};
-        return grabValueOf(parsed);
+        return TRY(String::fromBytes(t));
     });
-    auto finalUrl = String::fromBytes(value.finalUrl);
-    if (!finalUrl)
-        return Unex("Runtime.evaluate returned invalid finalUrl"_t);
-    finalUrl = canonicalizeCapturedUrl(*finalUrl);
+    const auto finalUrl = TRY_ERR_AS(
+        String::fromBytes(value.finalUrl).transform([](String url) {
+            return canonicalizeCapturedUrl(url);
+        }),
+        "Runtime.evaluate returned invalid finalUrl"_t
+    );
     return DomState{
-        .finalUrl = grabValueOf(finalUrl),
+        .finalUrl = finalUrl,
         .title = title.value_or(std::nullopt),
         .html = value.html,
     };
@@ -1132,10 +1127,7 @@ struct [[nodiscard]] DomState {
 Expected<void, String> runSiteBehavior(crawler::CdpSession &cdpSession, eng::Deadline deadline)
 {
     invariant(deadline.IsReachable(), "site behavior deadline must be reachable");
-    auto budgetExpected = timeLeftMs(deadline);
-    if (!budgetExpected)
-        return Unex("timed out running site behavior"_t);
-    const auto budget = grabValueOf(budgetExpected);
+    const auto budget = TRY_ERR_AS(timeLeftMs(deadline), "timed out running site behavior"_t);
 
     dto::RuntimeEvaluateParams params;
     params.expression = std::format(
@@ -1151,9 +1143,9 @@ Expected<void, String> runSiteBehavior(crawler::CdpSession &cdpSession, eng::Dea
     );
     params.awaitPromise = true;
     params.returnByValue = true;
-    const auto result = cdpSession.send<json::Value>("Runtime.evaluate"_t, params);
-    if (!result)
-        return Unex(describeCdpFailure("failed to run site behavior"_t, result.error()));
+    TRY_MAP_ERR(cdpSession.send<json::Value>("Runtime.evaluate"_t, params), [](auto failure) {
+        return describeCdpFailure("failed to run site behavior"_t, std::move(failure));
+    });
     return {};
 }
 
@@ -1376,12 +1368,9 @@ private:
         cdp = TRY(browser.connectCdp(deadline));
         pageSession = std::make_unique<crawler::BrowserPageSession>(cdpClient());
 
-        if (auto attached = pageSession->attachFreshTarget([this](std::string_view phase) {
-                browser.markPhase(phase);
-            });
-            !attached) {
-            return Unex(attached.error());
-        }
+        TRY(pageSession->attachFreshTarget([this](std::string_view phase) {
+            browser.markPhase(phase);
+        }));
         tracker = std::make_unique<PageTracker>(pageSession->sessionId(), pageSession->targetId());
         startEventLoop();
         return {};
@@ -1416,23 +1405,26 @@ private:
         TRY(sendSessionVoid("Network.setExtraHTTPHeaders"_t, headerParams));
 
         browser.markPhase("get_frame_tree");
-        auto frameTree = cdpSession().send<dto::PageGetFrameTreeResult>("Page.getFrameTree"_t);
-        if (!frameTree)
-            return Unex(describeCdpFailure("Page.getFrameTree failed"_t, frameTree.error()));
-        pageTracker().setMainFrameId(String::fromBytes(frameTree->frameTree.frame.id).expect());
+        const auto frameTree = TRY_MAP_ERR(
+            cdpSession().send<dto::PageGetFrameTreeResult>("Page.getFrameTree"_t),
+            [](auto failure) {
+                return describeCdpFailure("Page.getFrameTree failed"_t, std::move(failure));
+            }
+        );
+        pageTracker().setMainFrameId(String::fromBytes(frameTree.frameTree.frame.id).expect());
 
         browser.markPhase("navigate");
         dto::PageNavigateParams navigateParams;
         navigateParams.url = std::to_string(run.seedUrl);
         pageTracker().beginSeedNavigation(run.seedUrl);
-        auto navigateResult = cdpSession().send<dto::PageNavigateResult>(
-            "Page.navigate"_t, navigateParams
+        const auto navigateResult = TRY_MAP_ERR(
+            cdpSession().send<dto::PageNavigateResult>("Page.navigate"_t, navigateParams),
+            [](auto failure) {
+                return describeCdpFailure("Page.navigate failed"_t, std::move(failure));
+            }
         );
-        if (!navigateResult)
-            return Unex(describeCdpFailure("Page.navigate failed"_t, navigateResult.error()));
-        if (navigateResult->errorText)
-            return Unex(String::fromBytes(*navigateResult->errorText).expect());
-        pageTracker().setExpectedMainLoaderId(stringOrNull(navigateResult->loaderId));
+        ENSURE(!navigateResult.errorText, String::fromBytes(*navigateResult.errorText).expect());
+        pageTracker().setExpectedMainLoaderId(stringOrNull(navigateResult.loaderId));
 
         browser.markPhase("wait_for_load");
         TRY(waitForPredicate(
@@ -1444,9 +1436,9 @@ private:
             const auto phaseDeadline = pickEarlierDeadline(
                 deadline, eng::Deadline::FromDuration(timings.postLoadDelay)
             );
-            const auto ok = sleepUntilDeadline(phaseDeadline);
-            if (!ok)
-                return Unex("timed out waiting for post-load delay"_t);
+            TRY_ERR_AS(
+                sleepUntilDeadline(phaseDeadline), "timed out waiting for post-load delay"_t
+            );
             browser.markPhase("post_load_delay_done");
         }
         if (timings.behaviorTimeout > chrono::seconds::zero()) {
@@ -1469,9 +1461,9 @@ private:
             const auto phaseDeadline = pickEarlierDeadline(
                 deadline, eng::Deadline::FromDuration(timings.pageExtraDelay)
             );
-            const auto ok = sleepUntilDeadline(phaseDeadline);
-            if (!ok)
-                return Unex("timed out waiting for extra page delay"_t);
+            TRY_ERR_AS(
+                sleepUntilDeadline(phaseDeadline), "timed out waiting for extra page delay"_t
+            );
             browser.markPhase("page_extra_delay_done");
         }
         browser.markPhase("wait_for_main_document");
@@ -1493,12 +1485,7 @@ private:
         auto resources = TRY(pageTracker().readResources(cdpSession(), budget));
 
         stopEventLoop();
-        if (auto closedPage = pageSession->close([this](std::string_view phase) {
-                browser.markPhase(phase);
-            });
-            !closedPage) {
-            return Unex(closedPage.error());
-        }
+        TRY(pageSession->close([this](std::string_view phase) { browser.markPhase(phase); }));
         pageSession.reset();
 
         browser.markPhase("build_exchange_start");

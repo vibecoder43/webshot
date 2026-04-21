@@ -1,5 +1,7 @@
 #include "s3/s3_url_utils.hpp"
 
+#include "try.hpp"
+
 #include <cctype>
 #include <expected>
 #include <stddef.h>
@@ -67,13 +69,11 @@ Expected<std::vector<std::pair<String, String>>, QueryStringError> decodeQuerySt
         std::string value = ada::unicode::percent_decode(
             valPart, valPercent == std::string::npos ? std::string::npos : valPercent
         );
-        const auto keyText = String::fromBytes(key);
-        if (!keyText)
-            return Unex(QueryStringError::kInvalidUtf8Key);
-        const auto valueText = String::fromBytes(value);
-        if (!valueText)
-            return Unex(QueryStringError::kInvalidUtf8Value);
-        query.emplace_back(*keyText, *valueText);
+        const auto keyText = TRY_ERR_AS(String::fromBytes(key), QueryStringError::kInvalidUtf8Key);
+        const auto valueText = TRY_ERR_AS(
+            String::fromBytes(value), QueryStringError::kInvalidUtf8Value
+        );
+        query.emplace_back(keyText, valueText);
         if (amp == std::string::npos)
             break;
         pos = amp + 1;
