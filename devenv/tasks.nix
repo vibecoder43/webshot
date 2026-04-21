@@ -33,6 +33,7 @@
   mkBuild = {
     buildDir,
     variant,
+    forceConfigureFresh ? false,
     timingsOutput ? null,
     buildArgs ? [],
   }: let
@@ -58,11 +59,15 @@
         \
           ${mkRepeatedFlagArgs "--build-arg" buildArgs}
       '';
+    forceConfigureFreshArg =
+      if forceConfigureFresh
+      then " \\\n      --force-configure-fresh"
+      else "";
   in ''
     python3 devenv/build_task.py \
       --build-dir ${lib.escapeShellArg buildDir} \
       --configure-fingerprint ${lib.escapeShellArg configureFingerprint} \
-      ${mkRepeatedFlagArgs "--configure-arg" configureArgv}${buildArgFlags}${timingsArgs}
+      ${mkRepeatedFlagArgs "--configure-arg" configureArgv}${forceConfigureFreshArg}${buildArgFlags}${timingsArgs}
   '';
 
   mkTask = exec: {
@@ -111,6 +116,10 @@
   in
     mkTask ''
       set -euo pipefail
+      if [[ -f .devenv/remote_compile.json ]]; then
+        echo "proj:${mode}Up: remote compile is enabled; local runtime requires build/webshotd outputs, while remote outputs are mirrored under build/remote" >&2
+        exit 1
+      fi
       ${mkBuild {
         inherit (cfg) buildDir variant;
         timingsOutput = "${cfg.buildDir}/latest_build_times.json";
@@ -127,8 +136,7 @@
       if failFast
       then " --fail-fast"
       else "";
-  in
-    mkTask ''
+    testScript = ''
       set -euo pipefail
       ${mkBuild {
         inherit (modes.${mode}) buildDir variant;
@@ -141,6 +149,47 @@
       ${up}
       python3 devenv/run_unit_tests.py --mode ${lib.escapeShellArg mode}${failFastArg}
       python3 devenv/run_testsuite_tests.py --mode ${lib.escapeShellArg mode}${failFastArg}
+    '';
+    remoteTestScript = ''
+      set -euo pipefail
+      cd ${lib.escapeShellArg config.devenv.root}
+      ${mkBuild {
+        inherit (modes.${mode}) buildDir variant;
+        timingsOutput = "${modes.${mode}.buildDir}/latest_build_times.json";
+      }}
+      cleanup() {
+        ${down}
+      }
+      trap cleanup EXIT
+      ${up}
+      build_dir=${lib.escapeShellArg modes.${mode}.buildDir}
+      log_dir="$build_dir/Testing/Temporary"
+      mkdir -p "$log_dir"
+      ctest \
+        --progress \
+        --output-on-failure \
+        -V \
+        -E '^testsuite-testsuite-tests$' \
+        --no-tests=error \
+        --output-log "$log_dir/unit_tests.log" \
+        --test-dir "$build_dir"${lib.optionalString failFast " --stop-on-failure"}
+      testsuite_dir="$build_dir/test"
+      python3 "$testsuite_dir/runtests-testsuite-tests" \
+        --service-logs-pretty \
+        -vv${lib.optionalString failFast " -x"} \
+        >"$log_dir/testsuite.log" \
+        2>&1
+    '';
+  in
+    mkTask ''
+      set -euo pipefail
+      if [[ -f .devenv/remote_compile.json ]]; then
+        python3 devenv/remote_compile.py \
+          --run-script ${lib.escapeShellArg remoteTestScript} \
+          --sync-shadow-build-dir ${lib.escapeShellArg modes.${mode}.buildDir}
+      else
+        ${testScript}
+      fi
     '';
 
   mkPgmigrate = mode: cmd: let

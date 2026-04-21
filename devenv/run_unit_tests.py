@@ -16,13 +16,14 @@ TESTSUITE_REGEX = "^testsuite-testsuite-tests$"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=sorted(BUILD_DIRS), required=True)
+    parser.add_argument("--build-dir")
     parser.add_argument("--fail-fast", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    build_dir = BUILD_DIRS[args.mode]
+    build_dir = Path(args.build_dir) if args.build_dir else BUILD_DIRS[args.mode]
     log_dir = build_dir / "Testing" / "Temporary"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_name = "unit_tests_fail_fast.log" if args.fail_fast else "unit_tests.log"
