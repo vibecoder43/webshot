@@ -104,7 +104,7 @@ readHandshakeResponse(eng::io::Socket &socket, eng::Deadline deadline)
     std::string response;
     response.reserve(1024);
 
-    while (response.find("\r\n\r\n") == std::string::npos) {
+    while (!response.contains("\r\n\r\n")) {
         if (ssize(response) >= kMaxHandshakeResponseBytes)
             return Unex(CdpFailure{.code = kHandshakeResponseTooLarge, .detail = {}});
 
@@ -167,7 +167,7 @@ parseHandshakeResponse(std::string_view response)
 Expected<void, CdpFailure>
 validateHandshakeResponse(const HandshakeResponse &response, std::string_view secWebsocketKey)
 {
-    if (response.statusLine.rfind("HTTP/1.1 101 ", 0) != 0 &&
+    if (!response.statusLine.starts_with("HTTP/1.1 101 ") &&
         response.statusLine != "HTTP/1.1 101") {
         return Unex(CdpFailure{.code = CdpError::kHandshakeRejected, .detail = {}});
     }
@@ -265,10 +265,7 @@ extractRoutingSessionId(const dto::CdpEventMessage &eventMessage)
     const auto sessionIdValue = eventMessage.params->extra["sessionId"];
     if (sessionIdValue.IsMissing())
         return {};
-    const auto sessionId = String::fromBytes(sessionIdValue.As<std::string>());
-    if (!sessionId)
-        return {};
-    return *sessionId;
+    return TRY(String::fromBytes(sessionIdValue.As<std::string>()));
 }
 
 [[nodiscard]] std::optional<String> extractRoutingTargetId(const dto::CdpEventMessage &eventMessage)
@@ -278,10 +275,7 @@ extractRoutingSessionId(const dto::CdpEventMessage &eventMessage)
     const auto targetIdValue = eventMessage.params->extra["targetId"];
     if (targetIdValue.IsMissing())
         return {};
-    const auto targetId = String::fromBytes(targetIdValue.As<std::string>());
-    if (!targetId)
-        return {};
-    return *targetId;
+    return TRY(String::fromBytes(targetIdValue.As<std::string>()));
 }
 
 } // namespace

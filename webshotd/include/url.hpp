@@ -51,6 +51,7 @@ public:
     [[nodiscard]] ada::scheme::type schemeType() const;
     [[nodiscard]] bool isHttp() const;
     [[nodiscard]] bool isHttps() const;
+    [[nodiscard]] bool isHttpOrHttps() const;
     [[nodiscard]] Url stripped(StripOptions options) const;
     [[nodiscard]] Url withProtocol(const String &protocol) const;
     [[nodiscard]] Url withHostname(const String &hostname) const;

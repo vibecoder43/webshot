@@ -372,7 +372,7 @@ serializeRecordPair(const SerializableResponse &response)
     if (!maybeUrl)
         return urlText;
 
-    if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
+    if (!maybeUrl->isHttpOrHttps())
         return urlText;
 
     return maybeUrl->surt();

@@ -54,13 +54,13 @@ String Url::href() const { return String::fromBytes(adaUrl.get_href()).expect();
 
 String Url::origin() const
 {
-    invariant(isHttp() || isHttps(), "origin requires http or https url");
+    invariant(isHttpOrHttps(), "origin requires http or https url");
     return text::format("{}://{}", isHttps() ? "https" : "http", host());
 }
 
 String Url::surt() const
 {
-    invariant(isHttp() || isHttps(), "surt requires http or https url");
+    invariant(isHttpOrHttps(), "surt requires http or https url");
 
     std::string hostText{hostname().view()};
     std::string portText{port().view()};
@@ -117,6 +117,8 @@ ada::scheme::type Url::schemeType() const { return adaUrl.type; }
 bool Url::isHttp() const { return adaUrl.type == ada::scheme::type::HTTP; }
 
 bool Url::isHttps() const { return adaUrl.type == ada::scheme::type::HTTPS; }
+
+bool Url::isHttpOrHttps() const { return isHttp() || isHttps(); }
 
 Url Url::stripped(StripOptions options) const
 {

@@ -114,7 +114,7 @@ normalizeHeaders(const dto::CdpHeaders &headers)
     const auto maybeUrl = Url::fromText(urlText);
     if (!maybeUrl)
         return urlText;
-    if (!maybeUrl->isHttp() && !maybeUrl->isHttps())
+    if (!maybeUrl->isHttpOrHttps())
         return urlText;
     if (!maybeUrl->hasPort())
         return urlText;
@@ -240,7 +240,7 @@ retainBody(const std::string &body, RetainedBodyBudget &budget)
 [[nodiscard]] std::optional<String> buildUrlOrigin(const String &urlText)
 {
     const auto maybeUrl = TRY(Url::fromText(urlText));
-    if (!maybeUrl.isHttp() && !maybeUrl.isHttps())
+    if (!maybeUrl.isHttpOrHttps())
         return {};
 
     return maybeUrl.origin();
@@ -320,7 +320,7 @@ normalizeInterceptedLinkForDenylist(const Config &config, const String &requestU
     }
 
     const auto parsed = Url::fromText(requestUrl);
-    if (!parsed || (!parsed->isHttp() && !parsed->isHttps()))
+    if (!parsed || !parsed->isHttpOrHttps())
         return {};
 
     const auto link = Link::fromText(requestUrl, config.urlBytesMax());

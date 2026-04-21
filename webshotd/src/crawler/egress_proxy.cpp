@@ -840,7 +840,7 @@ struct EgressProxy::Impl final {
         std::array<char, kIoBufferBytes> storage{};
         std::span<char> buffer{storage};
         try {
-            while (header.find("\r\n\r\n") == std::string::npos) {
+            while (!header.contains("\r\n\r\n")) {
                 if (usz(header) > kMaxHeaderBytes) {
                     send400(client, "header too large", deadline);
                     client.Close();

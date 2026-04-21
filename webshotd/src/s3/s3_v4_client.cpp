@@ -17,6 +17,7 @@
 #include <format>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 #include <userver/crypto/hash.hpp>
 
@@ -36,12 +37,25 @@ using namespace std::chrono_literals;
 
 namespace detail {
 
+[[nodiscard]] std::vector<std::pair<String, String>>
+toTextPairs(const std::vector<std::pair<std::string, std::string>> &pairs)
+{
+    std::vector<std::pair<String, String>> out;
+    out.reserve(pairs.size());
+    for (const auto &kv : pairs) {
+        out.emplace_back(
+            String::fromBytes(kv.first).expect(), String::fromBytes(kv.second).expect()
+        );
+    }
+    return out;
+}
+
 EndpointParts parseEndpoint(const String &ep)
 {
     const auto url = parseUrlWithDefaultHttpScheme(ep);
     invariant(url, "S3 endpoint must parse");
 
-    invariant(url->isHttp() || url->isHttps(), "S3 endpoint must be http or https");
+    invariant(url->isHttpOrHttps(), "S3 endpoint must be http or https");
 
     invariant(!url->hasSearch(), "S3 endpoint must not include query");
     std::string path{url->pathname().view()};
@@ -76,7 +90,7 @@ std::string S3V4Client::PutObject(
 ) const
 {
     static_cast<void>(tags);
-    const auto pathText = String::fromBytes(std::string(path)).expect();
+    const auto pathText = String::fromBytes(path).expect();
     const auto built = makePathStyleUrl(pathText, {});
     httpc::Headers headers;
     headers[us::http::headers::kContentType] = std::string(contentType);
@@ -101,7 +115,7 @@ std::string S3V4Client::PutObject(
 
 void S3V4Client::DeleteObject(std::string_view path) const
 {
-    const auto pathText = String::fromBytes(std::string(path)).expect();
+    const auto pathText = String::fromBytes(path).expect();
     const auto built = makePathStyleUrl(pathText, {});
     httpc::Headers headers;
     const auto payloadHash = sha256Hex("");
@@ -120,7 +134,7 @@ void S3V4Client::DeleteObject(std::string_view path) const
 std::optional<s3::Client::HeadersDataResponse>
 S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &request) const
 {
-    const auto pathText = String::fromBytes(std::string(path)).expect();
+    const auto pathText = String::fromBytes(path).expect();
     const auto built = makePathStyleUrl(pathText, {});
     httpc::Headers headers;
     const auto payloadHash = sha256Hex("");
@@ -329,14 +343,7 @@ void S3V4Client::signRequest(
     const auto now = datetime::Now();
     const auto params = makeSigV4Params(now);
     auto prepared = prepareSignedHeaders(std::to_string(host), headers);
-
-    std::vector<std::pair<String, String>> headersText;
-    headersText.reserve(prepared.size());
-    for (const auto &kv : prepared) {
-        headersText.emplace_back(
-            String::fromBytes(kv.first).expect(), String::fromBytes(kv.second).expect()
-        );
-    }
+    const auto headersText = detail::toTextPairs(prepared);
 
     auto signedMap = signHeaders(params, method, canonicalUri, {}, headersText, payloadHash);
     for (const auto &kv : signedMap)
@@ -413,14 +420,7 @@ String S3V4Client::presignVirtualHost(
 
     httpc::Headers extra = extraHeaders.value_or(httpc::Headers{});
     auto prepared = prepareSignedHeaders(std::to_string(built.host), extra);
-
-    std::vector<std::pair<String, String>> headersText;
-    headersText.reserve(prepared.size());
-    for (const auto &kv : prepared) {
-        headersText.emplace_back(
-            String::fromBytes(kv.first).expect(), String::fromBytes(kv.second).expect()
-        );
-    }
+    const auto headersText = detail::toTextPairs(prepared);
 
     return buildPresignedUrl(method, built, now, expiresAt, params, headersText);
 }
@@ -434,14 +434,7 @@ String S3V4Client::presignPathStyle(
     auto built = makePathStyleUrl(std::move(path), std::move(protocol));
     SigV4Params params = makeSigV4Params(now);
     auto prepared = prepareSignedHeaders(std::to_string(built.host), httpc::Headers{});
-
-    std::vector<std::pair<String, String>> headersText;
-    headersText.reserve(prepared.size());
-    for (const auto &kv : prepared) {
-        headersText.emplace_back(
-            String::fromBytes(kv.first).expect(), String::fromBytes(kv.second).expect()
-        );
-    }
+    const auto headersText = detail::toTextPairs(prepared);
 
     return buildPresignedUrl(method, built, now, expiresAt, params, headersText);
 }

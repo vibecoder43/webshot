@@ -48,7 +48,7 @@ Expected<Link, LinkError> fromTextImpl(const String &text, usize urlBytesMax)
 {
     std::string in(text.view());
     absl::StripAsciiWhitespace(&in);
-    if (in.rfind("//", 0) == 0)
+    if (in.starts_with("//"))
         return Unex(LinkError{.code = LinkError::Code::kMissingScheme});
     const auto schemePos = in.find("://");
     if (schemePos == std::string::npos ||

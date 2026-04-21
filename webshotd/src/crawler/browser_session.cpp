@@ -73,7 +73,7 @@ constexpr std::string_view kManagedCgroupServiceSubgroup{"/service"};
     while (true) {
         const auto next = remaining.find('\n');
         const auto line = next == std::string::npos ? remaining : remaining.substr(0, next);
-        if (line.rfind("0::", 0) == 0) {
+        if (line.starts_with("0::")) {
             auto path = normalizeDirPath(std::string(line.substr(3)));
             if (path.empty() || path.front() != '/')
                 abortCgroupConfig("invalid cgroup v2 path in /proc/self/cgroup");
