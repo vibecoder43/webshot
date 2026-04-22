@@ -3,10 +3,9 @@
  * @file
  * @brief Handler that resolves a capture id to JSON metadata.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
+#include "handler_request_support.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
 #include "text.hpp"
@@ -63,33 +62,26 @@ std::string ById::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, config};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
 
-    const std::string arg = request.GetPathArg("uuid");
-    if (arg.empty())
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "missing parameter"_t);
+    const auto uuid = requestSupport.parseUuidPathArg(request, "uuid"_t);
+    if (!uuid)
+        return httpu::respondParamError(
+            response, kBadRequest, uuid.error().name, uuid.error().message
+        );
 
-    const auto uuidStr = String::fromBytes(arg);
-    if (!uuidStr)
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown)
+        return respondClientRequestError(response, cooldown.error());
+    if (*cooldown)
+        return httpu::respondClientIpCooldown(response, (*cooldown)->retryAfter);
 
-    const auto uuidOpt = uuidu::parse(uuidStr->view());
-    if (!uuidOpt)
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
-
-    auto clientIp = client_ip::resolve(request, config);
-    if (!clientIp)
-        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown)
-        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
-
-    auto capture = crud.findCapture(*uuidOpt);
+    auto capture = crud.findCapture(*uuid);
     if (!capture)
         return httpu::respondError(response, kInternalServerError, "internal server error"_t);
     if (!*capture) {
-        LOG_INFO() << std::format("capture not found: {}", *uuidOpt);
+        LOG_INFO() << std::format("capture not found: {}", *uuid);
         return httpu::respondError(response, kNotFound, "capture not found"_t);
     }
 

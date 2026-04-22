@@ -37,6 +37,9 @@ using namespace std::chrono_literals;
 
 namespace detail {
 
+constexpr std::chrono::seconds kMinPresignTtl = 1s;
+constexpr std::chrono::seconds kMaxPresignTtl = 604800s;
+
 [[nodiscard]] std::vector<std::pair<String, String>>
 toTextPairs(const std::vector<std::pair<std::string, std::string>> &pairs)
 {
@@ -317,9 +320,9 @@ std::chrono::seconds S3V4Client::computePresignTtl(
 {
     auto ttl = std::chrono::duration_cast<std::chrono::seconds>(expiresAt - now);
     if (ttl.count() <= 0)
-        ttl = 1s;
-    if (ttl.count() > 604800)
-        ttl = 604800s;
+        ttl = kMinPresignTtl;
+    if (ttl.count() > kMaxPresignTtl.count())
+        ttl = kMaxPresignTtl;
     return ttl;
 }
 

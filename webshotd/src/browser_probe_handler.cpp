@@ -46,6 +46,8 @@ namespace {
 
 using crawler::describeCdpFailure;
 
+constexpr chrono::milliseconds kMinProbeSettleWindow = 250ms;
+
 struct [[nodiscard]] ProbeConfig final {
     const Config &svcConfig;
     us::clients::dns::Resolver &dnsResolver;
@@ -257,7 +259,7 @@ void cleanupProbeSession(
     std::vector<std::string> &console, std::vector<std::string> &pageErrors
 )
 {
-    const auto settleWindow = std::max(recheckInterval * 2, 250ms);
+    const auto settleWindow = std::max(recheckInterval * 2, kMinProbeSettleWindow);
     const auto settleDeadline = pickEarlierDeadline(
         deadline, eng::Deadline::FromDuration(settleWindow)
     );

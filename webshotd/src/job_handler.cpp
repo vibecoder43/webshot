@@ -3,10 +3,9 @@
  * @file
  * @brief Handler that exposes crawl job status by UUID.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
+#include "handler_request_support.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
 #include "schema/webshot.hpp"
@@ -87,29 +86,22 @@ std::string JobHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, config};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
 
-    const std::string arg = request.GetPathArg("uuid");
-    if (arg.empty())
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "missing parameter"_t);
+    const auto uuid = requestSupport.parseUuidPathArg(request, "uuid"_t);
+    if (!uuid)
+        return httpu::respondParamError(
+            response, kBadRequest, uuid.error().name, uuid.error().message
+        );
 
-    auto uuidStr = String::fromBytes(arg);
-    if (!uuidStr)
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown)
+        return respondClientRequestError(response, cooldown.error());
+    if (*cooldown)
+        return respondJobPollCooldown(response, *uuid, (*cooldown)->retryAfter);
 
-    const auto uuidOpt = uuidu::parse(uuidStr->view());
-    if (!uuidOpt)
-        return httpu::respondParamError(response, kBadRequest, "uuid"_t, "invalid parameter"_t);
-
-    auto clientIp = client_ip::resolve(request, config);
-    if (!clientIp)
-        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown)
-        return respondJobPollCooldown(response, *uuidOpt, cooldown->retryAfter);
-
-    auto job = crud.findCaptureJob(*uuidOpt);
+    auto job = crud.findCaptureJob(*uuid);
     if (!job)
         return httpu::respondError(response, kInternalServerError, "internal server error"_t);
     if (!*job)

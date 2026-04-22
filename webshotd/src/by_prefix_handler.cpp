@@ -3,10 +3,9 @@
  * @file
  * @brief Handler that lists captures grouped by normalized link prefix.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
+#include "handler_request_support.hpp"
 #include "integers.hpp"
 #include "link.hpp"
 #include "text.hpp"
@@ -63,37 +62,28 @@ std::string ByPrefixHandler::HandleRequestThrow(
 {
     using enum server::http::HttpStatus;
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, cfg};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
 
-    const std::string arg = request.GetArg("prefix");
-    if (arg.empty())
-        return httpu::respondParamError(response, kBadRequest, "prefix"_t, "missing parameter"_t);
-
-    auto prefix = String::fromBytes(arg);
+    const auto prefix = requestSupport.parseRequiredQueryLink(request, "prefix"_t);
     if (!prefix)
-        return httpu::respondParamError(response, kBadRequest, "prefix"_t, "invalid parameter"_t);
-
-    const auto parsed = Link::fromText(*prefix, cfg.urlBytesMax());
-    if (!parsed)
-        return httpu::respondParamError(response, kBadRequest, "prefix"_t, "invalid parameter"_t);
-
-    const auto normalizedPrefix = parsed->normalized();
-    const std::string tokenArg = request.GetArg("page_token");
-    const auto token = String::fromBytes(tokenArg);
-    if (!token)
         return httpu::respondParamError(
-            response, kBadRequest, "page_token"_t, "invalid parameter"_t
+            response, kBadRequest, prefix.error().name, prefix.error().message
         );
 
-    auto clientIp = client_ip::resolve(request, cfg);
-    if (!clientIp)
-        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown)
-        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+    const auto token = requestSupport.parseQueryText(request, "page_token"_t);
+    if (!token)
+        return httpu::respondParamError(
+            response, kBadRequest, token.error().name, token.error().message
+        );
 
-    auto page = crud.findCapturesByPrefixPage(normalizedPrefix, *token);
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown)
+        return respondClientRequestError(response, cooldown.error());
+    if (*cooldown)
+        return httpu::respondClientIpCooldown(response, (*cooldown)->retryAfter);
+
+    auto page = crud.findCapturesByPrefixPage(prefix->normalized(), *token);
     if (!page) {
         using enum errors::CapturePageError;
         if (page.error() == kDbFailure)

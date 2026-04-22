@@ -3,16 +3,16 @@
  * @file
  * @brief Handler that renders the replay UI for a specific capture UUID.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
+#include "handler_request_support.hpp"
 #include "integers.hpp"
 #include "text.hpp"
 #include "uuid_format.hpp"
 #include "uuid_utils.hpp"
 
 #include <chrono>
+#include <format>
 
 #include <ada/character_sets-inl.h>
 #include <ada/unicode.h>
@@ -133,37 +133,31 @@ std::string UiReplayHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, config};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
     response.SetContentType("text/html; charset=utf-8");
 
-    const std::string arg = request.GetPathArg("uuid");
-    if (arg.empty()) {
+    const auto uuid = requestSupport.parseUuidPathArg(request, "uuid"_t);
+    if (!uuid) {
         response.SetStatus(kBadRequest);
-        return renderErrorPage("uuid: missing parameter");
+        return renderErrorPage(
+            std::format("{}: {}", uuid.error().name.view(), uuid.error().message.view())
+        );
     }
 
-    const auto uuidStr = String::fromBytes(arg);
-    if (!uuidStr) {
-        response.SetStatus(kBadRequest);
-        return renderErrorPage("uuid: invalid parameter");
-    }
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown) {
+        if (cooldown.error() == ClientRequestError::kInvalidClientIp) {
+            response.SetStatus(kBadRequest);
+            return renderErrorPage("invalid client ip");
+        }
 
-    const auto uuidOpt = uuidu::parse(uuidStr->view());
-    if (!uuidOpt) {
-        response.SetStatus(kBadRequest);
-        return renderErrorPage("uuid: invalid parameter");
+        response.SetStatus(kInternalServerError);
+        return renderErrorPage("internal server error");
     }
-
-    auto clientIp = client_ip::resolve(request, config);
-    if (!clientIp) {
-        response.SetStatus(kBadRequest);
-        return renderErrorPage("invalid client ip");
-    }
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown) {
+    if (*cooldown) {
         const auto retryAfterSeconds = std::chrono::ceil<std::chrono::seconds>(
-            cooldown->retryAfter
+            (*cooldown)->retryAfter
         );
         response.SetStatus(kTooManyRequests);
         response.SetHeader(
@@ -172,7 +166,7 @@ std::string UiReplayHandler::HandleRequestThrow(
         return renderErrorPage("client IP in cooldown");
     }
 
-    auto capture = crud.findCapture(*uuidOpt);
+    auto capture = crud.findCapture(*uuid);
     if (!capture) {
         response.SetStatus(kInternalServerError);
         return renderErrorPage("internal server error");

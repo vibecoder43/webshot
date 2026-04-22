@@ -26,4 +26,3 @@ Use this when the task involves building, running, or testing.
 
 ## Runtime and test details
 - The task wrappers invoke `python3 -m s6.runtime` and source config vars from `webshotd/config/config_vars.dev.yaml` or `webshotd/config/config_vars.prodlike.yaml`.
-- `proj:devTest` builds, starts the `test_infra` profile, exports the runtime `LD_LIBRARY_PATH`, and runs `ctest` from `build/webshotd/san`.

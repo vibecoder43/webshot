@@ -8,6 +8,7 @@
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "denylist.hpp"
+#include "handler_request_support.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
 #include "json.hpp"
@@ -74,8 +75,8 @@ std::string Handler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, config};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
 
     if (request.GetMethod() == kPost) {
         const auto body = String::fromBytes(request.RequestBody());
@@ -103,12 +104,11 @@ std::string Handler::HandleRequestThrow(
         if (!*allowed)
             return httpu::respondError(response, kForbidden, "host in denylist"_t);
 
-        auto clientIp = client_ip::resolve(request, config);
-        if (!clientIp)
-            return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-        auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-        if (cooldown)
-            return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+        const auto cooldown = requestSupport.checkClientIpCooldown(request);
+        if (!cooldown)
+            return respondClientRequestError(response, cooldown.error());
+        if (*cooldown)
+            return httpu::respondClientIpCooldown(response, (*cooldown)->retryAfter);
 
         auto job = crud.createCaptureJob(std::move(*parsed));
         if (!job)
@@ -116,27 +116,23 @@ std::string Handler::HandleRequestThrow(
         return httpu::respondJson(response, kAccepted, *job);
     }
 
-    const std::string arg = request.GetArg("link");
-    if (arg.empty())
-        return httpu::respondParamError(response, kBadRequest, "link"_t, "missing parameter"_t);
-    auto str = String::fromBytes(arg);
-    if (!str)
-        return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
-    const auto link = Link::fromText(*str, config.urlBytesMax());
+    const auto link = requestSupport.parseRequiredQueryLink(request, "link"_t);
     if (!link)
-        return httpu::respondParamError(response, kBadRequest, "link"_t, "invalid parameter"_t);
-    const std::string tokenArg = request.GetArg("page_token");
-    const auto token = String::fromBytes(tokenArg);
+        return httpu::respondParamError(
+            response, kBadRequest, link.error().name, link.error().message
+        );
+
+    const auto token = requestSupport.parseQueryText(request, "page_token"_t);
     if (!token)
         return httpu::respondParamError(
-            response, kBadRequest, "page_token"_t, "missing parameter"_t
+            response, kBadRequest, token.error().name, token.error().message
         );
-    auto clientIp = client_ip::resolve(request, config);
-    if (!clientIp)
-        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown)
-        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown)
+        return respondClientRequestError(response, cooldown.error());
+    if (*cooldown)
+        return httpu::respondClientIpCooldown(response, (*cooldown)->retryAfter);
 
     auto page = crud.findCapturesByLinkPage(*link, *token);
     if (!page) {

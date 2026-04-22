@@ -3,10 +3,9 @@
  * @file
  * @brief Handler that disallows a host and enqueues purge of its captures.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
+#include "handler_request_support.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
 #include "link.hpp"
@@ -62,28 +61,23 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
-    eng::current_task::SetDeadline(finalDeadline);
+    HandlerRequestSupport requestSupport{crud, config};
+    requestSupport.applyRequestDeadline(request, requestTimeout);
 
-    const std::string arg = request.GetArg("host");
-    if (arg.empty())
-        return httpu::respondParamError(response, kBadRequest, "host"_t, "missing parameter"_t);
-    const auto host = String::fromBytes(arg);
-    if (!host)
-        return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
-    const auto link = Link::fromText(*host, config.urlBytesMax());
-    if (!link) {
-        LOG_INFO() << "invalid host";
-        return httpu::respondParamError(response, kBadRequest, "host"_t, "invalid parameter"_t);
-    }
+    const auto link = requestSupport.parseRequiredQueryLink(request, "host"_t);
+    if (!link)
+        return httpu::respondParamError(
+            response, kBadRequest, link.error().name, link.error().message
+        );
+
     LOG_INFO() << std::format("invoked for: {}", link->host());
     auto prefixKey = prefix::makePrefixKey(*link);
-    auto clientIp = client_ip::resolve(request, config);
-    if (!clientIp)
-        return httpu::respondError(response, kBadRequest, "invalid client ip"_t);
-    auto cooldown = *crud.acquireClientIpCooldown(std::move(*clientIp));
-    if (cooldown)
-        return httpu::respondClientIpCooldown(response, cooldown->retryAfter);
+
+    const auto cooldown = requestSupport.checkClientIpCooldown(request);
+    if (!cooldown)
+        return respondClientRequestError(response, cooldown.error());
+    if (*cooldown)
+        return httpu::respondClientIpCooldown(response, (*cooldown)->retryAfter);
 
     auto ok = crud.disallowAndPurgePrefix(prefixKey);
     if (!ok) {
