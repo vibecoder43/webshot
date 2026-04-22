@@ -89,21 +89,27 @@ UTEST(S3SigV4, SignHeadersMatchesAwsExample)
 
     auto itDate = signedHeaders.find("x-amz-date");
     ASSERT_NE(itDate, signedHeaders.end());
-    EXPECT_EQ(itDate->second, params.amzDate);
+    const auto &[dateName, dateValue] = *itDate;
+    EXPECT_EQ(dateName, "x-amz-date");
+    EXPECT_EQ(dateValue, params.amzDate);
 
     auto itPayload = signedHeaders.find("x-amz-content-sha256");
     ASSERT_NE(itPayload, signedHeaders.end());
-    EXPECT_EQ(itPayload->second, payloadHash);
+    const auto &[payloadName, payloadValue] = *itPayload;
+    EXPECT_EQ(payloadName, "x-amz-content-sha256");
+    EXPECT_EQ(payloadValue, payloadHash);
 
     auto itAuth = signedHeaders.find("authorization");
     ASSERT_NE(itAuth, signedHeaders.end());
+    const auto &[authName, authValue] = *itAuth;
+    EXPECT_EQ(authName, "authorization");
 
     const std::string expectedAuth =
         "AWS4-HMAC-SHA256 "
         "Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, "
         "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, "
         "Signature=67fe34c8530db585abddc51067328adfedb6e42487d2566dc7d927d6e2722900";
-    EXPECT_EQ(itAuth->second, expectedAuth);
+    EXPECT_EQ(authValue, expectedAuth);
 }
 
 namespace {
@@ -168,7 +174,9 @@ UTEST(S3SigV4Client, PresignPathStyleClampsShortTtl)
     const auto params = parseQuery(url);
     auto it = params.find("X-Amz-Expires");
     ASSERT_NE(it, params.end());
-    EXPECT_EQ(it->second, std::string{"1"});
+    const auto &[expiresName, expiresValue] = *it;
+    EXPECT_EQ(expiresName, "X-Amz-Expires");
+    EXPECT_EQ(expiresValue, std::string{"1"});
 }
 
 UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
@@ -186,7 +194,9 @@ UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
     const auto params = parseQuery(url);
     auto it = params.find("X-Amz-Expires");
     ASSERT_NE(it, params.end());
-    EXPECT_EQ(it->second, std::string{"604800"});
+    const auto &[expiresName, expiresValue] = *it;
+    EXPECT_EQ(expiresName, "X-Amz-Expires");
+    EXPECT_EQ(expiresValue, std::string{"604800"});
 }
 
 UTEST(S3SigV4Client, PresignPathStyleEncodesObjectKey)
@@ -271,6 +281,8 @@ UTEST(S3SigV4Client, UploadPresignIncludesContentType)
     const auto params = parseQuery(url);
     auto shIt = params.find("X-Amz-SignedHeaders");
     ASSERT_NE(shIt, params.end());
-    EXPECT_NE(shIt->second.find("content-type"), std::string::npos);
-    EXPECT_NE(shIt->second.find("host"), std::string::npos);
+    const auto &[signedHeadersName, signedHeadersValue] = *shIt;
+    EXPECT_EQ(signedHeadersName, "X-Amz-SignedHeaders");
+    EXPECT_TRUE(signedHeadersValue.contains("content-type"));
+    EXPECT_TRUE(signedHeadersValue.contains("host"));
 }

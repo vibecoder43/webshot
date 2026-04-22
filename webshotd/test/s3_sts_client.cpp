@@ -115,21 +115,20 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     const std::string amzDateKey = "x-amz-date";
     const std::string contentTypeKey = "content-type";
     const std::string hostKey = "host";
-    EXPECT_NE(capturedHeaders.find(authKey), capturedHeaders.end());
-    EXPECT_NE(capturedHeaders.find(amzDateKey), capturedHeaders.end());
+    EXPECT_TRUE(capturedHeaders.contains(authKey));
+    EXPECT_TRUE(capturedHeaders.contains(amzDateKey));
     EXPECT_EQ(capturedHeaders.at(contentTypeKey), "application/x-www-form-urlencoded");
     EXPECT_EQ(capturedHeaders.at(hostKey), std::string("sts.example.com"));
     EXPECT_EQ(capturedTimeout, 1500ms);
 
-    EXPECT_NE(capturedBody.find("Action=AssumeRole"), std::string::npos);
-    EXPECT_NE(capturedBody.find("Version=2011-06-15"), std::string::npos);
-    EXPECT_NE(
-        capturedBody.find("RoleArn=arn%3Aaws%3Aiam%3A%3A123456789012%3Arole%2FTestRole"),
-        std::string::npos
+    EXPECT_TRUE(capturedBody.contains("Action=AssumeRole"));
+    EXPECT_TRUE(capturedBody.contains("Version=2011-06-15"));
+    EXPECT_TRUE(
+        capturedBody.contains("RoleArn=arn%3Aaws%3Aiam%3A%3A123456789012%3Arole%2FTestRole")
     );
-    EXPECT_NE(capturedBody.find("RoleSessionName=session-name"), std::string::npos);
-    EXPECT_NE(capturedBody.find("DurationSeconds=900"), std::string::npos);
-    EXPECT_NE(capturedBody.find("Policy=%7B%22allow%22%3Atrue%7D"), std::string::npos);
+    EXPECT_TRUE(capturedBody.contains("RoleSessionName=session-name"));
+    EXPECT_TRUE(capturedBody.contains("DurationSeconds=900"));
+    EXPECT_TRUE(capturedBody.contains("Policy=%7B%22allow%22%3Atrue%7D"));
 
     EXPECT_EQ(creds.accessKeyId.GetUnderlying(), "AKIA_TEST_KEY"_t);
 }

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
@@ -715,11 +716,11 @@ void CdpClient::failTerminal(CdpFailure failure)
             return;
         state->terminalFailure = failure;
         state->closed = true;
-        for (auto &[_, waiter] : state->pendingWaiters)
+        for (auto &waiter : std::views::values(state->pendingWaiters))
             waiters.push_back(waiter);
         state->pendingWaiters.clear();
         state->pendingRequests.clear();
-        for (auto &[_, sessionState] : state->sessionsById)
+        for (auto &sessionState : std::views::values(state->sessionsById))
             sessions.push_back(sessionState);
         state->sessionsById.clear();
         state->sessionsByTargetId.clear();

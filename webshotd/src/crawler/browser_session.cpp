@@ -150,9 +150,14 @@ copyFileContents(const std::string &sourcePath, const std::string &destinationPa
     return {};
 }
 
-[[nodiscard]] std::vector<std::string>
-buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
+[[nodiscard]] std::vector<std::string> buildChromiumArgs(
+    const std::string &userDataDir, const std::string &netlogPath, bool useLocalFixtureTrustDb
+)
 {
+    auto disabledFeatures = std::string("Vulkan,VulkanFromANGLE,DefaultANGLEVulkan");
+    if (useLocalFixtureTrustDb)
+        disabledFeatures += ",ChromeRootStoreUsed";
+
     return {
         "--headless=new",
         "--ozone-platform=headless",
@@ -172,7 +177,7 @@ buildChromiumArgs(const std::string &userDataDir, const std::string &netlogPath)
         "--no-sandbox",
         "--no-zygote",
         "--use-gl=swiftshader",
-        "--disable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+        std::format("--disable-features={}", disabledFeatures),
         std::format("--user-data-dir={}", userDataDir),
         std::format("--log-net-log={}", netlogPath),
         "--net-log-capture-mode=IncludeSensitive",
@@ -191,6 +196,7 @@ struct [[nodiscard]] BrowserPaths final {
     std::string rootDir;
     std::string runId;
     std::string userDataDir;
+    std::string userDataTrustDbDir;
     std::string xdgConfigHome;
     std::string xdgCacheHome;
     std::string crashpadDir;
@@ -219,6 +225,7 @@ struct [[nodiscard]] BrowserPaths final {
         .rootDir = rootDir,
         .runId = runId,
         .userDataDir = rootDir + "/profile",
+        .userDataTrustDbDir = rootDir + "/profile/.pki/nssdb",
         .xdgConfigHome = rootDir + "/xdg-config",
         .xdgCacheHome = rootDir + "/xdg-cache",
         .crashpadDir = rootDir + "/crashpad",
@@ -254,18 +261,28 @@ struct [[nodiscard]] BrowserPaths final {
 }
 
 [[nodiscard]] Expected<void, String>
-stageLocalFixtureTrustDb(const BrowserPaths &paths, const std::string &sourcePath)
+copyLocalFixtureTrustDb(const std::string &sourcePath, const std::string &destinationPath)
 {
-    us::fs::blocking::CreateDirectories(paths.rootDir + "/.pki");
-    us::fs::blocking::CreateDirectories(paths.localFixtureTrustDbDir);
+    us::fs::blocking::CreateDirectories(destinationPath);
 
     for (const auto &fileName : {"cert9.db", "key4.db", "pkcs11.txt"}) {
         auto copied = copyFileContents(
-            sourcePath + "/" + fileName, paths.localFixtureTrustDbDir + "/" + fileName
+            sourcePath + "/" + fileName, destinationPath + "/" + fileName
         );
         if (!copied)
             return copied;
     }
+    return {};
+}
+
+[[nodiscard]] Expected<void, String>
+stageLocalFixtureTrustDb(const BrowserPaths &paths, const std::string &sourcePath)
+{
+    us::fs::blocking::CreateDirectories(paths.rootDir + "/.pki");
+    us::fs::blocking::CreateDirectories(paths.userDataDir + "/.pki");
+
+    TRY(copyLocalFixtureTrustDb(sourcePath, paths.localFixtureTrustDbDir));
+    TRY(copyLocalFixtureTrustDb(sourcePath, paths.userDataTrustDbDir));
     return {};
 }
 
@@ -293,9 +310,10 @@ void writePhaseMarker(const std::string &path, std::string_view phase)
 
 [[nodiscard]] std::string formatBrowserLogs(const std::pair<std::string, std::string> &logs)
 {
+    const auto &[stdoutLog, stderrLog] = logs;
     return std::format(
-        "stdout={}, stderr={}", logs.first.empty() ? "empty" : logs.first,
-        logs.second.empty() ? "empty" : logs.second
+        "stdout={}, stderr={}", stdoutLog.empty() ? "empty" : stdoutLog,
+        stderrLog.empty() ? "empty" : stderrLog
     );
 }
 
@@ -368,14 +386,16 @@ void removeBrowserRunDir(const std::string &path) noexcept
 [[nodiscard]] eng::subprocess::ChildProcess spawnSandboxedBrowser(
     eng::subprocess::ProcessStarter &processStarter, const BrowserPaths &paths,
     std::string_view cgroupRootPath, const std::optional<CgroupLimits> &cgroupLimits,
-    std::string_view cgroupNamePrefix
+    std::string_view cgroupNamePrefix, bool useLocalFixtureTrustDb
 )
 {
     const i64 cpuCores{cgroupLimits ? cgroupLimits->cpuCores : 0_i64};
     const i64 memoryBytes{cgroupLimits ? cgroupLimits->memoryBytes : 0_i64};
     const auto cgroupName = std::format("{}_{}", cgroupNamePrefix, paths.runId);
 
-    auto chromiumArgs = buildChromiumArgs(paths.userDataDir, paths.netlogPath);
+    auto chromiumArgs = buildChromiumArgs(
+        paths.userDataDir, paths.netlogPath, useLocalFixtureTrustDb
+    );
     std::vector<std::string> bwrapArgs{
         "bwrap",
         "--json-status-fd",
@@ -508,7 +528,7 @@ struct BrowserSession::Impl final {
 
         process.emplace(spawnSandboxedBrowser(
             processStarter, paths, config.cgroupRootPath, config.cgroupLimits,
-            config.cgroupNamePrefix
+            config.cgroupNamePrefix, config.enableLocalFixtureRewrite
         ));
         websocketPath = TRY_MAP_ERR(waitForDevtoolsPath(devtoolsDeadline), [this](auto detail) {
             return buildFailureDetail(std::move(detail));

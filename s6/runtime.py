@@ -28,6 +28,9 @@ MANAGED_CGROUP_PREFIX = "webshotd"
 MANAGED_CGROUP_SUBGROUP = "service"
 PARENT_PROCS_CGROUP_NAME = f"{MANAGED_CGROUP_PREFIX}-parent-procs"
 DELEGATED_CGROUP_CONTROLLERS = ("cpu", "memory")
+CGROUP_REQUIREMENT_MESSAGE = (
+    "webshot requires cgroups: writable delegated cgroup v2 with cpu and memory controllers"
+)
 CGROUP_KILL_WAIT_TIMEOUT_SEC = 5.0
 CGROUP_KILL_POLL_INTERVAL_SEC = 0.1
 CGROUP_FS_ROOT = Path("/sys/fs/cgroup")
@@ -65,6 +68,19 @@ def _current_cgroup_v2_relative_path() -> str:
 
 def _current_cgroup_v2_dir() -> Path:
     return _cgroup_v2_dir(_current_cgroup_v2_relative_path())
+
+
+def _current_cgroup_for_message() -> str:
+    try:
+        return _current_cgroup_v2_relative_path()
+    except (OSError, ToolError):
+        return "<unknown>"
+
+
+def _cgroup_required_message(message: str) -> str:
+    return (
+        f"{message}; current cgroup: {_current_cgroup_for_message()}; {CGROUP_REQUIREMENT_MESSAGE}"
+    )
 
 
 def _cgroup_v2_dir(relative: str) -> Path:
@@ -114,7 +130,9 @@ def _managed_cgroup_parent_dir(current_cgroup: str) -> _ManagedCgroupParent:
             return _ManagedCgroupParent(path=current_dir, drain_processes_before_enable=True)
 
         runtime_die(
-            f"managed cgroup parent is not available from current cgroup: {current_dir}",
+            _cgroup_required_message(
+                f"managed cgroup parent is not available from current cgroup: {current_dir}"
+            ),
             exit_code=1,
         )
 
@@ -124,10 +142,15 @@ def _managed_cgroup_parent_dir(current_cgroup: str) -> _ManagedCgroupParent:
         return _ManagedCgroupParent(path=current_dir.parent, drain_processes_before_enable=False)
 
     if current_dir == CGROUP_FS_ROOT:
-        runtime_die("must run inside a delegated cgroup; current cgroup is /", exit_code=1)
+        runtime_die(
+            _cgroup_required_message("must run inside a delegated cgroup; current cgroup is /"),
+            exit_code=1,
+        )
     if not _has_cgroup_control_files(current_dir):
         runtime_die(
-            f"managed cgroup parent is not available from current cgroup: {current_dir}",
+            _cgroup_required_message(
+                f"managed cgroup parent is not available from current cgroup: {current_dir}"
+            ),
             exit_code=1,
         )
     return _ManagedCgroupParent(path=current_dir, drain_processes_before_enable=True)
@@ -148,7 +171,9 @@ def _enable_cgroup_controllers(state: _ManagedCgroupRootState, *, label: str) ->
         state.subtree_control_path.write_text(" ".join(enable) + "\n", encoding="utf-8")
     except OSError as e:
         raise ToolError(
-            message=f"failed to enable {label} subtree controllers at {state.root}: {e}",
+            message=_cgroup_required_message(
+                f"failed to enable {label} subtree controllers at {state.root}: {e}"
+            ),
             exit_code=1,
         ) from e
 
@@ -171,7 +196,7 @@ def _drain_cgroup_processes_to_leaf(path: Path) -> None:
         leaf.mkdir(exist_ok=True)
     except OSError as e:
         raise ToolError(
-            message=f"failed to create cgroup process leaf {leaf}: {e}",
+            message=_cgroup_required_message(f"failed to create cgroup process leaf {leaf}: {e}"),
             exit_code=1,
         ) from e
 
@@ -187,7 +212,9 @@ def _drain_cgroup_processes_to_leaf(path: Path) -> None:
                 if e.errno == errno.ESRCH or not (Path("/proc") / pid).exists():
                     continue
                 raise ToolError(
-                    message=f"failed to move process {pid} into cgroup process leaf {leaf}: {e}",
+                    message=_cgroup_required_message(
+                        f"failed to move process {pid} into cgroup process leaf {leaf}: {e}"
+                    ),
                     exit_code=1,
                 ) from e
 
@@ -335,7 +362,9 @@ def _enter_managed_cgroup_subgroup(ctx) -> None:
             service_dir.mkdir(parents=True, exist_ok=False)
         except OSError as e:
             raise ToolError(
-                message=f"failed to create managed cgroup subgroup {service_dir}: {e}",
+                message=_cgroup_required_message(
+                    f"failed to create managed cgroup subgroup {service_dir}: {e}"
+                ),
                 exit_code=1,
             ) from e
 
@@ -345,7 +374,7 @@ def _enter_managed_cgroup_subgroup(ctx) -> None:
             (service_dir / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
         except OSError as e:
             raise ToolError(
-                message=(
+                message=_cgroup_required_message(
                     "failed to move startup process into managed "
                     f"cgroup subgroup {service_dir}: {e}"
                 ),
@@ -395,7 +424,7 @@ def _read_cgroup_controller_state(root: Path, *, label: str) -> _ManagedCgroupRo
     controllers_path = root / "cgroup.controllers"
     subtree_control_path = root / "cgroup.subtree_control"
     if not controllers_path.is_file() or not subtree_control_path.is_file():
-        runtime_die(f"{label} is not writable from {root}", exit_code=1)
+        runtime_die(_cgroup_required_message(f"{label} is not writable from {root}"), exit_code=1)
 
     return _ManagedCgroupRootState(
         root=root,
@@ -409,7 +438,9 @@ def _require_cgroup_controllers(available: set[str], *, label: str) -> None:
     missing = _missing_cgroup_controllers(available)
     if missing:
         runtime_die(
-            f"{label} is missing required controllers: " + ", ".join(missing),
+            _cgroup_required_message(
+                f"{label} is missing required controllers: {', '.join(missing)}"
+            ),
             exit_code=1,
         )
 

@@ -362,8 +362,7 @@ rewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host,
     if (!cfg.enableLocalFixtureRewrite)
         return UpstreamTarget{.connectHost = std::string(host), .connectPort = port};
 
-    const auto isLocalHost = std::ranges::find(kLocalFixtureHosts, host) !=
-                             std::end(kLocalFixtureHosts);
+    const auto isLocalHost = std::ranges::contains(kLocalFixtureHosts, host);
     if (!isLocalHost)
         return UpstreamTarget{.connectHost = std::string(host), .connectPort = port};
 

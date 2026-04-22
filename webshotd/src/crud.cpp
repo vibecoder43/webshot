@@ -967,6 +967,23 @@ CrawlerRunArtifacts Crud::Impl::runCrawlerAttempt(const String &seedUrl)
     return run;
 }
 
+[[nodiscard]] String
+formatHttpsFallbackDiagnostic(const String &seedUrl, const crawler::AttemptSummary &attempt)
+{
+    const auto seedProbe = attempt.seedProbe ? text::format(
+                                                   "status={} loadState={}",
+                                                   attempt.seedProbe->status.value_or(0),
+                                                   attempt.seedProbe->loadState.value_or(-1)
+                                               )
+                                             : "none"_t;
+    const auto failureDetail = attempt.failureDetail ? *attempt.failureDetail : "none"_t;
+    return text::format(
+        "HTTPS fallback diagnostic: seed_url={}, exit_code={}, wacz_exists={}, seed_probe={}, "
+        "failure_detail={}",
+        seedUrl, attempt.exitCode, attempt.waczExists ? "true" : "false", seedProbe, failureDetail
+    );
+}
+
 Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
 {
     using enum errors::CrawlError;
@@ -1045,17 +1062,14 @@ Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlConte
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
 
-    if (httpsRun.attempt.seedProbe) {
-        LOG_INFO() << std::format(
-            "HTTPS seed probe before HTTP fallback: status={}, loadState={}",
-            httpsRun.attempt.seedProbe->status.value_or(0),
-            httpsRun.attempt.seedProbe->loadState.value_or(-1)
-        );
-    }
+    LOG_INFO() << formatHttpsFallbackDiagnostic(httpsSeedUrl, httpsRun.attempt).view();
 
     const auto httpRun = runCrawlerAttempt(httpSeedUrl);
     if (tryStoreSuccess(httpRun)) {
-        LOG_INFO() << "HTTP fallback succeeded after HTTPS failed with no response";
+        LOG_INFO() << std::format(
+            "HTTP fallback succeeded for {} after {}", httpSeedUrl,
+            formatHttpsFallbackDiagnostic(httpsSeedUrl, httpsRun.attempt)
+        );
         return {};
     }
     if (!httpRun.attempt.exited) {

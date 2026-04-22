@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <ranges>
 
 #include <cctz/time_zone.h>
 
@@ -39,10 +40,12 @@ std::string trimSpaces(const std::string &s)
 std::string joinSignedHeaders(const std::vector<std::pair<std::string, std::string>> &headers)
 {
     std::string out;
-    for (size_t i = 0; i < headers.size(); i++) {
-        if (i)
+    bool isFirst = true;
+    for (const auto &name : headers | std::views::keys) {
+        if (!isFirst)
             out.push_back(';');
-        out += headers[i].first;
+        isFirst = false;
+        out += name;
     }
     return out;
 }
@@ -74,12 +77,14 @@ std::string canonicalizeQueryImpl(const std::vector<std::pair<std::string, std::
     }
     std::ranges::sort(q);
     std::string out;
-    for (size_t i = 0; i < q.size(); i++) {
-        if (i)
+    bool isFirst = true;
+    for (const auto &[name, value] : q) {
+        if (!isFirst)
             out.push_back('&');
-        out += q[i].first;
+        isFirst = false;
+        out += name;
         out.push_back('=');
-        out += q[i].second;
+        out += value;
     }
     return out;
 }
@@ -192,7 +197,7 @@ prepareSignedHeaders(std::string host, const httpc::Headers &extra)
     for (const auto &[name, value] : extra) {
         v.emplace_back(absl::AsciiStrToLower(std::string_view{name}), value);
     }
-    std::ranges::sort(v, [](const auto &a, const auto &b) { return a.first < b.first; });
+    std::ranges::sort(v, {}, &std::pair<std::string, std::string>::first);
     return v;
 }
 
@@ -222,7 +227,7 @@ std::unordered_map<std::string, std::string> signHeaders(
         out["x-amz-security-token"] = std::to_string(p.sessionToken->GetUnderlying());
     for (const auto &[name, value] : out)
         headers.emplace_back(name, value);
-    std::ranges::sort(headers, [](const auto &a, const auto &b) { return a.first < b.first; });
+    std::ranges::sort(headers, {}, &std::pair<std::string, std::string>::first);
 
     const auto cr = buildCanonicalRequest(
         method.view(), canonicalUri.view(), queryUtf8, headers, payloadHex

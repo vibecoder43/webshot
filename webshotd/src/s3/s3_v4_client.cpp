@@ -42,10 +42,8 @@ toTextPairs(const std::vector<std::pair<std::string, std::string>> &pairs)
 {
     std::vector<std::pair<String, String>> out;
     out.reserve(pairs.size());
-    for (const auto &kv : pairs) {
-        out.emplace_back(
-            String::fromBytes(kv.first).expect(), String::fromBytes(kv.second).expect()
-        );
+    for (const auto &[name, value] : pairs) {
+        out.emplace_back(String::fromBytes(name).expect(), String::fromBytes(value).expect());
     }
     return out;
 }
@@ -97,8 +95,8 @@ std::string S3V4Client::PutObject(
     if (contentDisposition)
         headers[us::http::headers::kContentDisposition] = *contentDisposition;
     if (meta) {
-        for (const auto &kv : *meta)
-            headers["x-amz-meta-" + kv.first] = kv.second;
+        for (const auto &[name, value] : *meta)
+            headers["x-amz-meta-" + name] = value;
     }
     const String payloadHash = sha256Hex(data);
     signRequest("PUT"_t, built.rawPath, built.host, headers, payloadHash);
@@ -160,8 +158,10 @@ S3V4Client::GetObjectHead(std::string_view path, const HeaderDataRequest &reques
         out.headers.emplace();
         for (const auto &wanted : *request.headers) {
             auto it = resp->headers().find(wanted);
-            if (it != resp->headers().end())
-                out.headers->emplace(it->first, it->second);
+            if (it != resp->headers().end()) {
+                const auto &[name, value] = *it;
+                out.headers->emplace(name, value);
+            }
         }
     }
     return out;
@@ -346,8 +346,8 @@ void S3V4Client::signRequest(
     const auto headersText = detail::toTextPairs(prepared);
 
     auto signedMap = signHeaders(params, method, canonicalUri, {}, headersText, payloadHash);
-    for (const auto &kv : signedMap)
-        headers[kv.first] = kv.second;
+    for (const auto &[name, value] : signedMap)
+        headers[name] = value;
 }
 
 String S3V4Client::buildRawPath(String path, IncludeBucket includeBucket) const
@@ -456,8 +456,8 @@ String S3V4Client::buildPresignedUrl(
 
     std::vector<std::pair<std::string, std::string>> headersUtf8;
     headersUtf8.reserve(headers.size());
-    for (const auto &kv : headers)
-        headersUtf8.emplace_back(std::to_string(kv.first), std::to_string(kv.second));
+    for (const auto &[name, value] : headers)
+        headersUtf8.emplace_back(std::to_string(name), std::to_string(value));
     const std::string signedHeaders = buildSignedHeaders(headersUtf8);
     query.emplace_back("X-Amz-SignedHeaders", signedHeaders);
     if (params.sessionToken)

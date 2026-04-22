@@ -132,8 +132,8 @@ Expected<StsCredentials, StsError> detail::fetchStsWithExecutor(
     httpc::Headers headers;
     headers[us::http::headers::kHost] = std::to_string(host);
     headers[us::http::headers::kContentType] = std::to_string(kUrlEncoded);
-    for (const auto &kv : signedHeaders)
-        headers[kv.first] = kv.second;
+    for (const auto &[name, value] : signedHeaders)
+        headers[name] = value;
     const auto response = TRY(exec(stsUrl.href(), body, headers, timeout));
 
     return StsCredentials::fromXml(TRY_ERR_AS(String::fromBytes(response), StsError::kInvalidUtf8));

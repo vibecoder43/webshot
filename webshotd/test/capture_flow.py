@@ -270,9 +270,15 @@ async def test_capture_and_query_roundtrip(service_client, pgsql, download_wacz,
     assert seed_page["depth"] == 0
 
     archive_text = _wacz_archive_text(wacz)
+    cdx_urls = {record.get("url") for record in _wacz_cdx_records(wacz)}
+    assert link in cdx_urls
+    assert f"urn:pageinfo:{link}" in cdx_urls
     assert "WARC-Page-ID:" in archive_text
     assert f"WARC-Target-URI: urn:pageinfo:{link}" in archive_text
     assert "WARC-Target-URI: https://test-target/webshot-capture-path" in archive_text
+    assert f'"url":"{link}"' in archive_text
+    assert f'"{link}":' in archive_text
+    assert "http://test-target/webshot-capture-path" not in archive_text
     assert "HTTP/1.1 200 OK" in archive_text
     await _probe_replay(browser_probe, uuid_str)
 

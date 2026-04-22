@@ -106,7 +106,7 @@ normalizeHeaders(const dto::CdpHeaders &headers)
 
 [[nodiscard]] bool isLocalFixtureHost(const String &host) noexcept
 {
-    return std::ranges::find(kLocalFixtureHosts, host.view()) != std::end(kLocalFixtureHosts);
+    return std::ranges::contains(kLocalFixtureHosts, host.view());
 }
 
 [[nodiscard]] String canonicalizeCapturedUrl(const String &urlText)
