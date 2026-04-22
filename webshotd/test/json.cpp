@@ -15,14 +15,20 @@ using v1::exu::catchException;
 
 UTEST(Json, ParsesJsonIntoExpected)
 {
-    const auto parsed = exj::parse<int>("7", "parse failed"_t);
+    const auto jsonText = String::fromBytes("7");
+    ASSERT_TRUE(jsonText);
+
+    const auto parsed = exj::parse<int>(*jsonText, "parse failed"_t);
     ASSERT_TRUE(parsed);
     EXPECT_EQ(*parsed, 7);
 }
 
 UTEST(Json, MapsJsonParseFailure)
 {
-    const auto parsed = exj::parse<int>(R"("bad")", "parse failed"_t);
+    const auto jsonText = String::fromBytes(R"("bad")");
+    ASSERT_TRUE(jsonText);
+
+    const auto parsed = exj::parse<int>(*jsonText, "parse failed"_t);
     ASSERT_FALSE(parsed);
     EXPECT_EQ(parsed.error(), "parse failed"_t);
 }
@@ -38,6 +44,13 @@ UTEST(Json, ConvertsJsonValueIntoExpected)
 UTEST(Json, StringifiesJsonValueIntoExpected)
 {
     const auto text = exj::stringify(std::vector<int>{1, 2, 3}, "serialize failed"_t);
+    ASSERT_TRUE(text);
+    EXPECT_EQ(*text, "[1,2,3]"_t);
+}
+
+UTEST(Json, StringifiesJsonValueIntoBytes)
+{
+    const auto text = exj::stringifyBytes(std::vector<int>{1, 2, 3}, "serialize failed"_t);
     ASSERT_TRUE(text);
     EXPECT_EQ(*text, std::string{"[1,2,3]"});
 }

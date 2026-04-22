@@ -11,8 +11,6 @@
 #include "handler_request_support.hpp"
 #include "http_utils.hpp"
 #include "integers.hpp"
-#include "json.hpp"
-#include "link.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
 #include "schema/webshot.hpp"
@@ -79,20 +77,11 @@ std::string Handler::HandleRequestThrow(
     requestSupport.applyRequestDeadline(request, requestTimeout);
 
     if (request.GetMethod() == kPost) {
-        const auto body = String::fromBytes(request.RequestBody());
-        if (!body)
-            return httpu::respondError(response, kBadRequest, "invalid request body"_t);
-        const auto req = exu::json::parse<dto::CreateCaptureRequest>(
-            body->view(), "invalid request body"_t
-        );
-        if (!req) {
-            return httpu::respondError(response, kBadRequest, "invalid request body"_t);
-        }
+        const auto req = requestSupport.parseJsonBody<dto::CreateCaptureRequest>(request);
+        if (!req)
+            return httpu::respondError(response, kBadRequest, req.error());
 
-        const auto linkText = String::fromBytes(req->link);
-        if (!linkText)
-            return httpu::respondError(response, kBadRequest, "invalid parameter"_t);
-        auto parsed = Link::fromText(*linkText, config.urlBytesMax());
+        auto parsed = requestSupport.parseLinkBytes(req->link, "link"_t);
         if (!parsed)
             return httpu::respondError(response, kBadRequest, "invalid parameter"_t);
         auto prefixKey = prefix::makePrefixKey(*parsed);

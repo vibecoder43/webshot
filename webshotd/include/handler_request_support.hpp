@@ -5,6 +5,7 @@
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
+#include "json.hpp"
 #include "link.hpp"
 #include "text.hpp"
 #include "try.hpp"
@@ -69,9 +70,35 @@ public:
     parseRequiredQueryLink(const server::http::HttpRequest &request, String paramName) const
     {
         const auto text = TRY(parseRequiredQueryText(request, paramName));
+        return parseLinkText(text, paramName);
+    }
+
+    template <typename T>
+    [[nodiscard]] Expected<T, String> parseJsonBody(const server::http::HttpRequest &request) const
+    {
+        using namespace text::literals;
+
+        const auto body = TRY_MAP_ERR(String::fromBytes(request.RequestBody()), [](const auto &) {
+            return "invalid request body"_t;
+        });
+        return exu::json::parse<T>(body, "invalid request body"_t);
+    }
+
+    [[nodiscard]] Expected<Link, ParamError>
+    parseLinkText(const String &text, String paramName) const
+    {
         return TRY_MAP_ERR(Link::fromText(text, config.urlBytesMax()), ([&](const auto &) {
                                return invalidParamError(paramName);
                            }));
+    }
+
+    [[nodiscard]] Expected<Link, ParamError>
+    parseLinkBytes(std::string_view bytes, String paramName) const
+    {
+        const auto text = TRY_MAP_ERR(String::fromBytes(bytes), ([&](const auto &) {
+                                          return invalidParamError(paramName);
+                                      }));
+        return parseLinkText(text, paramName);
     }
 
     [[nodiscard]] Expected<uuidu::Uuid, ParamError>

@@ -414,10 +414,13 @@ Expected<json::Value, CdpFailure> CdpClient::sendRaw(
     if (sessionId)
         request.sessionId = std::to_string(*sessionId);
     traceCommand(id, method, sessionId);
+    const auto requestBytes = TRY(
+        exu::json::stringifyBytes(request, CdpFailure{.code = kProtocol, .detail = {}})
+    );
     try {
         const auto sendLock = sendState.Lock();
         static_cast<void>(sendLock);
-        connection->SendText(json::ToString(json::ValueBuilder(request).ExtractValue()));
+        connection->SendText(requestBytes);
     } catch (const us::utils::TracefulException &e) {
         traceTransportError("send"_t, parsePrintableText(e.what()));
         CdpFailure failure{.code = kTransport, .detail = {}};
@@ -544,8 +547,13 @@ CdpSession::~CdpSession()
 Expected<void, CdpFailure> CdpClient::handleMessage(const std::string &payload)
 {
     using enum CdpError;
+    const auto payloadText = String::fromBytes(payload);
+    if (!payloadText)
+        return Unex(CdpFailure{.code = kJsonParseFailed, .detail = {}});
     auto value = TRY(
-        exu::json::parse<json::Value>(payload, CdpFailure{.code = kJsonParseFailed, .detail = {}})
+        exu::json::parse<json::Value>(
+            *payloadText, CdpFailure{.code = kJsonParseFailed, .detail = {}}
+        )
     );
     const auto idValue = value["id"];
     if (!idValue.IsMissing()) {
@@ -758,7 +766,9 @@ std::vector<CdpEvent> CdpSession::drainAvailableEvents()
 Expected<void, CdpFailure> CdpClient::writeTraceLine(const json::Value &value)
 {
     using enum CdpError;
-    auto line = json::ToString(value);
+    auto line = TRY(
+        exu::json::stringifyBytes(value, CdpFailure{.code = kTraceWriteFailed, .detail = {}})
+    );
     line.push_back('\n');
     try {
         traceFile.Write(line);

@@ -78,7 +78,7 @@ constexpr std::string_view kIndexPath = "indexes/index.cdx";
     return std::string{body.substr(start + 1, end - start - 1)};
 }
 
-template <typename T> [[nodiscard]] std::string toJsonString(const T &value)
+template <typename T> [[nodiscard]] std::string toJsonBytes(const T &value)
 {
     return json::ToString(json::ValueBuilder(value).ExtractValue());
 }
@@ -292,7 +292,7 @@ serializeRecordPair(const SerializableResponse &response)
     return {std::move(responseHeader), std::move(requestHeader)};
 }
 
-[[nodiscard]] std::string buildPageInfoJson(const CapturedExchange &exchange)
+[[nodiscard]] std::string buildPageInfoJsonBytes(const CapturedExchange &exchange)
 {
     json::ValueBuilder pageInfo(json::Type::kObject);
     pageInfo["pageid"] = std::to_string(exchange.pageId);
@@ -338,7 +338,7 @@ serializeRecordPair(const SerializableResponse &response)
     const auto pageUrl = exchange.seedUrl.empty() ? exchange.finalUrl : exchange.seedUrl;
     const auto pageInfoUrl = std::format("urn:pageinfo:{}", pageUrl);
     const auto recordId = std::format("urn:uuid:{}", us::utils::generators::GenerateBoostUuid());
-    const auto payload = buildPageInfoJson(exchange);
+    const auto payload = buildPageInfoJsonBytes(exchange);
 
     return std::format(
         "WARC/1.1\r\n"
@@ -378,7 +378,7 @@ serializeRecordPair(const SerializableResponse &response)
     return maybeUrl->surt();
 }
 
-[[nodiscard]] std::string makeWaczIndexJson(const WarcCdxRecord &record)
+[[nodiscard]] std::string makeWaczIndexJsonBytes(const WarcCdxRecord &record)
 {
     json::ValueBuilder recordEntry(json::Type::kObject);
     recordEntry["url"] = std::to_string(record.recordUrl);
@@ -407,7 +407,7 @@ serializeRecordPair(const SerializableResponse &response)
             CdxLine{
                 .key = std::to_string(toSurtKey(record.recordUrl)),
                 .timestamp = std::to_string(record.timestamp),
-                .json = makeWaczIndexJson(record),
+                .json = makeWaczIndexJsonBytes(record),
             }
         );
     }
@@ -429,7 +429,7 @@ serializeRecordPair(const SerializableResponse &response)
     return cdx;
 }
 
-[[nodiscard]] std::string buildWaczPages(std::string_view pagesJsonl)
+[[nodiscard]] std::string buildWaczPagesBytes(std::string_view pagesJsonl)
 {
     json::ValueBuilder pagesHeader(json::Type::kObject);
     pagesHeader["format"] = "json-pages-1.0";
@@ -494,7 +494,7 @@ std::string buildPagesJsonl(const CapturedExchange &exchange)
     );
     entry.status = raw(exchange.statusCode);
     entry.depth = 0;
-    return toJsonString(entry) + "\n";
+    return toJsonBytes(entry) + "\n";
 }
 
 Expected<std::string, ArtifactFailure> buildSuccessStdoutLog(
@@ -557,7 +557,7 @@ Expected<WarcBuildOutput, ArtifactFailure> buildWarc(const CapturedExchange &exc
         WarcCdxRecord{
             .recordUrl = pageInfoUrl,
             .timestamp = toCdxTimestamp(pageTimestamp(exchange)),
-            .digest = cdxPayloadDigest(buildPageInfoJson(exchange)),
+            .digest = cdxPayloadDigest(buildPageInfoJsonBytes(exchange)),
             .recordDigest = cdxRecordDigest(pageInfoGz),
             .statusCode = 200_i64,
             .headers = std::move(pageInfoHeaders),
@@ -575,9 +575,9 @@ Expected<std::string, ArtifactFailure> buildWacz(
 )
 {
     const auto cdx = buildCdx(warc.cdxRecords);
-    const auto waczPages = buildWaczPages(pagesJsonl);
+    const auto waczPages = buildWaczPagesBytes(pagesJsonl);
     auto resources = buildWaczResources(warc.bytes, waczPages, cdx);
-    const auto datapackageJson = toJsonString(buildWaczDataPackage(run, std::move(resources)));
+    const auto datapackageJson = toJsonBytes(buildWaczDataPackage(run, std::move(resources)));
 
     arkhiv::ZipArchiveBuilder zip;
     arkhiv::ZipArchiveError error;

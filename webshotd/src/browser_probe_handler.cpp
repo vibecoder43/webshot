@@ -15,7 +15,9 @@
 #include "text.hpp"
 #include "try.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -62,7 +64,7 @@ struct [[nodiscard]] ProbeConfig final {
     bool localFixtureRewrite;
 };
 
-[[nodiscard]] Expected<dto::BrowserProbeRequest, String> parseProbeRequest(std::string_view body)
+[[nodiscard]] Expected<dto::BrowserProbeRequest, String> parseProbeRequest(const String &body)
 {
     const auto request = TRY(
         exu::json::parse<dto::BrowserProbeRequest>(body, "invalid request body"_t)
@@ -108,7 +110,7 @@ evaluateExpression(crawler::CdpSession &cdpSession, const String &expression)
     if (!value.IsMissing())
         return value;
 
-    return exu::json::parse<json::Value>("null", "Runtime.evaluate missing value"_t);
+    return exu::json::parse<json::Value>("null"_t, "Runtime.evaluate missing value"_t);
 }
 
 template <typename T>
@@ -132,7 +134,10 @@ evaluateFrameExpression(crawler::CdpSession &cdpSession, const String &expressio
     const auto value = evaluateExpression(cdpSession, expression);
     if (!value)
         return Unex(value.error());
-    if (json::ToString(*value) == "null")
+    const auto rendered = exu::json::stringify(*value, "expression returned invalid shape"_t);
+    if (!rendered)
+        return Unex(rendered.error());
+    if (*rendered == "null"_t)
         return std::optional<dto::BrowserProbeFrameState>{};
 
     const auto parsed = exu::json::as<dto::BrowserProbeFrameState>(
@@ -172,8 +177,7 @@ void cleanupProbeSession(
 }
 
 [[nodiscard]] Expected<void, String> handleProbeEvent(
-    const crawler::CdpEvent &event, std::vector<std::string> &console,
-    std::vector<std::string> &pageErrors
+    const crawler::CdpEvent &event, std::vector<String> &console, std::vector<String> &pageErrors
 )
 {
     if (!event.params)
@@ -194,8 +198,7 @@ void cleanupProbeSession(
 }
 
 [[nodiscard]] Expected<void, String> drainProbeEvents(
-    crawler::CdpSession &cdpSession, std::vector<std::string> &console,
-    std::vector<std::string> &pageErrors
+    crawler::CdpSession &cdpSession, std::vector<String> &console, std::vector<String> &pageErrors
 )
 {
     for (const auto &event : cdpSession.drainAvailableEvents())
@@ -205,8 +208,8 @@ void cleanupProbeSession(
 
 [[nodiscard]] Expected<void, String> waitForExpression(
     crawler::CdpSession &cdpSession, const String &expression, eng::Deadline deadline,
-    chrono::milliseconds recheckInterval, std::vector<std::string> &console,
-    std::vector<std::string> &pageErrors
+    chrono::milliseconds recheckInterval, std::vector<String> &console,
+    std::vector<String> &pageErrors
 )
 {
     std::optional<String> lastError;
@@ -256,7 +259,7 @@ void cleanupProbeSession(
 
 [[nodiscard]] Expected<void, String> settleProbeEvents(
     crawler::CdpSession &cdpSession, eng::Deadline deadline, chrono::milliseconds recheckInterval,
-    std::vector<std::string> &console, std::vector<std::string> &pageErrors
+    std::vector<String> &console, std::vector<String> &pageErrors
 )
 {
     const auto settleWindow = std::max(recheckInterval * 2, kMinProbeSettleWindow);
@@ -287,8 +290,8 @@ void cleanupProbeSession(
 
 [[nodiscard]] Expected<dto::BrowserProbeFrameState, String> waitForFrameExpression(
     crawler::CdpSession &cdpSession, const String &expression, eng::Deadline deadline,
-    chrono::milliseconds recheckInterval, std::vector<std::string> &console,
-    std::vector<std::string> &pageErrors
+    chrono::milliseconds recheckInterval, std::vector<String> &console,
+    std::vector<String> &pageErrors
 )
 {
     std::optional<String> lastError;
@@ -367,8 +370,8 @@ runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
     };
     std::unique_ptr<crawler::CdpClient> cdp;
     std::unique_ptr<crawler::BrowserPageSession> pageSession;
-    std::vector<std::string> console;
-    std::vector<std::string> pageErrors;
+    std::vector<String> console;
+    std::vector<String> pageErrors;
 
     const auto decorateFailure = [&browser](auto detail) {
         return browser.buildFailureDetail(std::move(detail));
@@ -432,8 +435,13 @@ runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
             );
         }
         TRY(drainProbeEvents(cdpSession, console, pageErrors));
-        probeResult.console = std::move(console);
-        probeResult.page_errors = std::move(pageErrors);
+        std::ranges::transform(console, std::back_inserter(probeResult.console), [](const auto &s) {
+            return std::to_string(s);
+        });
+        std::ranges::transform(
+            pageErrors, std::back_inserter(probeResult.page_errors),
+            [](const auto &s) { return std::to_string(s); }
+        );
         return probeResult;
     }()
                                      .transformError(decorateFailure);
@@ -532,7 +540,7 @@ std::string BrowserProbeHandler::HandleRequestThrow(
     if (!body)
         return httpu::respondError(response, kBadRequest, "invalid request body"_t);
 
-    const auto probeRequest = parseProbeRequest(body->view());
+    const auto probeRequest = parseProbeRequest(*body);
     if (!probeRequest)
         return httpu::respondError(response, kBadRequest, probeRequest.error());
 
