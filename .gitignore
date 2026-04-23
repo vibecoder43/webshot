@@ -12,3 +12,4 @@ notes.md
 build/
 __pycache__/
 *.pyc
+/remote_compile.json

@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-_DEFAULT_CONFIG_PATH = Path(".devenv/remote_compile.json")
+_DEFAULT_CONFIG_PATH = Path("remote_compile.json")
 _RESULT_MARKER = "__REMOTE_BUILD_RESULT__"
 _SHADOW_BUILD_ROOT = Path("build/remote")
 _SHADOW_STATE_ROOT = _SHADOW_BUILD_ROOT / "state"

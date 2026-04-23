@@ -44,33 +44,33 @@ set(${PROJECT_NAME}_headers
     include/s3_credentials_types.hpp
     include/s3/s3_sts_client.hpp
     include/s3/s3_v4_client.hpp
-    include/text_postgres_formatter.hpp
-    include/handler.hpp
-    include/job_handler.hpp
-    include/by_prefix_handler.hpp
-    include/by_id_handler.hpp
-    include/browser_probe_handler.hpp
-    include/disallow_and_purge_handler.hpp
-    include/denylist_check_handler.hpp
-    include/docs_handler.hpp
-    include/ui_replay_handler.hpp
+    src/text_postgres_formatter.hpp
+    src/handler.hpp
+    src/job_handler.hpp
+    src/by_prefix_handler.hpp
+    src/by_id_handler.hpp
+    src/browser_probe_handler.hpp
+    src/disallow_and_purge_handler.hpp
+    src/denylist_check_handler.hpp
+    src/docs_handler.hpp
+    src/ui_replay_handler.hpp
     include/crud.hpp
-    include/crawler/runner.hpp
+    src/crawler/runner.hpp
     include/crawler/artifacts.hpp
-    include/crawler/browser_session.hpp
+    src/crawler/browser_session.hpp
     include/crawler/browser_page_lifecycle.hpp
     include/crawler/limits.hpp
-    include/crawler/launch_policy.hpp
-    include/crawler/cdp_client.hpp
-    include/crawler/egress_proxy.hpp
+    src/crawler/launch_policy.hpp
+    src/crawler/cdp_client.hpp
+    src/crawler/egress_proxy.hpp
     include/config.hpp
-    include/crawler/failure.hpp
+    src/crawler/failure.hpp
     include/crawler/fallback.hpp
     include/client_ip.hpp
     include/error_utils.hpp
     include/http_utils.hpp
     include/ip_utils.hpp
-    include/denylist.hpp
+    src/denylist.hpp
     include/link.hpp
     include/uuid_utils.hpp
     include/url.hpp
@@ -78,7 +78,7 @@ set(${PROJECT_NAME}_headers
     include/pagination.hpp
     include/prefix_pagination.hpp
     include/prefix_utils.hpp
-    include/metrics.hpp
+    src/metrics.hpp
     include/text.hpp)
 add_library(
   ${PROJECT_NAME}_objs OBJECT
@@ -353,8 +353,13 @@ target_link_libraries(
           absl::strings
           uni-algo::uni-algo)
 target_include_directories(
-  ${PROJECT_NAME}_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/
-                               ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ${PROJECT_NAME}_objs
+  PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/ ${CMAKE_CURRENT_SOURCE_DIR}/include
+          ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(
+  ${PROJECT_NAME}
+  PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src/ ${CMAKE_CURRENT_SOURCE_DIR}/include
+          ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION "webshotd")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/"

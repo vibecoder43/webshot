@@ -116,7 +116,7 @@
   in
     mkTask ''
       set -euo pipefail
-      if [[ -f .devenv/remote_compile.json ]]; then
+      if [[ -f remote_compile.json ]]; then
         echo "proj:${mode}Up: remote compile is enabled; local runtime requires build/webshotd outputs, while remote outputs are mirrored under build/remote" >&2
         exit 1
       fi
@@ -183,7 +183,7 @@
   in
     mkTask ''
       set -euo pipefail
-      if [[ -f .devenv/remote_compile.json ]]; then
+      if [[ -f remote_compile.json ]]; then
         python3 devenv/remote_compile.py \
           --run-script ${lib.escapeShellArg remoteTestScript} \
           --sync-shadow-build-dir ${lib.escapeShellArg modes.${mode}.buildDir}
