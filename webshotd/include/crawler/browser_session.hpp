@@ -25,8 +25,8 @@ class CdpClient;
 class CdpSession;
 
 struct [[nodiscard]] BrowserSessionConfig final {
-    usize urlBytesMax;
-    i64 proxyDownBytesMax;
+    usize urlBytesMax{0};
+    i64 proxyDownBytesMax{0};
     std::string browserRunsRoot;
     std::string cgroupRootPath;
     std::optional<CgroupLimits> cgroupLimits;
@@ -36,7 +36,7 @@ struct [[nodiscard]] BrowserSessionConfig final {
     std::chrono::milliseconds cdpCommandTimeout;
     std::chrono::milliseconds devtoolsPollInterval;
     std::chrono::milliseconds browserStopTimeout;
-    i64 cdpMaxRemotePayloadBytes;
+    i64 cdpMaxRemotePayloadBytes{0};
     bool proxyRequireAuth;
     bool enableLocalFixtureRewrite;
     std::string cgroupNamePrefix;

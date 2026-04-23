@@ -353,7 +353,7 @@ resolveTcp(dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadli
 
 struct [[nodiscard]] UpstreamTarget final {
     std::string connectHost;
-    u16 connectPort;
+    u16 connectPort{0};
 };
 
 [[nodiscard]] UpstreamTarget
