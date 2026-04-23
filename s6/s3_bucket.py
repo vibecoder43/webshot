@@ -31,7 +31,13 @@ _bucket_cors_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def ensure_s3_bucket_exists(*, secrets_path: Path, s3_url: str, bucket: str) -> None:
+def ensure_s3_bucket_exists(
+    *,
+    secrets_path: Path,
+    s3_url: str,
+    bucket: str,
+    secure: bool = False,
+) -> None:
     if not bucket:
         die("bucket must not be empty", exit_code=2)
 
@@ -69,7 +75,7 @@ def ensure_s3_bucket_exists(*, secrets_path: Path, s3_url: str, bucket: str) -> 
         s3_url,
         access_key=access_key,
         secret_key=secret_key,
-        secure=False,
+        secure=secure,
         http_client=http_client,
     )
     if not client.bucket_exists(bucket):

@@ -253,6 +253,12 @@ in {
         patchShebangs "$out/webshotd/webshotd_wrapper"
         wrapProgram "$out/webshotd/webshotd_wrapper" \
           --set PATH "${lib.makeBinPath sets.runtimeTools}"
+
+        install -Dm0644 ${./systemd/webshot.service.in} "$out/lib/systemd/system/webshot.service"
+        substituteInPlace "$out/lib/systemd/system/webshot.service" \
+          --replace-fail '@out@' "$out" \
+          --replace-fail '@repoPython@' '${drv.repoPy}' \
+          --replace-fail '@runtimePath@' '${sets.systemdRuntimePath}'
       '';
     };
 }

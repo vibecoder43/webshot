@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from s6.common import need_cmd, run
+from s6.runtime_config import resolve_runtime_dependency_modes
 from s6.runtime_context import (
     WEBSHOTD_READY_URL,
     RuntimeInspectContext,
@@ -78,7 +79,7 @@ def all_service_definitions() -> tuple[RuntimeServiceDefinition, ...]:
             service_dir_name="postgres",
             log_file_name="postgres.log",
             timeout_sec=30.0,
-            enabled=_always_enabled,
+            enabled=_postgres_local_only,
             ready_cmd=_postgres_ready_cmd,
             scripts=_postgres_scripts,
         ),
@@ -87,7 +88,7 @@ def all_service_definitions() -> tuple[RuntimeServiceDefinition, ...]:
             service_dir_name="seaweedfs",
             log_file_name="seaweedfs.log",
             timeout_sec=60.0,
-            enabled=_dev_only,
+            enabled=_local_s3_only,
             ready_cmd=_seaweedfs_ready_cmd,
             scripts=_seaweedfs_scripts,
             prepare=_prepare_seaweedfs,
@@ -152,6 +153,23 @@ def render_service_tree(
 def _always_enabled(ctx: RuntimeInspectContext) -> bool:
     del ctx
     return True
+
+
+def _dependency_modes(ctx: RuntimeInspectContext) -> tuple[str, str]:
+    modes = resolve_runtime_dependency_modes(
+        ctx.load_config_vars(), source=ctx.runtime_config_vars_path
+    )
+    return modes.pg_mode, modes.s3_mode
+
+
+def _postgres_local_only(ctx: RuntimeInspectContext) -> bool:
+    pg_mode, _ = _dependency_modes(ctx)
+    return pg_mode == "local"
+
+
+def _local_s3_only(ctx: RuntimeInspectContext) -> bool:
+    _, s3_mode = _dependency_modes(ctx)
+    return s3_mode == "local"
 
 
 def _dev_only(ctx: RuntimeInspectContext) -> bool:
@@ -273,29 +291,39 @@ def _webshotd_scripts(ctx: RuntimeUpContext) -> ServiceScripts:
         ),
     )
 
-    waits = wait_script(_postgres_ready_cmd(ctx))
-    if ctx.mode == "dev":
+    pg_mode, s3_mode = _dependency_modes(ctx)
+    waits = ""
+    if pg_mode == "local":
+        waits += wait_script(_postgres_ready_cmd(ctx))
+    if s3_mode == "local":
         waits += wait_script(_seaweedfs_ready_cmd(ctx))
 
-    return ServiceScripts(
-        check_cmd=_webshotd_ready_cmd(ctx),
-        run_cmd=[
-            "env",
-            "-u",
-            "CPU_LIMIT",
-            "-u",
-            "DEPLOY_VCPU_LIMIT",
-            "-u",
-            "VCPU_LIMIT",
-            f"LD_LIBRARY_PATH={ctx.runtime_ld_library_path}",
+    run_cmd: list[str | Path] = [
+        "env",
+        "-u",
+        "CPU_LIMIT",
+        "-u",
+        "DEPLOY_VCPU_LIMIT",
+        "-u",
+        "VCPU_LIMIT",
+    ]
+    if ctx.runtime_ld_library_path:
+        run_cmd.append(f"LD_LIBRARY_PATH={ctx.runtime_ld_library_path}")
+    run_cmd.extend(
+        [
             str(ctx.binary_path),
             "--config",
             str(ctx.repo_root / "webshotd/config/static_config.yaml"),
             "--config_vars",
-            str(ctx.config_vars_source),
+            str(ctx.runtime_config_vars_path),
             "--config_vars_override",
             str(ctx.webshotd_config_vars_override_path),
-        ],
+        ]
+    )
+
+    return ServiceScripts(
+        check_cmd=_webshotd_ready_cmd(ctx),
+        run_cmd=run_cmd,
         cwd=ctx.repo_root / "webshotd",
         preamble=waits,
     )

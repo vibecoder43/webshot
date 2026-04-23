@@ -9,6 +9,7 @@ import yaml
 from s6.common import ToolError, die, repo_root_from_file
 
 WEBSHOTD_READY_URL = "http://127.0.0.1:8081/service/monitor?format=json"
+RUNTIME_MODES = ("dev", "prodlike", "prod")
 
 
 @dataclass(frozen=True)
@@ -38,17 +39,29 @@ class RuntimeStateContext:
     def managed_cgroup_root_file(self) -> Path:
         return self.state_dir / "managed-cgroup-root"
 
+    @property
+    def runtime_config_vars_path(self) -> Path:
+        return self.state_dir / "config_vars.yaml"
+
 
 @dataclass(frozen=True)
 class RuntimeInspectContext(RuntimeStateContext):
     service_profile: str
+
+    def load_config_vars(self) -> dict[str, object]:
+        return read_yaml(self.runtime_config_vars_path)
 
 
 @dataclass(frozen=True)
 class RuntimeUpContext(RuntimeInspectContext):
     binary_path: Path
     config_vars_source: Path
-    runtime_ld_library_path: str
+    runtime_ld_library_path: str | None
+
+    def load_config_vars(self) -> dict[str, object]:
+        if self.runtime_config_vars_path.is_file():
+            return read_yaml(self.runtime_config_vars_path)
+        return read_yaml(self.config_vars_source)
 
     @property
     def postgres_dir(self) -> Path:
@@ -161,15 +174,22 @@ def require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> st
     return cast(str, value)
 
 
-def build_state_context(*, mode: str) -> RuntimeStateContext:
-    repo_root = repo_root_from_file(Path(__file__))
-    state_dir = Path("/tmp/webshot") / mode
+def build_state_context(
+    *,
+    mode: str,
+    layout_root: str | None = None,
+    state_dir: str | None = None,
+) -> RuntimeStateContext:
+    resolved_repo_root = (
+        Path(layout_root).resolve() if layout_root else repo_root_from_file(Path(__file__))
+    )
+    resolved_state_dir = Path(state_dir).resolve() if state_dir else Path("/tmp/webshot") / mode
     return RuntimeStateContext(
         mode=mode,
-        repo_root=repo_root,
-        state_dir=state_dir,
-        scan_dir=state_dir / "s6-scan",
-        svscan_pid_file=state_dir / "s6-svscan.pid",
+        repo_root=resolved_repo_root,
+        state_dir=resolved_state_dir,
+        scan_dir=resolved_state_dir / "s6-scan",
+        svscan_pid_file=resolved_state_dir / "s6-svscan.pid",
     )
 
 
@@ -177,11 +197,13 @@ def build_inspect_context(
     *,
     mode: str,
     service_profile: str,
+    layout_root: str | None = None,
+    state_dir: str | None = None,
 ) -> RuntimeInspectContext:
     if service_profile == "test_infra" and mode != "dev":
         die("service profile 'test_infra' requires --mode dev", exit_code=2)
 
-    state_ctx = build_state_context(mode=mode)
+    state_ctx = build_state_context(mode=mode, layout_root=layout_root, state_dir=state_dir)
     return RuntimeInspectContext(
         mode=state_ctx.mode,
         repo_root=state_ctx.repo_root,
@@ -196,11 +218,18 @@ def build_up_context(
     *,
     mode: str,
     service_profile: str,
+    layout_root: str | None,
+    state_dir: str | None,
     binary_path: str,
     config_vars_source: str,
-    runtime_ld_library_path: str,
+    runtime_ld_library_path: str | None,
 ) -> RuntimeUpContext:
-    inspect_ctx = build_inspect_context(mode=mode, service_profile=service_profile)
+    inspect_ctx = build_inspect_context(
+        mode=mode,
+        service_profile=service_profile,
+        layout_root=layout_root,
+        state_dir=state_dir,
+    )
     return RuntimeUpContext(
         mode=inspect_ctx.mode,
         repo_root=inspect_ctx.repo_root,

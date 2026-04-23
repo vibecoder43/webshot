@@ -10,8 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from s6.common import ToolError
-from s6.runtime_context import build_inspect_context, build_state_context, build_up_context
-from s6.runtime_setup import ensure_dev_bucket, prepare_runtime
+from s6.runtime_context import (
+    RUNTIME_MODES,
+    build_inspect_context,
+    build_state_context,
+    build_up_context,
+)
+from s6.runtime_setup import ensure_local_s3_bootstrap, prepare_runtime
 from s6.runtime_supervisor import (
     check,
     logs,
@@ -459,16 +464,14 @@ def _up(ctx) -> None:
         if not stack_healthy(ctx):
             runtime_die("stack already supervised but not healthy; run down first", exit_code=1)
         report("already running")
-        if ctx.mode == "dev":
-            ensure_dev_bucket(ctx)
+        ensure_local_s3_bootstrap(ctx)
         return
 
     if ctx.service_profile == "full":
         _enter_managed_cgroup_subgroup(ctx)
 
     start_supervisor(ctx, prepare_runtime(ctx))
-    if ctx.mode == "dev":
-        ensure_dev_bucket(ctx)
+    ensure_local_s3_bootstrap(ctx)
 
 
 def _down(ctx) -> None:
@@ -486,18 +489,24 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     up_parser = subparsers.add_parser("up")
-    up_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
+    up_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
+    up_parser.add_argument("--layout-root")
+    up_parser.add_argument("--state-dir")
     up_parser.add_argument("--service-profile", choices=["full", "test_infra"], default="full")
     up_parser.add_argument("--binary-path", required=True)
     up_parser.add_argument("--config-vars-source", required=True)
-    up_parser.add_argument("--runtime-ld-library-path", required=True)
+    up_parser.add_argument("--runtime-ld-library-path")
 
     down_parser = subparsers.add_parser("down")
-    down_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
+    down_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
+    down_parser.add_argument("--layout-root")
+    down_parser.add_argument("--state-dir")
 
     for action in ["status", "logs", "check"]:
         action_parser = subparsers.add_parser(action)
-        action_parser.add_argument("--mode", required=True, choices=["dev", "prodlike"])
+        action_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
+        action_parser.add_argument("--layout-root")
+        action_parser.add_argument("--state-dir")
         action_parser.add_argument(
             "--service-profile",
             choices=["full", "test_infra"],
@@ -516,20 +525,47 @@ def main(argv: list[str] | None = None) -> int:
             ctx = build_up_context(
                 mode=args.mode,
                 service_profile=args.service_profile,
+                layout_root=args.layout_root,
+                state_dir=args.state_dir,
                 binary_path=args.binary_path,
                 config_vars_source=args.config_vars_source,
                 runtime_ld_library_path=args.runtime_ld_library_path,
             )
             _up(ctx)
         elif args.action == "down":
-            _down(build_state_context(mode=args.mode))
+            _down(
+                build_state_context(
+                    mode=args.mode,
+                    layout_root=args.layout_root,
+                    state_dir=args.state_dir,
+                )
+            )
         elif args.action == "status":
-            status(build_inspect_context(mode=args.mode, service_profile=args.service_profile))
+            status(
+                build_inspect_context(
+                    mode=args.mode,
+                    service_profile=args.service_profile,
+                    layout_root=args.layout_root,
+                    state_dir=args.state_dir,
+                )
+            )
         elif args.action == "logs":
-            logs(build_inspect_context(mode=args.mode, service_profile=args.service_profile))
+            logs(
+                build_inspect_context(
+                    mode=args.mode,
+                    service_profile=args.service_profile,
+                    layout_root=args.layout_root,
+                    state_dir=args.state_dir,
+                )
+            )
         elif args.action == "check":
             return check(
-                build_inspect_context(mode=args.mode, service_profile=args.service_profile)
+                build_inspect_context(
+                    mode=args.mode,
+                    service_profile=args.service_profile,
+                    layout_root=args.layout_root,
+                    state_dir=args.state_dir,
+                )
             )
         else:
             raise AssertionError("unreachable")

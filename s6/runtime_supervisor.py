@@ -25,6 +25,8 @@ LOGS_WAIT_TIMEOUT_SEC = 5.0
 
 
 def supervisor_running(ctx: RuntimeInspectContext) -> bool:
+    if not ctx.runtime_config_vars_path.is_file():
+        return False
     need_cmd("s6-svok")
     return all(
         run(["s6-svok", str(spec.service_dir)], check=False, timeout_sec=CMD_TIMEOUT_SEC).returncode
@@ -34,6 +36,8 @@ def supervisor_running(ctx: RuntimeInspectContext) -> bool:
 
 
 def supervisor_matches_profile(ctx: RuntimeInspectContext) -> bool:
+    if not ctx.runtime_config_vars_path.is_file():
+        return False
     need_cmd("s6-svok")
     active_names = {spec.name for spec in active_service_specs(ctx)}
     for name, service_dir in known_service_dirs(ctx).items():

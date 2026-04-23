@@ -6,7 +6,11 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from s6.common import die, need_cmd, run
+from s6.common import ToolError, die, need_cmd, run
+from s6.runtime_config import (
+    resolve_local_s3_bootstrap_config,
+    resolve_runtime_dependency_modes,
+)
 from s6.runtime_context import (
     RuntimeStateContext,
     RuntimeUpContext,
@@ -29,6 +33,7 @@ class _BootstrappedDatabase:
 
 
 def prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
+    snapshot_runtime_config_vars(ctx)
     definitions = active_service_definitions(ctx)
     ctx.state_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_postgres(ctx)
@@ -38,22 +43,34 @@ def prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
     return render_service_tree(ctx, definitions)
 
 
-def ensure_dev_bucket(ctx: RuntimeStateContext) -> None:
+def ensure_local_s3_bootstrap(ctx: RuntimeStateContext) -> None:
+    raw_vars = read_yaml(ctx.runtime_config_vars_path)
+    dependency_modes = resolve_runtime_dependency_modes(
+        raw_vars, source=ctx.runtime_config_vars_path
+    )
+    if dependency_modes.s3_mode != "local":
+        return
+
+    bootstrap = resolve_local_s3_bootstrap_config(
+        repo_root=ctx.repo_root,
+        raw_vars=raw_vars,
+        source=ctx.runtime_config_vars_path,
+    )
     ensure_s3_bucket_exists(
-        secrets_path=ctx.repo_root / "webshotd/secret/test_secdist.json",
-        s3_url="localhost:8333",
-        bucket="webshot",
+        secrets_path=bootstrap.secrets_path,
+        s3_url=bootstrap.endpoint,
+        bucket=bootstrap.bucket,
+        secure=bootstrap.secure,
     )
 
 
 def _bootstrap_postgres(ctx: RuntimeUpContext) -> None:
-    need_cmd("initdb")
-    need_cmd("pg_ctl")
-    need_cmd("psql")
-    need_cmd("createdb")
     need_cmd("pgmigrate")
 
-    raw_vars = read_yaml(ctx.config_vars_source)
+    raw_vars = read_yaml(ctx.runtime_config_vars_path)
+    dependency_modes = resolve_runtime_dependency_modes(
+        raw_vars, source=ctx.runtime_config_vars_path
+    )
     databases = _bootstrap_databases(ctx, raw_vars)
 
     bootstrap_state = "".join(
@@ -66,6 +83,7 @@ def _bootstrap_postgres(ctx: RuntimeUpContext) -> None:
                 f"{database.resolved.definition.name}_migrations={database.migrations_hash}\n"
                 for database in databases
             ),
+            f"pg_mode={dependency_modes.pg_mode}\n",
         ]
     )
     if (
@@ -73,6 +91,26 @@ def _bootstrap_postgres(ctx: RuntimeUpContext) -> None:
         and ctx.postgres_bootstrap_done_file.read_text(encoding="utf-8") == bootstrap_state
     ):
         return
+
+    if dependency_modes.pg_mode == "external":
+        for database in databases:
+            _die_if_legacy_db_needs_baseline(
+                dsn=database.resolved.dsn,
+                base_dir=database.resolved.base_dir,
+                db_name=database.resolved.db_name,
+            )
+            _pgmigrate_migrate(
+                dsn=database.resolved.dsn,
+                base_dir=database.resolved.base_dir,
+            )
+        ctx.postgres_dir.mkdir(parents=True, exist_ok=True)
+        ctx.postgres_bootstrap_done_file.write_text(bootstrap_state, encoding="utf-8")
+        return
+
+    need_cmd("initdb")
+    need_cmd("pg_ctl")
+    need_cmd("psql")
+    need_cmd("createdb")
 
     was_initialized = ctx.postgres_data_dir.joinpath("PG_VERSION").is_file()
     ctx.postgres_dir.mkdir(parents=True, exist_ok=True)
@@ -141,9 +179,20 @@ def _bootstrap_databases(
         for database in resolve_runtime_databases(
             repo_root=ctx.repo_root,
             raw_vars=raw_vars,
-            source=ctx.config_vars_source,
+            source=ctx.runtime_config_vars_path,
         )
     ]
+
+
+def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
+    ctx.state_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        raw = ctx.config_vars_source.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise ToolError(
+            message=f"Missing config vars file: {ctx.config_vars_source}", exit_code=2
+        ) from e
+    ctx.runtime_config_vars_path.write_text(raw, encoding="utf-8")
 
 
 def _ensure_postgres_database(db_name: str) -> None:

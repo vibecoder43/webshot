@@ -32,6 +32,32 @@
 
     doCheck = false;
   });
+
+  s6Runtime = pyPkgs.buildPythonPackage {
+    pname = "s6-runtime";
+    version = "0.1.0";
+
+    pyproject = false;
+    dontUnpack = true;
+
+    src = ../../s6;
+    propagatedBuildInputs = [
+      pyPkgs.minio
+      pyPkgs.pyyaml
+    ];
+
+    installPhase = ''
+      runHook preInstall
+
+      package_dir="$out/${python.sitePackages}/s6"
+      mkdir -p "$package_dir"
+      cp "$src"/*.py "$package_dir/"
+
+      runHook postInstall
+    '';
+
+    pythonImportsCheck = ["s6.runtime"];
+  };
 in
   python.withPackages (_: [
     # Repo build and test helpers still need the userver generator deps.
@@ -49,5 +75,6 @@ in
     pyPkgs.requests
     # userver testsuite currently requires websockets < 13.
     websocketsCompatible
+    s6Runtime
     pyPkgs.zstd
   ])

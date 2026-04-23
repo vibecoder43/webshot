@@ -356,4 +356,8 @@ target_include_directories(
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION "webshotd")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/config/"
         DESTINATION "webshotd/config")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/sql/schema/"
+        DESTINATION "webshotd/sql/schema")
 install(DIRECTORY "${WEBSHOT_REPO_ROOT}/schema/" DESTINATION "schema")
+install(FILES "${WEBSHOT_REPO_ROOT}/seaweedfs/s3_config.json"
+        DESTINATION "seaweedfs")

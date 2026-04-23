@@ -52,6 +52,9 @@
     ]
     ++ [drv.seaweedfs];
 
+  systemdRuntime = runtime ++ runtimeTools ++ [drv.pgmigrate drv.repoPy];
+  systemdRuntimePath = nix.lib.makeBinPath systemdRuntime;
+
   sharedLibs = with nix; [
     drv.unialgo
     libarchive
