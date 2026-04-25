@@ -2,6 +2,7 @@
   inputs,
   nix,
   paths,
+  projSrc,
   sets,
   srcs,
   toolchain,
@@ -21,6 +22,7 @@
   inherit (userverDeps) userverBuildPython userverLibs;
 
   repoPython = callPkg ./pkgs/repo_python.nix {
+    inherit projSrc;
     python = nix.python3;
   };
 

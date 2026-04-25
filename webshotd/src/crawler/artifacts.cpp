@@ -32,7 +32,7 @@ using text::toBytes;
 
 namespace {
 
-constexpr std::string_view kUserAgent = "webshotd/0.1.0";
+constexpr std::string_view kUserAgent = "webshotd";
 constexpr std::string_view kWarcPath = "archive/data.warc.gz";
 constexpr std::string_view kWarcFilename = "data.warc.gz";
 constexpr std::string_view kIndexPath = "indexes/index.cdx";

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Webshot Admin API
-  version: 0.1.0
+  version: unversioned
 servers:
   - url: /
 paths:

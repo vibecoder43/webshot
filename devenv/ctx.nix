@@ -7,6 +7,25 @@
   nix = pkgs.extend (import ./overlay/backtrace.nix);
   lib = nix.lib;
 
+  rootType = builtins.typeOf config.devenv.root;
+  rootIsStoreString =
+    rootType
+    == "string"
+    && lib.hasPrefix "${builtins.storeDir}/" config.devenv.root;
+  projRootPath =
+    if rootType == "path"
+    then config.devenv.root
+    else /. + config.devenv.root;
+
+  projSrc =
+    if rootIsStoreString
+    then config.devenv.root
+    else
+      lib.fileset.toSource {
+        root = projRootPath;
+        fileset = lib.fileset.gitTracked projRootPath;
+      };
+
   srcs = import ./srcs.nix {
     inherit inputs lib;
     lockFile = ../devenv.lock;
@@ -71,7 +90,7 @@
   };
 
   drv = import ./drv.nix {
-    inherit inputs nix paths sets srcs toolchain;
+    inherit inputs nix paths projSrc sets srcs toolchain;
   };
 
   repoPythonPath = "${drv.repoPy}/bin/python3";
@@ -79,8 +98,6 @@
   sets = import ./sets.nix {
     inherit drv nix;
   };
-
-  webshotSrc = nix.nix-gitignore.gitignoreSource [] ../.;
 
   gitignoreLines = lib.splitString "\n" (builtins.readFile ../.gitignore);
   gitignorePatterns =
@@ -226,11 +243,10 @@ in {
     variant ? variants.release,
   }:
     toolchain.stdenv.mkDerivation {
-      pname = "webshot${suffix}";
-      version = "0.1.0";
-      src = webshotSrc;
-      # gitignoreSource preserves the repo basename in the unpack tree, so pick
-      # the service subdir dynamically instead of assuming `source/`.
+      name = "webshot${suffix}";
+      src = projSrc;
+      # The source root name differs between flake and live-root evaluation, so
+      # pick the service subdir dynamically instead of assuming `source/`.
       setSourceRoot = ''
         matches=(*/webshotd)
         if [[ "''${#matches[@]}" -ne 1 || ! -d "''${matches[0]}" ]]; then

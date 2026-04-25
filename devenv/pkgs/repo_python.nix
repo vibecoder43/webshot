@@ -1,5 +1,6 @@
 {
   pkgs,
+  projSrc,
   python ? pkgs.python3,
 }: let
   pyPkgs = python.pkgs;
@@ -34,13 +35,12 @@
   });
 
   s6Runtime = pyPkgs.buildPythonPackage {
-    pname = "s6-runtime";
-    version = "0.1.0";
+    name = "s6-runtime";
 
     pyproject = false;
     dontUnpack = true;
 
-    src = ../../s6;
+    src = projSrc + "/s6";
     propagatedBuildInputs = [
       pyPkgs.minio
       pyPkgs.pyyaml

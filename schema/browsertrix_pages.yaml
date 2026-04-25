@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Browsertrix Crawler pages.jsonl
-  version: 0.1.0
+  version: unversioned
 paths: {}
 components:
   schemas:
