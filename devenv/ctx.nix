@@ -76,14 +76,11 @@
       san = "${config.devenv.root}/build/webshotd/san";
       tidy = "${config.devenv.root}/build/webshotd/tidy";
       cov = "${config.devenv.root}/build/webshotd/cov";
-      release = "${config.devenv.root}/build/webshotd/release";
     };
 
     clangd = {
       san = mkClangd "san" build.san;
       tidy = mkClangd "tidy" build.tidy;
-      cov = mkClangd "cov" build.cov;
-      release = mkClangd "release" build.release;
     };
 
     cmakePrefix = lib.makeSearchPath "lib/cmake" sets.cmakePrefix;
@@ -186,7 +183,7 @@
       "-DCMAKE_C_COMPILER=${toolchain.cc}/bin/clang"
     ];
 
-  mkConfigureArgv = {
+  mkConfigure = {
     buildDir,
     variant,
     fresh,
@@ -217,28 +214,16 @@
 in {
   inherit drv nix paths sets srcs toolchain variants;
   treefmtExcludes = treefmtExcludes;
-  mkConfigureArgv = mkConfigureArgv;
+  mkConfigure = mkConfigure;
 
   mkConfigureFingerprint = {
     buildDir,
     variant,
   }:
-    builtins.hashString "sha256" (builtins.toJSON (mkConfigureArgv {
+    builtins.hashString "sha256" (builtins.toJSON (mkConfigure {
       inherit buildDir variant;
       fresh = false;
     }));
-
-  mkConfigure = {
-    buildDir,
-    clangdFile,
-    variant,
-    fresh,
-  }: ''
-    ${lib.escapeShellArgs (mkConfigureArgv {
-      inherit buildDir variant fresh;
-    })}
-    ln -sf "${clangdFile}" .clangd
-  '';
 
   mkProjPkg = {
     suffix ? "",

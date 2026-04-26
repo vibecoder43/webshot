@@ -30,14 +30,22 @@
   mkRepeatedFlagArgs = flag: args:
     lib.concatMapStringsSep " \\\n      " (arg: "${flag}=${lib.escapeShellArg arg}") args;
 
+  mkClangdLink = clangdFile: ''
+    if [[ ! -f remote_compile.json ]]; then
+      ln -sf ${lib.escapeShellArg clangdFile} .clangd
+    fi
+  '';
+
   mkBuild = {
     buildDir,
+    clangdFile,
     variant,
     forceConfigureFresh ? false,
+    manageClangd ? true,
     timingsOutput ? null,
     buildArgs ? [],
   }: let
-    configureArgv = ctx.mkConfigureArgv {
+    configureArgv = ctx.mkConfigure {
       inherit buildDir variant;
       fresh = false;
     };
@@ -64,6 +72,7 @@
       then " \\\n      --force-configure-fresh"
       else "";
   in ''
+    ${lib.optionalString manageClangd (mkClangdLink clangdFile)}
     python3 devenv/build_task.py \
       --build-dir ${lib.escapeShellArg buildDir} \
       --configure-fingerprint ${lib.escapeShellArg configureFingerprint} \
@@ -107,6 +116,7 @@
       set -euo pipefail
       ${mkBuild {
         inherit (cfg) buildDir variant;
+        clangdFile = cfg.clangd;
         timingsOutput = "${cfg.buildDir}/latest_build_times.json";
       }}
     '';
@@ -122,6 +132,7 @@
       fi
       ${mkBuild {
         inherit (cfg) buildDir variant;
+        clangdFile = cfg.clangd;
         timingsOutput = "${cfg.buildDir}/latest_build_times.json";
       }}
       exec ${mkRuntime "up" mode null}
@@ -140,6 +151,7 @@
       set -euo pipefail
       ${mkBuild {
         inherit (modes.${mode}) buildDir variant;
+        clangdFile = modes.${mode}.clangd;
         timingsOutput = "${modes.${mode}.buildDir}/latest_build_times.json";
       }}
       cleanup() {
@@ -155,6 +167,8 @@
       cd ${lib.escapeShellArg config.devenv.root}
       ${mkBuild {
         inherit (modes.${mode}) buildDir variant;
+        clangdFile = modes.${mode}.clangd;
+        manageClangd = false;
         timingsOutput = "${modes.${mode}.buildDir}/latest_build_times.json";
       }}
       cleanup() {
@@ -208,6 +222,7 @@ in {
     set -euo pipefail
     ${mkBuild {
       buildDir = ctx.paths.build.tidy;
+      clangdFile = ctx.paths.clangd.tidy;
       variant = ctx.variants.tidy;
       buildArgs = ["--" "-k" "0"];
     }}
