@@ -13,12 +13,10 @@ function(_add_cpp_test_target target)
     ${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include
                       ${PROJECT_BINARY_DIR}/src ${ARGS_INCLUDE_DIRS})
   apply_defaults(${target})
+  apply_link_defaults(${target})
+  apply_sanitizer_compile_defaults(${target})
+  apply_sanitizer_link_defaults(${target})
   target_compile_options(${target} PRIVATE -Wno-switch-default)
-
-  if(USE_SANITIZERS)
-    target_compile_options(${target} PRIVATE "-fsanitize=address,undefined")
-    target_link_options(${target} PRIVATE "-fsanitize=address,undefined")
-  endif()
 
   if(ARGS_REGISTER_CTEST)
     add_test(NAME ${target} COMMAND ${target})

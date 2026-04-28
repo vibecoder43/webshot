@@ -141,7 +141,7 @@ function(apply_defaults target)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD 26)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED ON)
   set_property(TARGET ${target} PROPERTY CXX_EXTENSIONS OFF)
-  set(lifetimeSafetyWarnings
+  set(lifetime_safety_warnings
       -Wexperimental-lifetime-safety-suggestions
       -Wexperimental-lifetime-safety-intra-tu-suggestions
       -Wexperimental-lifetime-safety-cross-tu-suggestions
@@ -174,14 +174,45 @@ function(apply_defaults target)
             -Wtautological-compare
             -Wunreachable-code-aggressive
             -Wzero-as-null-pointer-constant
-            ${lifetimeSafetyWarnings})
+            ${lifetime_wafety_warnings})
+  target_compile_options(
+    ${target}
+    PRIVATE -Wformat
+            -Wformat-security
+            -Werror=format-security
+            -fno-omit-frame-pointer
+            -mno-omit-leaf-frame-pointer
+            -fstack-clash-protection
+            -fstack-protector-strong
+            --param=ssp-buffer-size=4
+            -fstrict-flex-arrays=1
+            -fwrapv
+            -fzero-call-used-regs=used-gpr
+            $<$<CONFIG:RelWithDebInfo>:-U_FORTIFY_SOURCE>
+            $<$<CONFIG:RelWithDebInfo>:-D_FORTIFY_SOURCE=2>)
   target_compile_options(
     ${target}
     PRIVATE $<$<CONFIG:Debug>:-ggdb3>
             $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:-fdebug-macro>
             $<$<CONFIG:RelWithDebInfo>:-O2>)
   if(USE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_options(${target} PRIVATE -O1 -fno-omit-frame-pointer)
+    target_compile_options(${target} PRIVATE -O1)
+  endif()
+endfunction()
+
+function(apply_link_defaults target)
+  target_link_options(${target} PRIVATE -pie LINKER:-z,relro LINKER:-z,now)
+endfunction()
+
+function(apply_sanitizer_compile_defaults target)
+  if(USE_SANITIZERS)
+    target_compile_options(${target} PRIVATE "-fsanitize=address,undefined")
+  endif()
+endfunction()
+
+function(apply_sanitizer_link_defaults target)
+  if(USE_SANITIZERS)
+    target_link_options(${target} PRIVATE "-fsanitize=address,undefined")
   endif()
 endfunction()
 
@@ -189,6 +220,10 @@ add_executable(${PROJECT_NAME} src/main.cpp
                                $<TARGET_OBJECTS:${PROJECT_NAME}_objs>)
 apply_defaults(${PROJECT_NAME}_objs)
 apply_defaults(${PROJECT_NAME})
+apply_link_defaults(${PROJECT_NAME})
+apply_sanitizer_compile_defaults(${PROJECT_NAME}_objs)
+apply_sanitizer_compile_defaults(${PROJECT_NAME})
+apply_sanitizer_link_defaults(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME webshotd)
 set(WEBSHOT_RUNTIME_WRAPPER_SOURCE
     "${CMAKE_CURRENT_SOURCE_DIR}/webshotd_wrapper.sh")
@@ -412,15 +447,11 @@ set_source_files_properties(
   PROPERTIES SKIP_LINTING ON)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE ${PROJECT_NAME}_sql)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_sql)
+apply_sanitizer_compile_defaults(${PROJECT_NAME}_sql)
 
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(test)
-endif()
-
-if(USE_SANITIZERS)
-  target_compile_options(${PROJECT_NAME} PRIVATE "-fsanitize=address,undefined")
-  target_link_options(${PROJECT_NAME} PRIVATE "-fsanitize=address,undefined")
 endif()
 
 set(SCHEMAS
@@ -442,6 +473,7 @@ userver_target_generate_chaotic(
   RELATIVE_TO
   ${WEBSHOT_REPO_ROOT})
 apply_defaults(${PROJECT_NAME}-chgen)
+apply_sanitizer_compile_defaults(${PROJECT_NAME}-chgen)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE ${PROJECT_NAME}-chgen)
 target_link_libraries(
   ${PROJECT_NAME}
