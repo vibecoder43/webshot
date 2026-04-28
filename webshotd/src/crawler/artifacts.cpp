@@ -27,7 +27,6 @@ namespace http = us::http;
 
 namespace v1::crawler {
 using namespace text::literals;
-using integers::toBytes;
 using text::toBytes;
 
 namespace {

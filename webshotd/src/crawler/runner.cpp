@@ -70,7 +70,6 @@ namespace dns = us::clients::dns;
 
 using namespace std::chrono_literals;
 using namespace text::literals;
-using integers::toBytes;
 using text::toBytes;
 
 namespace v1 {
@@ -377,7 +376,7 @@ evaluateAccessPolicy(Denylist &denylist, const Config &config, const Url &url)
     headers.push_back(
         dto::FetchHeaderEntry{
             .name = "Content-Length",
-            .value = toBytes(bodyBytes),
+            .value = std::format("{}", bodyBytes),
         }
     );
     headers.push_back(

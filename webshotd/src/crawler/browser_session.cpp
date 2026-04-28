@@ -46,7 +46,6 @@ namespace chrono = std::chrono;
 using namespace std::chrono_literals;
 
 using namespace text::literals;
-using integers::toBytes;
 using v1::uuidu::toBytes;
 
 namespace v1::crawler {
