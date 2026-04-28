@@ -13,9 +13,12 @@ from helper.waiters import wait_for_job_status, wait_for_purge
 from minio import Minio
 
 
-def _enable_allowlist_only(config_yaml, _config_vars):
-    components = config_yaml["components_manager"]["components"]
-    components["config"]["allowlist_only"] = True
+def _enable_allowlist_only(_config_yaml, config_vars):
+    config_vars["allowlist_only"] = True
+
+
+def _enable_https_only(_config_yaml, config_vars):
+    config_vars["https_only"] = True
 
 
 def _assert_missing_job_fields(job: dict, *names: str) -> None:
@@ -574,6 +577,26 @@ async def test_capture_fetches_https_subresource_assets(
     assert any("asset" in entry for entry in replay["console"])
 
 
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.asyncio
+async def test_https_only_blocks_http_subresource_fetch(
+    service_client, browser_probe, download_wacz
+):
+    link = f"https://{TEST_HOST}/with-http-subresource"
+
+    resp = await service_client.post("/v1/capture", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    await wait_for_job_status(service_client, job_id, expected_status="succeeded")
+
+    replay = await _probe_replay(browser_probe, job_id)
+    assert not any("ok" in entry for entry in replay["console"])
+
+    wacz = await download_wacz(job_id)
+    assert not _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/script.js")
+
+
 @pytest.mark.asyncio
 async def test_denylist_blocks_https_subresource_fetch(
     service_client, monitor_client, browser_probe, download_wacz
@@ -634,6 +657,26 @@ async def test_https_first_succeeds_when_http_fails(service_client, browser_prob
     assert not _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/https-first-http-fails")
 
 
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.asyncio
+async def test_https_only_accepts_http_seed_and_crawls_https(
+    service_client, browser_probe, download_wacz
+):
+    link = f"http://{TEST_HOST}/https-first-http-fails"
+
+    resp = await service_client.post("/v1/capture", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    await wait_for_job_status(service_client, job_id, expected_status="succeeded")
+
+    await _probe_replay(browser_probe, job_id)
+
+    wacz = await download_wacz(job_id)
+    assert 200 in _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/https-first-http-fails")
+    assert not _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/https-first-http-fails")
+
+
 @pytest.mark.asyncio
 async def test_https_first_falls_back_to_http_when_https_no_response(
     service_client, browser_probe, download_wacz
@@ -651,6 +694,18 @@ async def test_https_first_falls_back_to_http_when_https_no_response(
     wacz = await download_wacz(job_id)
     assert 200 in _wacz_cdxj_statuses_for_url(wacz, f"http://{TEST_HOST}/http-fallback-success")
     assert not _wacz_cdxj_statuses_for_url(wacz, f"https://{TEST_HOST}/http-fallback-success")
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.asyncio
+async def test_https_only_does_not_fall_back_to_http(service_client):
+    link = f"http://{TEST_HOST}/http-fallback-success"
+
+    resp = await service_client.post("/v1/capture", json={"link": link})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    await wait_for_job_status(service_client, job_id, expected_status="failed")
 
 
 @pytest.mark.asyncio

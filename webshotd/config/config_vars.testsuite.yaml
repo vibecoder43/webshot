@@ -4,6 +4,8 @@ s3_endpoint: "http://localhost:8333"
 s3_region: "us-east-1"
 public_base_url: "http://localhost:8333/webshot"
 s3_use_sts: false
+allowlist_only: false
+https_only: false
 pg_capture_meta_db_dsn:
 pg_shared_state_db_dsn:
 crawler_run_timeout_sec: 10

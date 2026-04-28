@@ -13,7 +13,7 @@ paths:
         Checks whether the provided link matches the current allowlist.
 
         The request body is the raw link text (not JSON). The service normalizes the link
-        (defaulting scheme to http when absent) and checks the derived allowlist prefix.
+        scheme-insensitively and checks the derived allowlist prefix.
       requestBody:
         required: true
         content:
@@ -121,7 +121,7 @@ paths:
         Checks whether the provided link is allowed under the current denylist.
 
         The request body is the raw link text (not JSON). The service normalizes the link
-        (defaulting scheme to http when absent) and checks the derived denylist prefix.
+        scheme-insensitively and checks the derived denylist prefix.
       requestBody:
         required: true
         content:

@@ -43,7 +43,10 @@ components_manager:
           __default__: text/plain
     config:
       url_bytes_max: 32768
-      allowlist_only: false
+      allowlist_only: $allowlist_only
+      allowlist_only#fallback: true
+      https_only: $https_only
+      https_only#fallback: true
       state_dir: $state_dir
       client_ip_source: $client_ip_source
       client_ip_source#fallback: trusted_header

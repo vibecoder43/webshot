@@ -983,6 +983,13 @@ formatHttpsFallbackDiagnostic(const String &seedUrl, const crawler::AttemptSumma
     );
 }
 
+[[nodiscard]] String formatAttemptContextSuffix(const String &attemptContext)
+{
+    if (attemptContext.empty())
+        return ""_t;
+    return text::format(" ({})", attemptContext);
+}
+
 Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlContext &ctx)
 {
     using enum errors::CrawlError;
@@ -1013,50 +1020,44 @@ Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlConte
         return {};
     if (!httpsRun.attempt.exited) {
         const auto attemptContext = crawler::formatAttemptContext(httpsRun.attempt);
-        ctx.failureMessage =
-            String::fromBytes(
-                std::format(
-                    "Failed to crawl {}, child process did not exit cleanly{}", httpsSeedUrl,
-                    attemptContext.empty() ? std::string() : std::format(" ({})", attemptContext)
-                )
-            )
-                .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {}, child process did not exit cleanly{}", httpsSeedUrl,
+            formatAttemptContextSuffix(attemptContext)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
     if (httpsRun.attempt.exitCode == UnderlyingValue(crawler::CrawlerExitCode::kSizeLimit)) {
-        ctx.failureMessage = String::fromBytes(
-                                 std::format(
-                                     "Failed to crawl {} ({})", httpsSeedUrl,
-                                     crawler::formatAttemptStatus("https", httpsRun.attempt)
-                                 )
-        )
-                                 .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {} ({})", httpsSeedUrl,
+            crawler::formatAttemptStatus("https", httpsRun.attempt)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kSizeLimit, .detail = {}});
     }
     if (httpsRun.attempt.exitCode == UnderlyingValue(crawler::CrawlerExitCode::kSuccess) &&
         !httpsRun.attempt.waczExists) {
         const auto attemptContext = crawler::formatAttemptContext(httpsRun.attempt);
-        ctx.failureMessage = String::fromBytes(
-                                 std::format(
-                                     "Failed to crawl {}, no WACZ{}", httpsSeedUrl,
-                                     attemptContext.empty() ? std::string()
-                                                            : std::format(" ({})", attemptContext)
-                                 )
-        )
-                                 .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {}, no WACZ{}", httpsSeedUrl,
+            formatAttemptContextSuffix(attemptContext)
+        );
+        LOG_INFO() << ctx.failureMessage->view();
+        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
+    }
+    if (svcCfg.httpsOnly()) {
+        ctx.failureMessage = text::format(
+            "Failed to crawl {} ({})", ctx.link.normalized(),
+            crawler::formatAttemptStatus("https", httpsRun.attempt)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
     if (!crawler::shouldAttemptHttpFallback(httpsRun.attempt)) {
-        ctx.failureMessage = String::fromBytes(
-                                 std::format(
-                                     "Failed to crawl {} ({})", ctx.link.normalized(),
-                                     crawler::formatAttemptStatus("https", httpsRun.attempt)
-                                 )
-        )
-                                 .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {} ({})", ctx.link.normalized(),
+            crawler::formatAttemptStatus("https", httpsRun.attempt)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
@@ -1073,51 +1074,36 @@ Expected<void, errors::CrawlFailure> Crud::Impl::runCrawlerForContext(CrawlConte
     }
     if (!httpRun.attempt.exited) {
         const auto attemptContext = crawler::formatAttemptContext(httpRun.attempt);
-        ctx.failureMessage =
-            String::fromBytes(
-                std::format(
-                    "Failed to crawl {}, child process did not exit cleanly{}", httpSeedUrl,
-                    attemptContext.empty() ? std::string() : std::format(" ({})", attemptContext)
-                )
-            )
-                .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {}, child process did not exit cleanly{}", httpSeedUrl,
+            formatAttemptContextSuffix(attemptContext)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
     if (httpRun.attempt.exitCode == UnderlyingValue(crawler::CrawlerExitCode::kSizeLimit)) {
-        ctx.failureMessage = String::fromBytes(
-                                 std::format(
-                                     "Failed to crawl {} ({})", httpSeedUrl,
-                                     crawler::formatAttemptStatus("http", httpRun.attempt)
-                                 )
-        )
-                                 .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {} ({})", httpSeedUrl,
+            crawler::formatAttemptStatus("http", httpRun.attempt)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kSizeLimit, .detail = {}});
     }
     if (httpRun.attempt.exitCode == UnderlyingValue(crawler::CrawlerExitCode::kSuccess) &&
         !httpRun.attempt.waczExists) {
         const auto attemptContext = crawler::formatAttemptContext(httpRun.attempt);
-        ctx.failureMessage = String::fromBytes(
-                                 std::format(
-                                     "Failed to crawl {}, no WACZ{}", httpSeedUrl,
-                                     attemptContext.empty() ? std::string()
-                                                            : std::format(" ({})", attemptContext)
-                                 )
-        )
-                                 .expect();
+        ctx.failureMessage = text::format(
+            "Failed to crawl {}, no WACZ{}", httpSeedUrl, formatAttemptContextSuffix(attemptContext)
+        );
         LOG_INFO() << ctx.failureMessage->view();
         return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
     }
 
-    ctx.failureMessage = String::fromBytes(
-                             std::format(
-                                 "Failed to crawl {} ({}, {})", ctx.link.normalized(),
-                                 crawler::formatAttemptStatus("https", httpsRun.attempt),
-                                 crawler::formatAttemptStatus("http", httpRun.attempt)
-                             )
-    )
-                             .expect();
+    ctx.failureMessage = text::format(
+        "Failed to crawl {} ({}, {})", ctx.link.normalized(),
+        crawler::formatAttemptStatus("https", httpsRun.attempt),
+        crawler::formatAttemptStatus("http", httpRun.attempt)
+    );
     LOG_INFO() << ctx.failureMessage->view();
     return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failureMessage});
 }

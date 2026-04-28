@@ -39,6 +39,8 @@ String accessDecisionMessage(AccessDecisionReason reason)
         return "host in denylist"_t;
     case kNotAllowlisted:
         return "link not in allowlist"_t;
+    case kNonHttps:
+        return "non-HTTPS fetch blocked"_t;
     default:
         invariant(""_t);
     }

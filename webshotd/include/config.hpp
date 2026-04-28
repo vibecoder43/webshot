@@ -44,6 +44,9 @@ public:
     /** @return Whether captures must match the allowlist. */
     [[nodiscard]] bool allowlistOnly() const noexcept { return allowlistOnlyValue; }
 
+    /** @return Whether crawler egress is restricted to HTTPS/WSS. */
+    [[nodiscard]] bool httpsOnly() const noexcept { return httpsOnlyValue; }
+
     /** @return Runner-owned state directory for webshotd instance. */
     [[nodiscard]] std::string_view stateDir() const noexcept { return stateDirValue; }
 
@@ -69,6 +72,7 @@ public:
 private:
     usize urlBytesMaxValue;
     bool allowlistOnlyValue;
+    bool httpsOnlyValue;
     std::string stateDirValue;
     ClientIpSource clientIpSourceValue;
     std::string clientIpHeaderNameValue;

@@ -4,6 +4,8 @@ s3_endpoint: "http://localhost:8333"
 s3_region: "us-east-1"
 public_base_url: "http://localhost:8333/webshot"
 s3_use_sts: false
+allowlist_only: false
+https_only: false
 pg_mode: local
 pg_capture_meta_db_dsn: "postgresql://postgres@localhost:5432/webshot_dev_capture_meta_db"
 pg_shared_state_db_dsn: "postgresql://postgres@localhost:5432/webshot_dev_shared_state_db"

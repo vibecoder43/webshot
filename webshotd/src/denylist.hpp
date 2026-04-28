@@ -24,6 +24,7 @@ enum class AccessDecisionReason {
     kAllowed,
     kDenylisted,
     kNotAllowlisted,
+    kNonHttps,
 };
 
 struct [[nodiscard]] AccessDecision final {

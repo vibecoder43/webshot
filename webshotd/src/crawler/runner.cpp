@@ -349,6 +349,12 @@ decodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 [[nodiscard]] Expected<AccessDecision, String>
 evaluateAccessPolicy(Denylist &denylist, const Config &config, const Url &url)
 {
+    using enum AccessDecisionReason;
+
+    const auto href = url.href();
+    if (config.httpsOnly() && (url.isHttp() || href.startsWith("ws://")))
+        return AccessDecision{.allowed = false, .reason = kNonHttps};
+
     const auto link = TRY(linkFromInterceptionUrl(config, url));
     return TRY_ERR_AS(
         denylist.evaluatePrefix(

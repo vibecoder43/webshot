@@ -30,7 +30,7 @@ struct [[nodiscard]] LinkError final {
  * Internal URL manipulation code should use Url directly.
  *
  * Invariants after construction via fromText:
- * - Scheme is http or https (defaulted to http when absent).
+ * - Scheme is http or https (scheme-less input is accepted and normalized).
  * - Username/password are cleared; fragment/hash is stripped.
  * - Port is stripped.
  * - Host is lower-cased, validated, and trailing dot removed; IP literals are rejected.
@@ -44,8 +44,8 @@ struct [[nodiscard]] Link {
      * @brief Construct a Link from normalized UTF-8 text.
      *
      * Accepts text that was already validated and normalized by String;
-     * performs trimming, default scheme insertion (http), validation of scheme
-     * and host, punycode handling, clears credentials and fragment, and
+     * performs trimming, default scheme insertion for parsing, validation of
+     * scheme and host, punycode handling, clears credentials and fragment, and
      * enforces a limit on the total URL length in bytes.
      *
      * @param text Prevalidated, normalized UTF-8 text.

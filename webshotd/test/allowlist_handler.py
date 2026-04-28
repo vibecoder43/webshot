@@ -2,9 +2,8 @@ import pytest
 from helper.constants import TEST_ASSET_HOST, TEST_HOST
 
 
-def _enable_allowlist_only(config_yaml, _config_vars):
-    components = config_yaml["components_manager"]["components"]
-    components["config"]["allowlist_only"] = True
+def _enable_allowlist_only(_config_yaml, config_vars):
+    config_vars["allowlist_only"] = True
 
 
 @pytest.mark.asyncio

@@ -87,6 +87,9 @@ paths:
         succeeds, the stored capture UUID is available in `result.uuid` and may
         refer to an existing capture if the content is deduplicated. Clients should poll
         `/v1/capture/jobs/{uuid}` to observe completion.
+
+        When HTTPS-only mode is enabled, HTTP inputs are accepted but capture attempts
+        and browser subresource fetches use HTTPS/WSS only.
       requestBody:
         required: true
         content:
@@ -95,7 +98,7 @@ paths:
               $ref: '#/components/schemas/CreateCaptureRequest'
             examples:
               full-url:
-                summary: Full HTTP URL
+                summary: Full HTTP/HTTPS URL
                 value:
                   link: https://example.com/path?q=1
               host-without-scheme:
