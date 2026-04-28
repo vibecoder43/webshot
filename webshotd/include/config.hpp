@@ -41,6 +41,9 @@ public:
     /** @return Maximum allowed URL length in bytes. */
     [[nodiscard]] usize urlBytesMax() const noexcept { return urlBytesMaxValue; }
 
+    /** @return Whether captures must match the allowlist. */
+    [[nodiscard]] bool allowlistOnly() const noexcept { return allowlistOnlyValue; }
+
     /** @return Runner-owned state directory for webshotd instance. */
     [[nodiscard]] std::string_view stateDir() const noexcept { return stateDirValue; }
 
@@ -65,6 +68,7 @@ public:
 
 private:
     usize urlBytesMaxValue;
+    bool allowlistOnlyValue;
     std::string stateDirValue;
     ClientIpSource clientIpSourceValue;
     std::string clientIpHeaderNameValue;

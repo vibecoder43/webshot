@@ -125,7 +125,7 @@ paths:
                     error:
                       message: invalid host
         '403':
-          description: Host is denylisted
+          description: Host is denied by denylist or allowlist-only policy
           content:
             application/json:
               schema:
@@ -135,6 +135,10 @@ paths:
                   value:
                     error:
                       message: host in denylist
+                not_allowlisted:
+                  value:
+                    error:
+                      message: link not in allowlist
         '429':
           description: Client IP is still in cooldown.
           headers:

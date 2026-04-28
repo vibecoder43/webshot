@@ -66,20 +66,24 @@ def _should_configure_fresh(build_dir: Path, configure_fingerprint: str) -> bool
 
 def _should_configure_fresh_remote(
     *,
-    shadow_build_dir: Path,
-    shadow_state_dir: Path,
+    remote_config: remote_compile.RemoteCompileConfig,
+    remote_build_dir: str,
     configure_fingerprint: str,
 ) -> bool:
-    fingerprint_path = shadow_state_dir / remote_compile.CONFIGURE_FINGERPRINT_NAME
-    if fingerprint_path.is_file():
-        previous_fingerprint = fingerprint_path.read_text(encoding="utf-8").strip()
+    fingerprint_path = f"{remote_build_dir.rstrip('/')}/{remote_compile.CONFIGURE_FINGERPRINT_NAME}"
+    previous_fingerprint = remote_compile.read_remote_text_file(
+        remote_config,
+        fingerprint_path,
+    )
+    if previous_fingerprint is not None:
+        previous_fingerprint = previous_fingerprint.strip()
         if previous_fingerprint != configure_fingerprint:
             print("Remote CMake configure spec changed; reconfiguring with --fresh")
             return True
         return False
 
-    if _build_dir_has_configure_state(shadow_build_dir):
-        print("Remote shadow build has no configure fingerprint; reconfiguring with --fresh")
+    if remote_compile.remote_build_dir_has_configure_state(remote_config, remote_build_dir):
+        print("Remote build has no configure fingerprint; reconfiguring with --fresh")
         return True
 
     return False
@@ -181,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         remote_config,
     )
     shadow_build_dir: Path | None = None
+    configure_fresh: bool
     if remote_config is None:
         configure_fingerprint_path = build_dir / remote_compile.CONFIGURE_FINGERPRINT_NAME
         configure_fresh = args.force_configure_fresh or _should_configure_fresh(
@@ -191,9 +196,15 @@ def main(argv: list[str] | None = None) -> int:
         shadow_build_dir = remote_compile.shadow_build_dir_for(build_dir, repo_root=repo_root)
         shadow_state_dir = remote_compile.shadow_state_dir_for(build_dir, repo_root=repo_root)
         configure_fingerprint_path = shadow_state_dir / remote_compile.CONFIGURE_FINGERPRINT_NAME
+        remote_build_dir = remote_compile.remote_path_for(
+            build_dir,
+            repo_root=repo_root,
+            remote_root=remote_config.remote_root,
+        )
+        remote_compile.sync_source(remote_config, repo_root)
         configure_fresh = args.force_configure_fresh or _should_configure_fresh_remote(
-            shadow_build_dir=shadow_build_dir,
-            shadow_state_dir=shadow_state_dir,
+            remote_config=remote_config,
+            remote_build_dir=remote_build_dir,
             configure_fingerprint=configure_fingerprint,
         )
 
@@ -219,9 +230,6 @@ def main(argv: list[str] | None = None) -> int:
                 destination=before_log_path,
             )
 
-    if remote_config is not None:
-        remote_compile.sync_source(remote_config, repo_root)
-
     if remote_config is None:
         configure_started_ms = _time_ms()
         configure_exit_code = _run(
@@ -236,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
             repo_root=repo_root,
             remote_root=remote_config.remote_root,
         )
+        remote_configure_fingerprint_path = (
+            f"{remote_build_dir.rstrip('/')}/{remote_compile.CONFIGURE_FINGERPRINT_NAME}"
+        )
         remote_result = remote_compile.run_remote_build(
             remote_config,
             configure_cmd=_configure_command(
@@ -246,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 fresh=configure_fresh,
             ),
+            configure_fingerprint=configure_fingerprint,
+            configure_fingerprint_path=remote_configure_fingerprint_path,
             build_cmd=[
                 "cmake",
                 "--build",

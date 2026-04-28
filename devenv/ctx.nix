@@ -26,6 +26,14 @@
         fileset = lib.fileset.gitTracked projRootPath;
       };
 
+  s6Src = lib.fileset.toSource {
+    root = ../s6;
+    fileset =
+      lib.fileset.intersection
+      (lib.fileset.gitTracked projRootPath)
+      ../s6;
+  };
+
   srcs = import ./srcs.nix {
     inherit inputs lib;
     lockFile = ../devenv.lock;
@@ -87,7 +95,7 @@
   };
 
   drv = import ./drv.nix {
-    inherit inputs nix paths projSrc sets srcs toolchain;
+    inherit inputs nix paths projSrc s6Src sets srcs toolchain;
   };
 
   repoPythonPath = "${drv.repoPy}/bin/python3";

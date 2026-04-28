@@ -85,13 +85,18 @@ std::string Handler::HandleRequestThrow(
         if (!parsed)
             return httpu::respondError(response, kBadRequest, "invalid parameter"_t);
         auto prefixKey = prefix::makePrefixKey(*parsed);
-        const auto allowed = denylist.isAllowedPrefix(prefixKey);
-        if (!allowed) {
+        const auto decision = denylist.evaluatePrefix(
+            prefixKey,
+            config.allowlistOnly() ? AccessPolicyMode::kAllowlistOnly : AccessPolicyMode::kRegular
+        );
+        if (!decision) {
             metrics.accountError(Metrics::Error::kDenylistCheck);
             return httpu::respondError(response, kInternalServerError, "internal server error"_t);
         }
-        if (!*allowed)
-            return httpu::respondError(response, kForbidden, "host in denylist"_t);
+        if (!decision->allowed)
+            return httpu::respondError(
+                response, kForbidden, accessDecisionMessage(decision->reason)
+            );
 
         const auto cooldown = requestSupport.checkClientIpCooldown(request);
         if (!cooldown)

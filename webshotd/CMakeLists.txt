@@ -62,6 +62,7 @@ set(${PROJECT_NAME}_headers
     src/by_prefix_handler.hpp
     src/by_id_handler.hpp
     src/browser_probe_handler.hpp
+    src/allowlist_handler.hpp
     src/disallow_and_purge_handler.hpp
     src/denylist_check_handler.hpp
     src/docs_handler.hpp
@@ -100,6 +101,7 @@ add_library(
   src/job_handler.cpp
   src/by_prefix_handler.cpp
   src/by_id_handler.cpp
+  src/allowlist_handler.cpp
   src/disallow_and_purge_handler.cpp
   src/denylist_check_handler.cpp
   src/docs_handler.cpp

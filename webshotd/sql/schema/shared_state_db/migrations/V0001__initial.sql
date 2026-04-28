@@ -14,6 +14,20 @@ on host_denylist (created_at desc);
 create index if not exists host_denylist_prefix_tree_gist_idx
 on host_denylist using gist (prefix_tree);
 
+create table host_allowlist (
+    prefix_key text collate "C" not null,
+    prefix_tree ltree not null,
+    created_at timestamptz not null default now(),
+    reason text not null,
+    constraint host_allowlist_pk primary key (prefix_key),
+    constraint host_allowlist_prefix_tree_uniq unique (prefix_tree)
+);
+
+create index if not exists host_allowlist_created_at_idx
+on host_allowlist (created_at desc);
+create index if not exists host_allowlist_prefix_tree_gist_idx
+on host_allowlist using gist (prefix_tree);
+
 create table crawl_job (
     id uuid primary key,
     link text collate "C" not null,

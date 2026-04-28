@@ -266,32 +266,32 @@ decodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 }
 
 [[nodiscard]] String resolveRedirectTargetUrl(
-    const String &baseUrl, const String &requestUrl,
+    const String &baseText, const String &requestText,
     const std::optional<dto::NetworkResponse> &redirectResponse
 )
 {
     if (!redirectResponse)
-        return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(requestText);
 
-    const auto headers = normalizeHeadersForCapture(redirectResponse->headers, baseUrl);
+    const auto headers = normalizeHeadersForCapture(redirectResponse->headers, baseText);
     const auto locationIt = headers.find("location");
     if (locationIt == std::end(headers) || locationIt->second.empty())
-        return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(requestText);
 
     const auto location = String::fromBytes(locationIt->second);
     if (!location)
-        return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(requestText);
     if (const auto absoluteLocation = Url::fromText(*location))
         return canonicalizeCapturedUrl(absoluteLocation->href());
 
-    const auto origin = buildUrlOrigin(baseUrl);
+    const auto origin = buildUrlOrigin(baseText);
     if (!origin)
-        return canonicalizeCapturedUrl(requestUrl);
+        return canonicalizeCapturedUrl(requestText);
 
     if (location->startsWith("//")) {
-        const auto maybeBaseUrl = Url::fromText(baseUrl);
+        const auto maybeBaseUrl = Url::fromText(baseText);
         if (!maybeBaseUrl)
-            return canonicalizeCapturedUrl(requestUrl);
+            return canonicalizeCapturedUrl(requestText);
         return canonicalizeCapturedUrl(
             text::format("{}:{}", maybeBaseUrl->isHttps() ? "https" : "http", *location)
         );
@@ -301,64 +301,62 @@ decodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
         return canonicalizeCapturedUrl(text::format("{}{}", *origin, *location));
 
     if (location->startsWith('?')) {
-        const auto maybeBaseUrl = Url::fromText(baseUrl);
+        const auto maybeBaseUrl = Url::fromText(baseText);
         if (!maybeBaseUrl)
-            return canonicalizeCapturedUrl(requestUrl);
+            return canonicalizeCapturedUrl(requestText);
         return canonicalizeCapturedUrl(
             maybeBaseUrl->withoutSearch().withoutHash().withSearch(*location).href()
         );
     }
 
-    return canonicalizeCapturedUrl(requestUrl);
+    return canonicalizeCapturedUrl(requestText);
 }
 
-[[nodiscard]] Expected<std::optional<Link>, String>
-normalizeInterceptedLinkForDenylist(const Config &config, const String &requestUrl)
+[[nodiscard]] Expected<Link, String> linkFromInterceptionUrl(const Config &config, const Url &url)
 {
-    if (requestUrl.startsWith("ws://")) {
-        const auto parsed = Url::fromText(requestUrl);
-        if (!parsed)
-            return {};
-        const auto link = Link::fromText(
-            parsed->withProtocol("http"_t).href(), config.urlBytesMax()
+    const auto href = url.href();
+    if (href.startsWith("ws://"))
+        return TRY_MAP_ERR(
+            Link::fromText(url.withProtocol("http"_t).href(), config.urlBytesMax()),
+            ([&](const auto &) {
+                return text::format("failed to normalize intercepted request url {}", href);
+            })
         );
-        if (!link)
-            return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
-        return *link;
-    }
-    if (requestUrl.startsWith("wss://")) {
-        const auto parsed = Url::fromText(requestUrl);
-        if (!parsed)
-            return {};
-        const auto link = Link::fromText(
-            parsed->withProtocol("https"_t).href(), config.urlBytesMax()
+    if (href.startsWith("wss://"))
+        return TRY_MAP_ERR(
+            Link::fromText(url.withProtocol("https"_t).href(), config.urlBytesMax()),
+            ([&](const auto &) {
+                return text::format("failed to normalize intercepted request url {}", href);
+            })
         );
-        if (!link)
-            return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
-        return *link;
-    }
 
-    const auto parsed = Url::fromText(requestUrl);
-    if (!parsed || !parsed->isHttpOrHttps())
-        return {};
-
-    const auto link = Link::fromText(requestUrl, config.urlBytesMax());
-    if (!link)
-        return Unex(text::format("failed to normalize intercepted request url {}", requestUrl));
-    return *link;
+    return TRY_MAP_ERR(
+        Link::fromText(href, config.urlBytesMax()), ([&](const auto &) {
+            return text::format("failed to normalize intercepted request url {}", href);
+        })
+    );
 }
 
-[[nodiscard]] Expected<bool, String>
-isAllowedByDenylist(Denylist &denylist, const Config &config, const String &requestUrl)
+[[nodiscard]] std::optional<Url> accessPolicyUrlFromText(const String &text)
 {
-    const auto normalized = TRY(normalizeInterceptedLinkForDenylist(config, requestUrl));
-    if (!normalized)
-        return true;
+    auto url = TRY(Url::fromText(text));
+    const auto href = url.href();
+    if (url.isHttpOrHttps() || href.startsWith("ws://") || href.startsWith("wss://"))
+        return url;
+    return {};
+}
 
-    const auto allowed = denylist.isAllowedPrefix(prefix::makePrefixKey(*normalized));
-    if (!allowed)
-        return Unex("denylist check failed during fetch interception"_t);
-    return *allowed;
+[[nodiscard]] Expected<AccessDecision, String>
+evaluateAccessPolicy(Denylist &denylist, const Config &config, const Url &url)
+{
+    const auto link = TRY(linkFromInterceptionUrl(config, url));
+    return TRY_ERR_AS(
+        denylist.evaluatePrefix(
+            prefix::makePrefixKey(link),
+            config.allowlistOnly() ? AccessPolicyMode::kAllowlistOnly : AccessPolicyMode::kRegular
+        ),
+        "access policy check failed during fetch interception"_t
+    );
 }
 
 [[nodiscard]] std::vector<dto::FetchHeaderEntry> buildBlockedFetchHeaders(usize bodyBytes)
@@ -1631,19 +1629,14 @@ private:
             return;
         }
 
-        const auto requestUrl = String::fromBytes(paused->request.url);
-        if (!requestUrl) {
+        const auto requestText = String::fromBytes(paused->request.url);
+        if (!requestText) {
             noteInterceptionFailure("Fetch.requestPaused contained invalid request url"_t);
             return;
         }
 
-        const auto allowed = isAllowedByDenylist(denylist, config, *requestUrl);
-        if (!allowed) {
-            noteInterceptionFailure(allowed.error());
-            return;
-        }
-
-        if (*allowed) {
+        const auto url = accessPolicyUrlFromText(*requestText);
+        if (!url) {
             dto::FetchContinueRequestParams params;
             params.requestId = paused->requestId;
             const auto continued = cdpSession().sendVoid("Fetch.continueRequest"_t, params);
@@ -1654,12 +1647,29 @@ private:
             return;
         }
 
-        static constexpr std::string_view kBody = "Blocked by webshot denylist\n";
+        const auto decision = evaluateAccessPolicy(denylist, config, *url);
+        if (!decision) {
+            noteInterceptionFailure(decision.error());
+            return;
+        }
+
+        if (decision->allowed) {
+            dto::FetchContinueRequestParams params;
+            params.requestId = paused->requestId;
+            const auto continued = cdpSession().sendVoid("Fetch.continueRequest"_t, params);
+            if (!continued)
+                noteInterceptionFailure(
+                    describeCdpFailure("Fetch.continueRequest failed"_t, continued.error())
+                );
+            return;
+        }
+
+        const auto body = text::format("{}\n", accessDecisionMessage(decision->reason));
         dto::FetchFulfillRequestParams params{
             .requestId = paused->requestId,
             .responseCode = 403,
-            .responseHeaders = buildBlockedFetchHeaders(kBody.size()),
-            .body = us::crypto::base64::Base64Encode(kBody),
+            .responseHeaders = buildBlockedFetchHeaders(body.sizeBytes()),
+            .body = us::crypto::base64::Base64Encode(toBytes(body)),
             .responsePhrase = "Forbidden",
         };
         const auto fulfilled = cdpSession().sendVoid("Fetch.fulfillRequest"_t, params);

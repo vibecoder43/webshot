@@ -1,6 +1,6 @@
 {
   pkgs,
-  projSrc,
+  s6Src,
   python ? pkgs.python3,
 }: let
   pyPkgs = python.pkgs;
@@ -40,7 +40,7 @@
     pyproject = false;
     dontUnpack = true;
 
-    src = projSrc + "/s6";
+    src = s6Src;
     propagatedBuildInputs = [
       pyPkgs.minio
       pyPkgs.pyyaml

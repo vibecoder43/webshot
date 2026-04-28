@@ -13,6 +13,11 @@ from helper.waiters import wait_for_job_status, wait_for_purge
 from minio import Minio
 
 
+def _enable_allowlist_only(config_yaml, _config_vars):
+    components = config_yaml["components_manager"]["components"]
+    components["config"]["allowlist_only"] = True
+
+
 def _assert_missing_job_fields(job: dict, *names: str) -> None:
     for name in names:
         assert name not in job
@@ -490,6 +495,70 @@ async def test_denylist_blocks_subresource_fetch(
 
 
 @pytest.mark.asyncio
+async def test_regular_mode_allowlist_overrides_denylisted_subresource_fetch(
+    service_client, monitor_client, browser_probe
+):
+    script = f"https://{TEST_HOST}/denylist/script.js"
+
+    allow_resp = await monitor_client.post("/v1/allowlist/add", params={"link": script})
+    assert allow_resp.status == 204
+
+    deny_resp = await monitor_client.post(
+        "/v1/denylist/disallow_and_purge",
+        params={"host": script},
+    )
+    assert deny_resp.status == 202
+
+    link = f"https://{TEST_HOST}/with-subresource-denylist"
+    job_id, _job = await _capture_and_wait(service_client, link)
+
+    replay = await _probe_replay(browser_probe, job_id)
+    assert any("denylist" in entry for entry in replay["console"])
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.asyncio
+async def test_allowlist_only_fetches_allowlisted_subresources(
+    service_client, monitor_client, browser_probe, download_wacz
+):
+    seed = f"https://{TEST_HOST}/with-subresource"
+    style = f"https://{TEST_HOST}/style.css"
+    script = f"https://{TEST_HOST}/script.js"
+    for link in [seed, style, script]:
+        resp = await monitor_client.post("/v1/allowlist/add", params={"link": link})
+        assert resp.status == 204
+
+    job_id, _job = await _capture_and_wait(service_client, seed)
+
+    replay = await _probe_replay(browser_probe, job_id)
+    assert any("ok" in entry for entry in replay["console"])
+
+    wacz = await download_wacz(job_id)
+    assert 200 in _wacz_cdxj_statuses_for_url(wacz, style)
+    assert 200 in _wacz_cdxj_statuses_for_url(wacz, script)
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.asyncio
+async def test_allowlist_only_blocks_non_allowlisted_subresources(
+    service_client, monitor_client, browser_probe, download_wacz
+):
+    seed = f"https://{TEST_HOST}/with-https-asset-subresource"
+    asset_script = f"https://{TEST_ASSET_HOST}/asset.js"
+
+    resp = await monitor_client.post("/v1/allowlist/add", params={"link": seed})
+    assert resp.status == 204
+
+    job_id, _job = await _capture_and_wait(service_client, seed)
+
+    replay = await _probe_replay(browser_probe, job_id)
+    assert not any("asset" in entry for entry in replay["console"])
+
+    wacz = await download_wacz(job_id)
+    assert 403 in _wacz_cdxj_statuses_for_url(wacz, asset_script)
+
+
+@pytest.mark.asyncio
 async def test_capture_fetches_https_subresource_assets(
     service_client, browser_probe, download_wacz
 ):
@@ -524,6 +593,28 @@ async def test_denylist_blocks_https_subresource_fetch(
 
     replay = await _probe_replay(browser_probe, job_id)
     assert any("asset-denylist" in entry for entry in replay["console"])
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.asyncio
+async def test_allowlist_only_blocks_non_allowlisted_redirect_target(
+    service_client, monitor_client
+):
+    seed = f"https://{TEST_HOST}/redirect-seed"
+
+    resp = await monitor_client.post("/v1/allowlist/add", params={"link": seed})
+    assert resp.status == 204
+
+    resp = await service_client.post("/v1/capture", json={"link": seed})
+    assert resp.status == 202
+    job_id = resp.json()["uuid"]
+
+    job = await wait_for_job_status(service_client, job_id, expected_status="failed")
+
+    assert "started_at" in job
+    assert "finished_at" in job
+    _assert_missing_job_fields(job, "result", "result_created_at")
+    assert job["error"]["error"]["message"] == "capture failed"
 
 
 @pytest.mark.asyncio

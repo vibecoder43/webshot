@@ -43,6 +43,7 @@ components_manager:
           __default__: text/plain
     config:
       url_bytes_max: 32768
+      allowlist_only: false
       state_dir: $state_dir
       client_ip_source: $client_ip_source
       client_ip_source#fallback: trusted_header
@@ -87,6 +88,27 @@ components_manager:
       task_processor: main-task-processor
       request-timeout-ms: 2000
       max_request_size: &max-data-per-request 65536
+    allowlist_check:
+      path: /v1/allowlist/check
+      method: POST
+      monitor-handler: true
+      task_processor: main-task-processor
+      request-timeout-ms: 2000
+      max_request_size: *max-data-per-request
+    allowlist_add:
+      path: /v1/allowlist/add
+      method: POST
+      monitor-handler: true
+      task_processor: main-task-processor
+      request-timeout-ms: 2000
+      max_request_size: *max-data-per-request
+    allowlist_remove:
+      path: /v1/allowlist/remove
+      method: POST
+      monitor-handler: true
+      task_processor: main-task-processor
+      request-timeout-ms: 2000
+      max_request_size: *max-data-per-request
     handler:
       path: /v1/capture
       method: GET,POST

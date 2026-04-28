@@ -32,6 +32,7 @@ Config::Config(
 )
     : us::components::ComponentBase(config, context),
       urlBytesMaxValue(usize{config["url_bytes_max"].As<size_t>()}),
+      allowlistOnlyValue(config["allowlist_only"].As<bool>()),
       stateDirValue(config["state_dir"].As<std::string>()), clientIpSourceValue([&config]() {
           const auto source = config["client_ip_source"].As<std::string>();
           if (source == "peer")
@@ -74,6 +75,9 @@ properties:
     minimum: 1
     description: Maximum allowed URL length in bytes
     defaultDescription: "32768"
+  allowlist_only:
+    type: boolean
+    description: Whether capture admission and browser fetches require allowlist membership
   state_dir:
     type: string
     description: Runner-owned state directory for this webshotd instance

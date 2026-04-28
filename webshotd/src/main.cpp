@@ -2,6 +2,7 @@
  * @file
  * @brief Service entry point wiring userver components and HTTP handlers.
  */
+#include "allowlist_handler.hpp"
 #include "by_id_handler.hpp"
 #include "by_prefix_handler.hpp"
 #include "config.hpp"
@@ -54,6 +55,9 @@ int main(int argc, char *argv[])
             .Append<v1::JobHandler>()
             .Append<v1::DisallowAndPurgeHandler>()
             .Append<v1::DenylistCheckHandler>()
+            .Append<v1::AllowlistCheckHandler>()
+            .Append<v1::AllowlistAddHandler>()
+            .Append<v1::AllowlistRemoveHandler>()
             .Append<v1::ById>()
             .Append<v1::DocsHandler>()
             .Append<v1::DocsHandler>("docs_admin")

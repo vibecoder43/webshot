@@ -25,9 +25,11 @@ devenv_nar_hash="${devenv_pin[3]}"
 [[ -n "${devenv_nar_hash}" ]] || die "devenv.lock is missing nodes.devenv.locked.narHash"
 [[ "${devenv_owner}/${devenv_repo}" == "cachix/devenv" ]] || die "devenv.lock bootstrap target must stay on cachix/devenv"
 
+# The lock node is the module subtree, but the CLI lives at the same revision's
+# root flake. Build the installable explicitly without the node's dir field.
 devenv_installable="github:${devenv_owner}/${devenv_repo}/${devenv_ref}?narHash=${devenv_nar_hash}#devenv"
 
-devenv_args=(--no-tui)
+devenv_args=(--no-tui --no-eval-cache --refresh-task-cache)
 
 # CI logs often hide the underlying Nix eval error; opt into verbose tracing when requested.
 if [[ "${DEVENV_CI_DEBUG:-}" == "1" ]]; then

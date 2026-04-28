@@ -93,7 +93,8 @@ def sync_source(config: RemoteCompileConfig, repo_root: Path) -> None:
         "-a",
         "--delete",
         "--filter=:- .gitignore",
-        "--exclude=/.git/",
+        # Keep .git in the remote mirror: devenv/ctx.nix uses
+        # lib.fileset.gitTracked, which requires a Git working tree.
         *config.rsync_args,
         _with_trailing_slash(repo_root.as_posix()),
         f"{config.host}:{_with_trailing_slash(config.remote_root)}",
@@ -154,10 +155,43 @@ def sync_build_file(
     _ensure_ok(_run(cmd), action=f"remote build file sync for {relative_path}")
 
 
+def read_remote_text_file(config: RemoteCompileConfig, path: str) -> str | None:
+    if not _remote_path_exists(config, path):
+        return None
+
+    cmd = [
+        "ssh",
+        *config.ssh_args,
+        config.host,
+        "cat",
+        "--",
+        path,
+    ]
+    completed = _run(cmd)
+    _ensure_ok(completed, action=f"remote file read for {path}")
+    return completed.stdout
+
+
+def remote_build_dir_has_configure_state(
+    config: RemoteCompileConfig,
+    remote_build_dir: str,
+) -> bool:
+    build_dir = _with_trailing_slash(remote_build_dir)
+    return _remote_path_exists(
+        config,
+        f"{build_dir}CMakeCache.txt",
+    ) or _remote_path_exists(
+        config,
+        f"{build_dir}CMakeFiles",
+    )
+
+
 def run_remote_build(
     config: RemoteCompileConfig,
     *,
     configure_cmd: list[str],
+    configure_fingerprint: str,
+    configure_fingerprint_path: str,
     build_cmd: list[str],
 ) -> RemoteBuildResult:
     remote_script = " ".join(
@@ -167,7 +201,12 @@ def run_remote_build(
             "exec ./delegated_devenv.sh",
         ]
     )
-    inner_script = _remote_build_script(configure_cmd=configure_cmd, build_cmd=build_cmd)
+    inner_script = _remote_build_script(
+        configure_cmd=configure_cmd,
+        configure_fingerprint=configure_fingerprint,
+        configure_fingerprint_path=configure_fingerprint_path,
+        build_cmd=build_cmd,
+    )
     completed = subprocess.Popen(
         ["ssh", *config.ssh_args, config.host, "bash", "-lc", remote_script],
         stdin=subprocess.PIPE,
@@ -268,7 +307,13 @@ def _relative_to_repo(path: Path, *, repo_root: Path) -> Path:
         raise RuntimeError(f"path is outside repo root and cannot be shadow-synced: {path}") from e
 
 
-def _remote_build_script(*, configure_cmd: list[str], build_cmd: list[str]) -> str:
+def _remote_build_script(
+    *,
+    configure_cmd: list[str],
+    configure_fingerprint: str,
+    configure_fingerprint_path: str,
+    build_cmd: list[str],
+) -> str:
     return "\n".join(
         [
             "set -uo pipefail",
@@ -277,6 +322,13 @@ def _remote_build_script(*, configure_cmd: list[str], build_cmd: list[str]) -> s
             shlex.join(configure_cmd),
             "_configure_exit_code=$?",
             "_configure_finished=$(_time_ms)",
+            "if (( _configure_exit_code == 0 )); then",
+            f'  mkdir -p -- "$(dirname -- {shlex.quote(configure_fingerprint_path)})" '
+            "&& printf '%s\\n' "
+            f"{shlex.quote(configure_fingerprint)} "
+            f"> {shlex.quote(configure_fingerprint_path)}",
+            "  _configure_exit_code=$?",
+            "fi",
             "_build_exit_code=0",
             "_build_started=$(_time_ms)",
             "if (( _configure_exit_code == 0 )); then",
@@ -342,16 +394,25 @@ def _ensure_remote_dir(config: RemoteCompileConfig, path: str) -> None:
 
 
 def _remote_path_exists(config: RemoteCompileConfig, path: str) -> bool:
+    return _remote_path_matches(config, "-e", path)
+
+
+def _remote_path_matches(config: RemoteCompileConfig, test_flag: str, path: str) -> bool:
     cmd = [
         "ssh",
         *config.ssh_args,
         config.host,
         "test",
-        "-e",
-        "--",
+        test_flag,
         path,
     ]
-    return _run(cmd).returncode == 0
+    completed = _run(cmd)
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    _ensure_ok(completed, action=f"remote path check {test_flag} for {path}")
+    raise AssertionError("unreachable")
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
