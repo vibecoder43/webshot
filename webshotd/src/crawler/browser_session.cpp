@@ -27,11 +27,12 @@
 #include <utility>
 #include <vector>
 
+#include <userver/engine/async.hpp>
 #include <userver/engine/sleep.hpp>
 #include <userver/fs/blocking/file_descriptor.hpp>
-#include <userver/fs/blocking/read.hpp>
 #include <userver/fs/blocking/temp_directory.hpp>
-#include <userver/fs/blocking/write.hpp>
+#include <userver/fs/read.hpp>
+#include <userver/fs/write.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
 #include <userver/utils/boost_uuid4.hpp>
@@ -104,9 +105,9 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
     us::utils::AbortWithStacktrace(std::string(message));
 }
 
-[[nodiscard]] std::string readSelfCgroupV2Path()
+[[nodiscard]] std::string readSelfCgroupV2Path(eng::TaskProcessor &fsTaskProcessor)
 {
-    const auto raw = us::fs::blocking::ReadFileContents("/proc/self/cgroup");
+    const auto raw = us::fs::ReadFileContents(fsTaskProcessor, "/proc/self/cgroup");
     std::string_view remaining{raw};
     while (true) {
         const auto next = remaining.find('\n');
@@ -177,13 +178,15 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
         .expect();
 }
 
-[[nodiscard]] Expected<void, String>
-copyFileContents(const std::string &sourcePath, const std::string &destinationPath)
+[[nodiscard]] Expected<void, String> copyFileContents(
+    eng::TaskProcessor &fsTaskProcessor, const std::string &sourcePath,
+    const std::string &destinationPath
+)
 {
-    if (!us::fs::blocking::FileExists(sourcePath))
+    if (!us::fs::FileExists(fsTaskProcessor, sourcePath))
         return Unex(text::format("source file does not exist: {}", sourcePath));
-    us::fs::blocking::RewriteFileContents(
-        destinationPath, us::fs::blocking::ReadFileContents(sourcePath)
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, destinationPath, us::fs::ReadFileContents(fsTaskProcessor, sourcePath)
     );
     return {};
 }
@@ -257,31 +260,33 @@ void denyBrowserSyscall(SeccompFilter &filter, const char *name)
     invariant(rc == 0, text::format("failed to deny browser syscall {}: {}", name, rc));
 }
 
-void writeBrowserSeccompPolicy(const std::string &path)
+void writeBrowserSeccompPolicy(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
-    auto filter = SeccompFilter{SCMP_ACT_ALLOW};
-    for (const auto *name : std::array{
-             "bpf",
-             "perf_event_open",
-             "ptrace",
-             "process_vm_readv",
-             "process_vm_writev",
-             "add_key",
-             "request_key",
-             "keyctl",
-         }) {
-        denyBrowserSyscall(filter, name);
-    }
+    eng::AsyncNoSpan(fsTaskProcessor, [&path] {
+        auto filter = SeccompFilter{SCMP_ACT_ALLOW};
+        for (const auto *name : std::array{
+                 "bpf",
+                 "perf_event_open",
+                 "ptrace",
+                 "process_vm_readv",
+                 "process_vm_writev",
+                 "add_key",
+                 "request_key",
+                 "keyctl",
+             }) {
+            denyBrowserSyscall(filter, name);
+        }
 
-    auto fd = us::fs::blocking::FileDescriptor::Open(
-        path, us::fs::blocking::OpenMode{
-                  us::fs::blocking::OpenFlag::kWrite,
-                  us::fs::blocking::OpenFlag::kCreateIfNotExists,
-                  us::fs::blocking::OpenFlag::kTruncate,
-              }
-    );
-    const auto rc = seccomp_export_bpf(filter.get(), fd.GetNative());
-    invariant(rc == 0, text::format("failed to export browser seccomp policy: {}", rc));
+        auto fd = us::fs::blocking::FileDescriptor::Open(
+            path, us::fs::blocking::OpenMode{
+                      us::fs::blocking::OpenFlag::kWrite,
+                      us::fs::blocking::OpenFlag::kCreateIfNotExists,
+                      us::fs::blocking::OpenFlag::kTruncate,
+                  }
+        );
+        const auto rc = seccomp_export_bpf(filter.get(), fd.GetNative());
+        invariant(rc == 0, text::format("failed to export browser seccomp policy: {}", rc));
+    }).Get();
 }
 
 struct [[nodiscard]] BrowserPaths final {
@@ -312,30 +317,31 @@ struct [[nodiscard]] BrowserPaths final {
     std::string localFixtureTrustDbDir;
 };
 
-[[nodiscard]] BrowserPaths createBrowserPaths(std::string_view browserRunsRoot)
+[[nodiscard]] BrowserPaths
+createBrowserPaths(eng::TaskProcessor &fsTaskProcessor, std::string_view browserRunsRoot)
 {
     auto tempRoot = normalizeDirPath(std::string(browserRunsRoot));
-    us::fs::blocking::CreateDirectories(tempRoot);
+    us::fs::CreateDirectories(fsTaskProcessor, tempRoot);
 
     const auto runId = toBytes(us::utils::generators::GenerateBoostUuid());
-    const auto rootDir = std::format("{}/browser-{}", tempRoot, runId);
+    const auto rootDir = std::format("{}/browser_{}", tempRoot, runId);
     BrowserPaths paths{
         .rootDir = rootDir,
         .runId = runId,
         .userDataDir = rootDir + "/profile",
         .userDataTrustDbDir = rootDir + "/profile/.pki/nssdb",
-        .xdgConfigHome = rootDir + "/xdg-config",
-        .xdgCacheHome = rootDir + "/xdg-cache",
+        .xdgConfigHome = rootDir + "/xdg_config",
+        .xdgCacheHome = rootDir + "/xdg_cache",
         .crashpadDir = rootDir + "/crashpad",
         .proxySocketPath = rootDir + "/proxy.sock",
         .cdpSocketPath = rootDir + "/cdp.sock",
         .websocketPathFilePath = rootDir + "/websocket_path.txt",
         .netlogPath = rootDir + "/netlog.json",
-        .cdpTracePath = rootDir + "/cdp-trace.jsonl",
+        .cdpTracePath = rootDir + "/cdp_trace.jsonl",
         .stdoutLogPath = rootDir + "/stdout.log",
         .stderrLogPath = rootDir + "/stderr.log",
-        .chromiumStderrLogPath = rootDir + "/chromium-stderr.log",
-        .bwrapStatusFilePath = rootDir + "/bwrap-status.jsonl",
+        .chromiumStderrLogPath = rootDir + "/chromium_stderr.log",
+        .bwrapStatusFilePath = rootDir + "/bwrap_status.jsonl",
         .seccompBpfPath = rootDir + "/seccomp.bpf",
         .phaseFilePath = rootDir + "/phase.txt",
         .devNullPath = rootDir + "/devnull",
@@ -346,9 +352,11 @@ struct [[nodiscard]] BrowserPaths final {
         .hostsPath = rootDir + "/etc/hosts",
         .localFixtureTrustDbDir = rootDir + "/.pki/nssdb",
     };
-    us::fs::blocking::CreateDirectories(paths.rootDir);
-    us::fs::blocking::RewriteFileContents(rootDir + "/browser_sandbox.sh", browserSandboxScript());
-    writeBrowserSeccompPolicy(paths.seccompBpfPath);
+    us::fs::CreateDirectories(fsTaskProcessor, paths.rootDir);
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, rootDir + "/browser_sandbox.sh", browserSandboxScript()
+    );
+    writeBrowserSeccompPolicy(fsTaskProcessor, paths.seccompBpfPath);
 
     for (const auto &path : std::array{
              paths.userDataDir,
@@ -357,29 +365,36 @@ struct [[nodiscard]] BrowserPaths final {
              paths.crashpadDir,
              paths.etcDir,
          }) {
-        us::fs::blocking::CreateDirectories(path);
+        us::fs::CreateDirectories(fsTaskProcessor, path);
     }
     for (const auto &path :
          std::array{paths.phaseFilePath, paths.cdpTracePath, paths.devNullPath}) {
-        us::fs::blocking::RewriteFileContents(path, {});
+        us::fs::RewriteFileContents(fsTaskProcessor, path, {});
     }
-    us::fs::blocking::RewriteFileContents(
-        paths.passwdPath, "root:x:0:0:root:/browser:/bin/sh\n"
-                          "webshot:x:1000:1000:webshot:/browser:/bin/sh\n"
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, paths.passwdPath,
+        "root:x:0:0:root:/browser:/bin/sh\n"
+        "webshot:x:1000:1000:webshot:/browser:/bin/sh\n"
     );
-    us::fs::blocking::RewriteFileContents(paths.groupPath, "root:x:0:\nwebshot:x:1000:\n");
-    us::fs::blocking::RewriteFileContents(
-        paths.nsswitchConfPath, "passwd: files\ngroup: files\nhosts: files dns\n"
+    us::fs::RewriteFileContents(fsTaskProcessor, paths.groupPath, "root:x:0:\nwebshot:x:1000:\n");
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, paths.nsswitchConfPath, "passwd: files\ngroup: files\nhosts: files dns\n"
     );
-    us::fs::blocking::RewriteFileContents(paths.hostsPath, "127.0.0.1 localhost\n::1 localhost\n");
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, paths.hostsPath, "127.0.0.1 localhost\n::1 localhost\n"
+    );
     return paths;
 }
 
 [[nodiscard]] Expected<us::fs::blocking::FileDescriptor, String>
-openBrowserRunDir(const BrowserPaths &paths)
+openBrowserRunDir(eng::TaskProcessor &fsTaskProcessor, const BrowserPaths &paths)
 {
     try {
-        return us::fs::blocking::FileDescriptor::OpenDirectory(paths.rootDir);
+        return eng::AsyncNoSpan(
+                   fsTaskProcessor, [&paths] {
+                       return us::fs::blocking::FileDescriptor::OpenDirectory(paths.rootDir);
+                   }
+        ).Get();
     } catch (const std::runtime_error &e) {
         return Unex(text::format("failed to open browser run dir {}: {}", paths.rootDir, e.what()));
     }
@@ -393,14 +408,16 @@ browserRunFdPath(const us::fs::blocking::FileDescriptor &dirFd, std::string_view
     return std::format("/proc/self/fd/{}/{}", dirFd.GetNative(), fileName);
 }
 
-[[nodiscard]] Expected<void, String>
-copyLocalFixtureTrustDb(const std::string &sourcePath, const std::string &destinationPath)
+[[nodiscard]] Expected<void, String> copyLocalFixtureTrustDb(
+    eng::TaskProcessor &fsTaskProcessor, const std::string &sourcePath,
+    const std::string &destinationPath
+)
 {
-    us::fs::blocking::CreateDirectories(destinationPath);
+    us::fs::CreateDirectories(fsTaskProcessor, destinationPath);
 
     for (const auto &fileName : {"cert9.db", "key4.db", "pkcs11.txt"}) {
         auto copied = copyFileContents(
-            sourcePath + "/" + fileName, destinationPath + "/" + fileName
+            fsTaskProcessor, sourcePath + "/" + fileName, destinationPath + "/" + fileName
         );
         if (!copied)
             return copied;
@@ -408,25 +425,28 @@ copyLocalFixtureTrustDb(const std::string &sourcePath, const std::string &destin
     return {};
 }
 
-[[nodiscard]] Expected<void, String>
-stageLocalFixtureTrustDb(const BrowserPaths &paths, const std::string &sourcePath)
+[[nodiscard]] Expected<void, String> stageLocalFixtureTrustDb(
+    eng::TaskProcessor &fsTaskProcessor, const BrowserPaths &paths, const std::string &sourcePath
+)
 {
-    us::fs::blocking::CreateDirectories(paths.rootDir + "/.pki");
-    us::fs::blocking::CreateDirectories(paths.userDataDir + "/.pki");
+    us::fs::CreateDirectories(fsTaskProcessor, paths.rootDir + "/.pki");
+    us::fs::CreateDirectories(fsTaskProcessor, paths.userDataDir + "/.pki");
 
-    TRY(copyLocalFixtureTrustDb(sourcePath, paths.localFixtureTrustDbDir));
-    TRY(copyLocalFixtureTrustDb(sourcePath, paths.userDataTrustDbDir));
+    TRY(copyLocalFixtureTrustDb(fsTaskProcessor, sourcePath, paths.localFixtureTrustDbDir));
+    TRY(copyLocalFixtureTrustDb(fsTaskProcessor, sourcePath, paths.userDataTrustDbDir));
     return {};
 }
 
-[[nodiscard]] Expected<void, String>
-stageLocalFixtureTrustDbIfNeeded(const BrowserPaths &paths, const BrowserSessionConfig &config)
+[[nodiscard]] Expected<void, String> stageLocalFixtureTrustDbIfNeeded(
+    eng::TaskProcessor &fsTaskProcessor, const BrowserPaths &paths,
+    const BrowserSessionConfig &config
+)
 {
     if (!config.enableLocalFixtureRewrite)
         return {};
 
     TRY_MAP_ERR(
-        stageLocalFixtureTrustDb(paths, config.localFixtureTrustDbSourcePath),
+        stageLocalFixtureTrustDb(fsTaskProcessor, paths, config.localFixtureTrustDbSourcePath),
         [](auto error) { return text::format("failed to stage local fixture trust db: {}", error); }
     );
     return {};
@@ -440,18 +460,22 @@ void truncateLogBuffer(std::string &value)
     value.erase(0, numericCast<size_t>(dropBytes));
 }
 
-[[nodiscard]] std::string readLogTail(const std::string &path)
+[[nodiscard]] std::string readLogTail(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
-    if (!us::fs::blocking::FileExists(path))
+    if (!us::fs::FileExists(fsTaskProcessor, path))
         return {};
-    auto value = us::fs::blocking::ReadFileContents(path);
+    auto value = us::fs::ReadFileContents(fsTaskProcessor, path);
     truncateLogBuffer(value);
     return value;
 }
 
-void writePhaseMarker(const std::string &path, std::string_view phase)
+void writePhaseMarker(
+    eng::TaskProcessor &fsTaskProcessor, const std::string &path, std::string_view phase
+)
 {
-    us::fs::blocking::RewriteFileContents(path, std::format("{} {}\n", currentTimestamp(), phase));
+    us::fs::RewriteFileContents(
+        fsTaskProcessor, path, std::format("{} {}\n", currentTimestamp(), phase)
+    );
 }
 
 [[nodiscard]] std::string formatBrowserLogs(const std::pair<std::string, std::string> &logs)
@@ -480,31 +504,36 @@ void appendDiagnosticField(String &out, const String &label, const String &value
     out += text::format("{}={}", label, value);
 }
 
-[[nodiscard]] std::optional<std::string> readBrowserFileIfExists(const std::string &path)
+[[nodiscard]] std::optional<std::string>
+readBrowserFileIfExists(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
     try {
-        if (!us::fs::blocking::FileExists(path))
+        if (!us::fs::FileExists(fsTaskProcessor, path))
             return {};
-        return us::fs::blocking::ReadFileContents(path);
+        return us::fs::ReadFileContents(fsTaskProcessor, path);
     } catch (const std::runtime_error &) {
         return {};
     }
 }
 
-[[nodiscard]] std::optional<std::string> removeBrowserRunDirectory(const std::string &path) noexcept
+[[nodiscard]] std::optional<std::string>
+removeBrowserRunDirectory(eng::TaskProcessor &fsTaskProcessor, const std::string &path) noexcept
 {
     try {
-        auto tempDir = us::fs::blocking::TempDirectory::Adopt(path);
-        std::move(tempDir).Remove();
+        eng::AsyncNoSpan(fsTaskProcessor, [&path] {
+            auto tempDir = us::fs::blocking::TempDirectory::Adopt(path);
+            std::move(tempDir).Remove();
+        }).Get();
         return {};
     } catch (const std::runtime_error &e) {
         return std::string(e.what());
     }
 }
 
-[[nodiscard]] std::optional<String> readSanitizedLogTail(const std::string &path)
+[[nodiscard]] std::optional<String>
+readSanitizedLogTail(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
-    const auto bytes = readBrowserFileIfExists(path);
+    const auto bytes = readBrowserFileIfExists(fsTaskProcessor, path);
     if (!bytes)
         return {};
     const auto sanitized = sanitizeProcessOutputTail(*bytes);
@@ -513,17 +542,18 @@ void appendDiagnosticField(String &out, const String &label, const String &value
     return {};
 }
 
-void removeBrowserRunDir(const std::string &path) noexcept
+void removeBrowserRunDir(eng::TaskProcessor &fsTaskProcessor, const std::string &path) noexcept
 {
     if (path.empty())
         return;
-    if (const auto error = removeBrowserRunDirectory(path))
+    if (const auto error = removeBrowserRunDirectory(fsTaskProcessor, path))
         LOG_WARNING() << std::format("Failed to remove browser dir {}: {}", path, *error);
 }
 
-[[nodiscard]] std::optional<String> readWebsocketPathFile(const std::string &path)
+[[nodiscard]] std::optional<String>
+readWebsocketPathFile(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
-    auto value = readBrowserFileIfExists(path);
+    auto value = readBrowserFileIfExists(fsTaskProcessor, path);
     if (!value)
         return {};
     absl::StripTrailingAsciiWhitespace(&*value);
@@ -634,10 +664,10 @@ void removeBrowserRunDir(const std::string &path) noexcept
                                  "/tmp",
                                  "--setenv",
                                  "XDG_CONFIG_HOME",
-                                 browserSandboxPath("xdg-config"),
+                                 browserSandboxPath("xdg_config"),
                                  "--setenv",
                                  "XDG_CACHE_HOME",
-                                 browserSandboxPath("xdg-cache"),
+                                 browserSandboxPath("xdg_cache"),
                                  "--setenv",
                                  "BREAKPAD_DUMP_LOCATION",
                                  browserSandboxPath("crashpad"),
@@ -673,11 +703,11 @@ void removeBrowserRunDir(const std::string &path) noexcept
 }
 
 [[nodiscard]] Expected<std::unique_ptr<EgressProxy>, String> startBrowserProxy(
-    us::clients::dns::Resolver &dnsResolver, const BrowserPaths &paths,
-    const BrowserSessionConfig &config, eng::Deadline deadline
+    us::clients::dns::Resolver &dnsResolver, eng::TaskProcessor &fsTaskProcessor,
+    const BrowserPaths &paths, const BrowserSessionConfig &config, eng::Deadline deadline
 )
 {
-    auto runDirFd = TRY(openBrowserRunDir(paths));
+    auto runDirFd = TRY(openBrowserRunDir(fsTaskProcessor, paths));
     auto proxy = std::make_unique<EgressProxy>(EgressProxyConfig{
         browserRunFdPath(runDirFd, kProxySocketFileName),
         paths.runId,
@@ -694,15 +724,15 @@ void removeBrowserRunDir(const std::string &path) noexcept
 }
 
 [[nodiscard]] Expected<std::unique_ptr<CdpClient>, String> connectCdpOnce(
-    const BrowserPaths &paths, const BrowserSessionConfig &config, const String &websocketPath,
-    eng::Deadline deadline
+    eng::TaskProcessor &fsTaskProcessor, const BrowserPaths &paths,
+    const BrowserSessionConfig &config, const String &websocketPath, eng::Deadline deadline
 )
 {
-    auto runDirFd = TRY(openBrowserRunDir(paths));
+    auto runDirFd = TRY(openBrowserRunDir(fsTaskProcessor, paths));
     return TRY_MAP_ERR(
         CdpClient::connect(
             browserRunFdPath(runDirFd, kCdpSocketFileName), websocketPath, paths.cdpTracePath,
-            deadline, config.cdpHandshakeTimeout, config.cdpCommandTimeout,
+            fsTaskProcessor, deadline, config.cdpHandshakeTimeout, config.cdpCommandTimeout,
             config.cdpMaxRemotePayloadBytes
         ),
         [](auto failure) {
@@ -733,20 +763,24 @@ template <typename Process> void stopProcess(Process &process, chrono::milliseco
 struct BrowserSession::Impl final {
     Impl(
         us::clients::dns::Resolver &dnsResolverIn,
-        eng::subprocess::ProcessStarter &processStarterIn, BrowserSessionConfig configIn
+        eng::subprocess::ProcessStarter &processStarterIn, eng::TaskProcessor &fsTaskProcessorIn,
+        BrowserSessionConfig configIn
     )
-        : dnsResolver(dnsResolverIn), processStarter(processStarterIn), config(std::move(configIn))
+        : dnsResolver(dnsResolverIn), processStarter(processStarterIn),
+          fsTaskProcessor(fsTaskProcessorIn), config(std::move(configIn))
     {
     }
 
     [[nodiscard]] Expected<void, String> launch()
     {
-        paths = createBrowserPaths(config.browserRunsRoot);
-        TRY(stageLocalFixtureTrustDbIfNeeded(paths, config));
+        paths = createBrowserPaths(fsTaskProcessor, config.browserRunsRoot);
+        TRY(stageLocalFixtureTrustDbIfNeeded(fsTaskProcessor, paths, config));
 
         markPhase("launch_browser");
         const auto devtoolsDeadline = eng::Deadline::FromDuration(config.devtoolsStartupTimeout);
-        proxy = TRY(startBrowserProxy(dnsResolver, paths, config, devtoolsDeadline));
+        proxy = TRY(
+            startBrowserProxy(dnsResolver, fsTaskProcessor, paths, config, devtoolsDeadline)
+        );
 
         process.emplace(spawnSandboxedBrowser(
             processStarter, paths, config.cgroupRootPath, config.cgroupLimits,
@@ -767,7 +801,9 @@ struct BrowserSession::Impl final {
         i64 attempts{0};
         while (!overallDeadline.IsReached()) {
             attempts++;
-            auto cdp = connectCdpOnce(paths, config, websocketPath, overallDeadline);
+            auto cdp = connectCdpOnce(
+                fsTaskProcessor, paths, config, websocketPath, overallDeadline
+            );
             if (cdp)
                 return std::move(cdp).value();
 
@@ -789,46 +825,55 @@ struct BrowserSession::Impl final {
 
     [[nodiscard]] std::pair<std::string, std::string> drainBrowserLogs() const
     {
-        return {readLogTail(paths.stdoutLogPath), readLogTail(paths.stderrLogPath)};
+        return {
+            readLogTail(fsTaskProcessor, paths.stdoutLogPath),
+            readLogTail(fsTaskProcessor, paths.stderrLogPath),
+        };
     }
 
     void markPhase(std::string_view phase) const
     {
         if (paths.phaseFilePath.empty())
             return;
-        writePhaseMarker(paths.phaseFilePath, phase);
+        writePhaseMarker(fsTaskProcessor, paths.phaseFilePath, phase);
     }
 
     [[nodiscard]] std::string currentLaunchLogs() const
     {
-        return formatLaunchLogs(drainBrowserLogs(), readLogTail(paths.bwrapStatusFilePath));
+        return formatLaunchLogs(
+            drainBrowserLogs(), readLogTail(fsTaskProcessor, paths.bwrapStatusFilePath)
+        );
     }
 
     [[nodiscard]] String buildFailureDetail(const String &message)
     {
         String diagnostics{};
 
-        if (const auto browserLogs =
-                summarizeProcessOutputs(paths.stdoutLogPath, paths.stderrLogPath)) {
+        if (const auto browserLogs = summarizeProcessOutputs(
+                fsTaskProcessor, paths.stdoutLogPath, paths.stderrLogPath
+            )) {
             appendDiagnosticField(diagnostics, "browser_logs"_t, *browserLogs);
         }
-        if (const auto chromiumStderr = readSanitizedLogTail(paths.chromiumStderrLogPath))
+        if (const auto chromiumStderr =
+                readSanitizedLogTail(fsTaskProcessor, paths.chromiumStderrLogPath))
             appendDiagnosticField(diagnostics, "chromium_stderr"_t, *chromiumStderr);
-        if (const auto bwrapStatus = readSanitizedLogTail(paths.bwrapStatusFilePath))
+        if (const auto bwrapStatus =
+                readSanitizedLogTail(fsTaskProcessor, paths.bwrapStatusFilePath))
             appendDiagnosticField(diagnostics, "bwrap_status"_t, *bwrapStatus);
-        if (const auto phaseMarker = readSanitizedLogTail(paths.phaseFilePath))
+        if (const auto phaseMarker = readSanitizedLogTail(fsTaskProcessor, paths.phaseFilePath))
             appendDiagnosticField(diagnostics, "phase"_t, *phaseMarker);
-        if (const auto cdpTrace = readSanitizedLogTail(paths.cdpTracePath))
+        if (const auto cdpTrace = readSanitizedLogTail(fsTaskProcessor, paths.cdpTracePath))
             appendDiagnosticField(diagnostics, "cdp_trace_tail"_t, *cdpTrace);
-        if (const auto websocketPathFromFile = readWebsocketPathFile(paths.websocketPathFilePath))
+        if (const auto websocketPathFromFile =
+                readWebsocketPathFile(fsTaskProcessor, paths.websocketPathFilePath))
             appendDiagnosticField(diagnostics, "websocket_path"_t, *websocketPathFromFile);
         appendDiagnosticField(
             diagnostics, "websocket_path_file_exists"_t,
-            us::fs::blocking::FileExists(paths.websocketPathFilePath) ? "true"_t : "false"_t
+            us::fs::FileExists(fsTaskProcessor, paths.websocketPathFilePath) ? "true"_t : "false"_t
         );
         appendDiagnosticField(
             diagnostics, "netlog_exists"_t,
-            us::fs::blocking::FileExists(paths.netlogPath) ? "true"_t : "false"_t
+            us::fs::FileExists(fsTaskProcessor, paths.netlogPath) ? "true"_t : "false"_t
         );
         appendDiagnosticField(
             diagnostics, "browser_process_running"_t,
@@ -836,7 +881,7 @@ struct BrowserSession::Impl final {
         );
         appendDiagnosticField(
             diagnostics, "cdp_socket_exists"_t,
-            us::fs::blocking::FileExists(paths.cdpSocketPath) ? "true"_t : "false"_t
+            us::fs::FileExists(fsTaskProcessor, paths.cdpSocketPath) ? "true"_t : "false"_t
         );
         if (proxy) {
             appendDiagnosticField(
@@ -861,7 +906,7 @@ struct BrowserSession::Impl final {
         if (proxy)
             proxy->close();
         if (!paths.rootDir.empty())
-            removeBrowserRunDir(paths.rootDir);
+            removeBrowserRunDir(fsTaskProcessor, paths.rootDir);
     }
 
     [[nodiscard]] i64 proxyDownBytes() const noexcept { return proxy ? proxy->downBytes() : 0_i64; }
@@ -879,9 +924,9 @@ struct BrowserSession::Impl final {
         auto sawCdpSocket = false;
         auto sawWebsocketPath = false;
         while (!deadline.IsReached()) {
-            sawCdpSocket = sawCdpSocket || us::fs::blocking::FileExists(paths.cdpSocketPath);
+            sawCdpSocket = sawCdpSocket || us::fs::FileExists(fsTaskProcessor, paths.cdpSocketPath);
             sawWebsocketPath = sawWebsocketPath ||
-                               us::fs::blocking::FileExists(paths.websocketPathFilePath);
+                               us::fs::FileExists(fsTaskProcessor, paths.websocketPathFilePath);
             if (process && process->WaitFor(0ms)) {
                 return Unex(
                     text::format(
@@ -889,7 +934,9 @@ struct BrowserSession::Impl final {
                     )
                 );
             }
-            auto websocketPathFromFile = readWebsocketPathFile(paths.websocketPathFilePath);
+            auto websocketPathFromFile = readWebsocketPathFile(
+                fsTaskProcessor, paths.websocketPathFilePath
+            );
             if (sawCdpSocket && websocketPathFromFile)
                 return grabValueOf(websocketPathFromFile);
             eng::SleepFor(config.devtoolsPollInterval);
@@ -913,6 +960,7 @@ struct BrowserSession::Impl final {
 
     us::clients::dns::Resolver &dnsResolver;
     eng::subprocess::ProcessStarter &processStarter;
+    eng::TaskProcessor &fsTaskProcessor;
     BrowserSessionConfig config;
     BrowserPaths paths;
     std::unique_ptr<EgressProxy> proxy;
@@ -923,9 +971,9 @@ struct BrowserSession::Impl final {
 
 BrowserSession::BrowserSession(
     us::clients::dns::Resolver &dnsResolver, eng::subprocess::ProcessStarter &processStarter,
-    BrowserSessionConfig config
+    eng::TaskProcessor &fsTaskProcessor, BrowserSessionConfig config
 )
-    : impl(std::make_unique<Impl>(dnsResolver, processStarter, std::move(config)))
+    : impl(std::make_unique<Impl>(dnsResolver, processStarter, fsTaskProcessor, std::move(config)))
 {
 }
 
@@ -1171,9 +1219,9 @@ std::string buildBrowserRunsRoot(std::string stateDir)
     return std::format("{}/browser_runs", root);
 }
 
-std::string resolveDelegatedCgroupRootPath()
+std::string resolveDelegatedCgroupRootPath(eng::TaskProcessor &fsTaskProcessor)
 {
-    const auto currentPath = readSelfCgroupV2Path();
+    const auto currentPath = readSelfCgroupV2Path(fsTaskProcessor);
     return std::format("/sys/fs/cgroup{}", managedCgroupRootPathFromServiceSubgroup(currentPath));
 }
 

@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 #include <userver/engine/exception.hpp>
-#include <userver/fs/blocking/read.hpp>
+#include <userver/fs/read.hpp>
 
 namespace v1::crawler {
 using namespace text::literals;
@@ -27,10 +27,11 @@ constexpr size_t kProcessOutputCharsMax = 240UL;
     return String::fromBytes(escaped).expect();
 }
 
-[[nodiscard]] std::optional<String> readSanitizedProcessOutput(const std::string &path)
+[[nodiscard]] std::optional<String>
+readSanitizedProcessOutput(eng::TaskProcessor &fsTaskProcessor, const std::string &path)
 {
     try {
-        auto text = sanitizeProcessOutputTail(us::fs::blocking::ReadFileContents(path));
+        auto text = sanitizeProcessOutputTail(us::fs::ReadFileContents(fsTaskProcessor, path));
         if (!text.empty())
             return text;
     } catch (const std::runtime_error &) {
@@ -93,11 +94,13 @@ String sanitizeProcessOutputTail(std::string_view bytes)
     return escaped;
 }
 
-std::optional<String>
-summarizeProcessOutputs(const std::string &stdoutPath, const std::string &stderrPath)
+std::optional<String> summarizeProcessOutputs(
+    eng::TaskProcessor &fsTaskProcessor, const std::string &stdoutPath,
+    const std::string &stderrPath
+)
 {
-    const auto stdoutText = readSanitizedProcessOutput(stdoutPath);
-    const auto stderrText = readSanitizedProcessOutput(stderrPath);
+    const auto stdoutText = readSanitizedProcessOutput(fsTaskProcessor, stdoutPath);
+    const auto stderrText = readSanitizedProcessOutput(fsTaskProcessor, stderrPath);
 
     if (!stdoutText && !stderrText)
         return {};

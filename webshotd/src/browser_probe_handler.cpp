@@ -29,6 +29,7 @@
 #include <userver/components/component.hpp>
 #include <userver/components/process_starter.hpp>
 #include <userver/engine/task/current_task.hpp>
+#include <userver/engine/task/task_processor_fwd.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/logging/log.hpp>
@@ -55,6 +56,7 @@ struct [[nodiscard]] ProbeConfig final {
     const Config &svcConfig;
     us::clients::dns::Resolver &dnsResolver;
     eng::subprocess::ProcessStarter &processStarter;
+    eng::TaskProcessor &fsTaskProcessor;
     chrono::milliseconds requestTimeout;
     chrono::milliseconds devtoolsStartupTimeout;
     chrono::milliseconds cdpHandshakeTimeout;
@@ -351,13 +353,13 @@ void cleanupProbeSession(
 runProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng::Deadline deadline)
 {
     crawler::BrowserSession browser{
-        config.dnsResolver, config.processStarter,
+        config.dnsResolver, config.processStarter, config.fsTaskProcessor,
         crawler::BrowserSessionConfig{
             .urlBytesMax = config.svcConfig.urlBytesMax(),
             .proxyDownBytesMax = config.cdpMaxRemotePayloadBytes * 4_i64,
             .browserRunsRoot =
                 crawler::buildBrowserRunsRoot(std::string(config.svcConfig.stateDir())),
-            .cgroupRootPath = crawler::resolveDelegatedCgroupRootPath(),
+            .cgroupRootPath = crawler::resolveDelegatedCgroupRootPath(config.fsTaskProcessor),
             .cgroupLimits = {},
             .localFixtureTrustDbSourcePath =
                 crawler::localFixtureTrustDbSourcePath(config.svcConfig.stateDir()),
@@ -471,6 +473,7 @@ BrowserProbeHandler::BrowserProbeHandler(
                   .svcConfig = context.FindComponent<Config>(),
                   .dnsResolver = context.FindComponent<us::clients::dns::Component>().GetResolver(),
                   .processStarter = context.FindComponent<us::components::ProcessStarter>().Get(),
+                  .fsTaskProcessor = context.GetTaskProcessor("fs-task-processor"),
                   .requestTimeout = config["request-timeout-ms"].As<int64_t>() * 1ms,
                   .devtoolsStartupTimeout = config["devtools_startup_timeout_ms"].As<int64_t>() *
                                             1ms,

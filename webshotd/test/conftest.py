@@ -13,6 +13,7 @@ from pytest_userver import chaos
 from testsuite.databases.pgsql import discover
 
 from s6.s3_bucket import ensure_s3_bucket_exists
+from s6.userver_task_processors import fs_worker_threads
 
 _S3_GATE_HOST = "127.0.0.1"
 _TESTSUITE_S3_TIMEOUT_MS = 2000
@@ -313,6 +314,7 @@ def service_config_path_temp(
     config_vars["state_dir"] = str(testsuite_webshotd_state_dir)
     config_vars["s3_bucket"] = s3_bucket_name
     config_vars["public_base_url"] = f"http://127.0.0.1:8333/{s3_bucket_name}"
+    config_vars["fs_worker_threads"] = fs_worker_threads(config_yaml)
 
     components = config_yaml["components_manager"]["components"]
     dynamic_config_defaults = components["dynamic-config"]["defaults"]

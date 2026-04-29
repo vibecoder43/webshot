@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from s6.common import ToolError
+from s6.common import CGROUP_FS_ROOT, ToolError, current_cgroup_v2_relative_path
 from s6.runtime_context import (
     RUNTIME_MODES,
     build_inspect_context,
@@ -38,7 +38,6 @@ CGROUP_REQUIREMENT_MESSAGE = (
 )
 CGROUP_KILL_WAIT_TIMEOUT_SEC = 5.0
 CGROUP_KILL_POLL_INTERVAL_SEC = 0.1
-CGROUP_FS_ROOT = Path("/sys/fs/cgroup")
 
 
 @dataclass(frozen=True)
@@ -55,29 +54,13 @@ class _ManagedCgroupParent:
     drain_processes_before_enable: bool
 
 
-def _current_cgroup_v2_relative_path() -> str:
-    try:
-        raw = Path("/proc/self/cgroup").read_text(encoding="utf-8")
-    except FileNotFoundError as e:
-        raise ToolError(message="Missing /proc/self/cgroup", exit_code=1) from e
-
-    for line in raw.splitlines():
-        parts = line.split(":", 2)
-        if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
-            path = parts[2].strip()
-            if path:
-                return path
-            break
-    runtime_die("Failed to determine cgroup v2 path from /proc/self/cgroup", exit_code=1)
-
-
 def _current_cgroup_v2_dir() -> Path:
-    return _cgroup_v2_dir(_current_cgroup_v2_relative_path())
+    return _cgroup_v2_dir(current_cgroup_v2_relative_path(exit_code=1))
 
 
 def _current_cgroup_for_message() -> str:
     try:
-        return _current_cgroup_v2_relative_path()
+        return current_cgroup_v2_relative_path(exit_code=1)
     except (OSError, ToolError):
         return "<unknown>"
 
@@ -348,7 +331,7 @@ def _cleanup_managed_cgroup_root(path: Path, *, ignore_errors: bool = False) -> 
 
 
 def _enter_managed_cgroup_subgroup(ctx) -> None:
-    current_cgroup = _current_cgroup_v2_relative_path()
+    current_cgroup = current_cgroup_v2_relative_path(exit_code=1)
     current_service_dir = _managed_scope_service_dir(current_cgroup)
     if current_service_dir is not None:
         state = _read_managed_cgroup_root_state(current_service_dir)

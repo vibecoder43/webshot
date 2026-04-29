@@ -7,7 +7,7 @@ components_manager:
       worker_threads: 1
       thread_name: purge_task_processor_worker
     fs-task-processor:
-      worker_threads: 1
+      worker_threads: $fs_worker_threads
     creds_refresh_task_processor:
       worker_threads: 1
       thread_name: creds_refresh_task_processor_worker

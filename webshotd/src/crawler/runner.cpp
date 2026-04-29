@@ -57,9 +57,6 @@
 #include <userver/engine/task/cancel.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/value_builder.hpp>
-#include <userver/fs/blocking/read.hpp>
-#include <userver/fs/blocking/temp_directory.hpp>
-#include <userver/fs/blocking/write.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
 #include <userver/utils/boost_uuid4.hpp>
@@ -918,10 +915,8 @@ private:
         const auto requestIt = state.activeRequests.find(requestIdText);
         if (requestIt == std::end(state.activeRequests)) {
             if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-                invariant(
-                    text::format(
-                        "main document response received for unknown request id {}", requestIdText
-                    )
+                state.mainRequestFailure = text::format(
+                    "main document response received for unknown request id {}", requestIdText
                 );
             }
             return;
@@ -961,10 +956,8 @@ private:
                 state.mainResponseRequestId = requestIdText;
             }
         } else if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-            invariant(
-                text::format(
-                    "main document loading finished for unknown request id {}", requestIdText
-                )
+            state.mainRequestFailure = text::format(
+                "main document loading finished for unknown request id {}", requestIdText
             );
         }
     }
@@ -978,10 +971,8 @@ private:
         const auto requestIt = state.activeRequests.find(requestIdText);
         if (requestIt == std::end(state.activeRequests)) {
             if (state.mainRequestId && *state.mainRequestId == requestIdText) {
-                invariant(
-                    text::format(
-                        "main document loading failed for unknown request id {}", requestIdText
-                    )
+                state.mainRequestFailure = text::format(
+                    "main document loading failed for unknown request id {}", requestIdText
                 );
             }
             return;
@@ -1009,10 +1000,12 @@ private:
         );
 
         const auto requestIt = state.activeRequests.find(requestId);
-        invariant(
-            requestIt != std::end(state.activeRequests),
-            text::format("redirect response for unknown request id {}", requestId)
-        );
+        if (requestIt == std::end(state.activeRequests)) {
+            state.mainRequestFailure = text::format(
+                "redirect response for unknown request id {}", requestId
+            );
+            return;
+        }
 
         auto request = std::move(requestIt->second);
         state.activeRequests.erase(requestIt);
@@ -1150,15 +1143,15 @@ public:
     CaptureSession(
         Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, usize urlBytesMax,
         i64 proxyDownBytesMax, eng::subprocess::ProcessStarter &processStarter,
-        std::string browserRunsRootIn, std::string cgroupRootPathIn,
-        std::optional<crawler::CgroupLimits> cgroupLimitsIn, crawler::CaptureTimings timings,
-        crawler::CrawlerTunables tunablesIn, i64 maxArchiveBytesIn, eng::Deadline deadline,
-        crawler::RunRequest run
+        eng::TaskProcessor &fsTaskProcessor, std::string browserRunsRootIn,
+        std::string cgroupRootPathIn, std::optional<crawler::CgroupLimits> cgroupLimitsIn,
+        crawler::CaptureTimings timings, crawler::CrawlerTunables tunablesIn, i64 maxArchiveBytesIn,
+        eng::Deadline deadline, crawler::RunRequest run
     )
         : denylist(denylist), config(config), timings(std::move(timings)), run(std::move(run)),
           deadline(deadline), maxArchiveBytes(maxArchiveBytesIn),
           browser(
-              dnsResolver, processStarter,
+              dnsResolver, processStarter, fsTaskProcessor,
               crawler::BrowserSessionConfig{
                   .urlBytesMax = urlBytesMax,
                   .proxyDownBytesMax = proxyDownBytesMax,
@@ -1180,6 +1173,12 @@ public:
               }
           )
     {
+    }
+
+    ~CaptureSession()
+    {
+        closeCdpForFailure();
+        browser.close();
     }
 
     [[nodiscard]] Expected<CaptureWithNetwork, CaptureFailure> capture()
@@ -1709,16 +1708,16 @@ private:
 [[nodiscard]] Expected<CaptureWithNetwork, CaptureFailure> captureViaProxy(
     Denylist &denylist, const Config &config, dns::Resolver &dnsResolver, usize urlBytesMax,
     i64 proxyDownBytesMax, eng::subprocess::ProcessStarter &processStarter,
-    const std::string &browserRunsRoot, const std::string &cgroupRootPath,
-    std::optional<crawler::CgroupLimits> cgroupLimits, crawler::CaptureTimings timings,
-    const crawler::CrawlerTunables &tunables, i64 maxArchiveBytes, eng::Deadline deadline,
-    const crawler::RunRequest &run
+    eng::TaskProcessor &fsTaskProcessor, const std::string &browserRunsRoot,
+    const std::string &cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
+    crawler::CaptureTimings timings, const crawler::CrawlerTunables &tunables, i64 maxArchiveBytes,
+    eng::Deadline deadline, const crawler::RunRequest &run
 )
 {
     auto session = CaptureSession(
         denylist, config, dnsResolver, urlBytesMax, proxyDownBytesMax, processStarter,
-        std::string(browserRunsRoot), std::string(cgroupRootPath), std::move(cgroupLimits),
-        std::move(timings), tunables, maxArchiveBytes, deadline,
+        fsTaskProcessor, std::string(browserRunsRoot), std::string(cgroupRootPath),
+        std::move(cgroupLimits), std::move(timings), tunables, maxArchiveBytes, deadline,
         crawler::RunRequest{.seedUrl = run.seedUrl}
     );
     return session.capture();
@@ -1726,11 +1725,11 @@ private:
 
 [[nodiscard]] CrawlerRunArtifacts executeRun(
     Denylist &denylist, const Config &config, dns::Resolver &dnsResolver,
-    eng::subprocess::ProcessStarter &processStarter, const std::string &browserRunsRoot,
-    const std::string &cgroupRootPath, std::optional<crawler::CgroupLimits> cgroupLimits,
-    const crawler::CaptureTimings &timings, const crawler::CrawlerTunables &tunables,
-    i64 maxArchiveBytes, i64 networkDownBytesRatioMax, eng::Deadline deadline,
-    const crawler::RunRequest &run
+    eng::subprocess::ProcessStarter &processStarter, eng::TaskProcessor &fsTaskProcessor,
+    const std::string &browserRunsRoot, const std::string &cgroupRootPath,
+    std::optional<crawler::CgroupLimits> cgroupLimits, const crawler::CaptureTimings &timings,
+    const crawler::CrawlerTunables &tunables, i64 maxArchiveBytes, i64 networkDownBytesRatioMax,
+    eng::Deadline deadline, const crawler::RunRequest &run
 )
 {
     CrawlerRunArtifacts out;
@@ -1768,8 +1767,8 @@ private:
 
         auto captured = captureViaProxy(
             denylist, config, dnsResolver, config.urlBytesMax(), maxDownBytes, processStarter,
-            browserRunsRoot, cgroupRootPath, std::move(cgroupLimits), timings, tunables,
-            maxArchiveBytes, deadline, run
+            fsTaskProcessor, browserRunsRoot, cgroupRootPath, std::move(cgroupLimits), timings,
+            tunables, maxArchiveBytes, deadline, run
         );
         if (!captured) {
             constexpr std::string_view kSizeLimitPrefix = "size_limit:";
@@ -1941,12 +1940,16 @@ private:
 CrawlerRunner::CrawlerRunner(
     Denylist &denylist, const Config &config, dns::Resolver &dnsResolver,
     eng::subprocess::ProcessStarter &processStarter, chrono::seconds runTimeout,
-    std::string stateDir, std::optional<crawler::CgroupLimits> limits, i64 maxArchiveBytes,
+    eng::TaskProcessor &fsTaskProcessor, std::string stateDir,
+    std::optional<crawler::CgroupLimits> limits, i64 maxArchiveBytes,
     crawler::CaptureTimings timings, crawler::CrawlerTunables tunables, i64 networkDownBytesRatioMax
 )
     : denylist(denylist), config(config), dnsResolver(dnsResolver), processStarter(processStarter),
-      runTimeout(runTimeout), browserRunsRoot(crawler::buildBrowserRunsRoot(std::move(stateDir))),
-      cgroupRootPath(limits ? crawler::resolveDelegatedCgroupRootPath() : std::string()),
+      fsTaskProcessor(fsTaskProcessor), runTimeout(runTimeout),
+      browserRunsRoot(crawler::buildBrowserRunsRoot(std::move(stateDir))),
+      cgroupRootPath(
+          limits ? crawler::resolveDelegatedCgroupRootPath(fsTaskProcessor) : std::string()
+      ),
       cgroupLimits(std::move(limits)), maxArchiveBytes(maxArchiveBytes),
       timings(std::move(timings)), tunables(std::move(tunables)),
       networkDownBytesRatioMax(networkDownBytesRatioMax)
@@ -1957,9 +1960,9 @@ CrawlerRunArtifacts CrawlerRunner::run(const String &seedUrl) const
 {
     const auto deadline = eng::Deadline::FromDuration(runTimeout);
     return executeRun(
-        denylist, config, dnsResolver, processStarter, browserRunsRoot, cgroupRootPath,
-        cgroupLimits, timings, tunables, maxArchiveBytes, networkDownBytesRatioMax, deadline,
-        crawler::RunRequest{.seedUrl = seedUrl}
+        denylist, config, dnsResolver, processStarter, fsTaskProcessor, browserRunsRoot,
+        cgroupRootPath, cgroupLimits, timings, tunables, maxArchiveBytes, networkDownBytesRatioMax,
+        deadline, crawler::RunRequest{.seedUrl = seedUrl}
     );
 }
 

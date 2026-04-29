@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
+CGROUP_FS_ROOT = Path("/sys/fs/cgroup")
+PROC_SELF_CGROUP = Path("/proc/self/cgroup")
+
 
 @dataclass(frozen=True)
 class ToolError(Exception):
@@ -26,6 +29,22 @@ def format_cmd(cmd: Sequence[str | Path]) -> str:
 
 def die(message: str, *, exit_code: int = 2) -> NoReturn:
     raise ToolError(message=message, exit_code=exit_code)
+
+
+def current_cgroup_v2_relative_path(*, exit_code: int = 2) -> str:
+    try:
+        raw = PROC_SELF_CGROUP.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise ToolError(message=f"Missing {PROC_SELF_CGROUP}", exit_code=exit_code) from e
+
+    for line in raw.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
+            path = parts[2].strip()
+            if path.startswith("/"):
+                return path
+            break
+    die(f"Failed to determine cgroup v2 path from {PROC_SELF_CGROUP}", exit_code=exit_code)
 
 
 def need_cmd(name: str) -> None:

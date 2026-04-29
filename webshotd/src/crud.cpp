@@ -375,6 +375,7 @@ public:
     httpc::Client &httpClient;
     us::clients::dns::Resolver &dnsResolver;
     eng::subprocess::ProcessStarter &processStarter;
+    eng::TaskProcessor &fsTaskProcessor;
     Denylist &denylist;
     CrawlerRunner crawlerRunner;
     struct [[nodiscard]] S3ClientState {
@@ -470,9 +471,10 @@ public:
           httpClient(ctx.FindComponent<us::components::HttpClient>().GetHttpClient()),
           dnsResolver(ctx.FindComponent<us::clients::dns::Component>().GetResolver()),
           processStarter(ctx.FindComponent<us::components::ProcessStarter>().Get()),
+          fsTaskProcessor(ctx.GetTaskProcessor("fs-task-processor")),
           denylist(ctx.FindComponent<Denylist>()),
           crawlerRunner(
-              denylist, svcCfg, dnsResolver, processStarter, crawlerRunTimeout,
+              denylist, svcCfg, dnsResolver, processStarter, crawlerRunTimeout, fsTaskProcessor,
               std::string(svcCfg.stateDir()),
               computeCrawlerLimits(crawlerCpuCores, crawlerMemoryGib),
               crawlerSizeLimitMiB * 1024_i64 * 1024_i64,

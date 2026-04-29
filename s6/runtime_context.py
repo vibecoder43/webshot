@@ -37,7 +37,7 @@ class RuntimeStateContext:
 
     @property
     def managed_cgroup_root_file(self) -> Path:
-        return self.state_dir / "managed-cgroup-root"
+        return self.state_dir / "managed_cgroup_root"
 
     @property
     def runtime_config_vars_path(self) -> Path:
@@ -77,11 +77,11 @@ class RuntimeUpContext(RuntimeInspectContext):
 
     @property
     def postgres_bootstrap_done_file(self) -> Path:
-        return self.postgres_dir / ".bootstrap-complete"
+        return self.postgres_dir / ".bootstrap_complete"
 
     @property
     def postgres_bootstrap_log(self) -> Path:
-        return self.state_dir / "postgres-bootstrap.log"
+        return self.state_dir / "postgres_bootstrap.log"
 
     @property
     def seaweed_data_dir(self) -> Path:
@@ -97,7 +97,7 @@ class RuntimeUpContext(RuntimeInspectContext):
 
     @property
     def webshotd_config_vars_override_path(self) -> Path:
-        return self.state_dir / "webshotd-config-vars-override.yaml"
+        return self.state_dir / "webshotd_config_vars_override.yaml"
 
     @property
     def test_pki_dir(self) -> Path:
@@ -188,8 +188,8 @@ def build_state_context(
         mode=mode,
         repo_root=resolved_repo_root,
         state_dir=resolved_state_dir,
-        scan_dir=resolved_state_dir / "s6-scan",
-        svscan_pid_file=resolved_state_dir / "s6-svscan.pid",
+        scan_dir=resolved_state_dir / "s6_scan",
+        svscan_pid_file=resolved_state_dir / "s6_svscan.pid",
     )
 
 

@@ -25,6 +25,7 @@
 #include <userver/engine/condition_variable.hpp>
 #include <userver/engine/deadline.hpp>
 #include <userver/engine/task/task.hpp>
+#include <userver/engine/task/task_processor_fwd.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/fs/blocking/file_descriptor.hpp>
@@ -71,8 +72,9 @@ class [[nodiscard]] CdpClient final {
 public:
     [[nodiscard]] static Expected<std::unique_ptr<CdpClient>, CdpFailure> connect(
         std::string socketPath, String websocketPath, std::string tracePath,
-        eng::Deadline overallDeadline, std::chrono::milliseconds handshakeTimeout,
-        std::chrono::milliseconds commandTimeout, i64 maxRemotePayloadBytes
+        eng::TaskProcessor &fsTaskProcessor, eng::Deadline overallDeadline,
+        std::chrono::milliseconds handshakeTimeout, std::chrono::milliseconds commandTimeout,
+        i64 maxRemotePayloadBytes
     );
 
     ~CdpClient() noexcept;
@@ -147,8 +149,8 @@ private:
     CdpClient(
         std::string socketPath, String websocketPath,
         std::shared_ptr<us::websocket::WebSocketConnection> connection, std::string tracePath,
-        us::fs::blocking::FileDescriptor traceFile, eng::Deadline overallDeadline,
-        std::chrono::milliseconds commandTimeout
+        us::fs::blocking::FileDescriptor traceFile, eng::TaskProcessor &fsTaskProcessor,
+        eng::Deadline overallDeadline, std::chrono::milliseconds commandTimeout
     );
 
     friend class CdpSession;
@@ -170,7 +172,9 @@ private:
         const std::shared_ptr<CdpSessionState> &sessionState
     ) noexcept;
     void closeQuietly() noexcept;
+    void stopReaderTask() noexcept;
     Expected<void, CdpFailure> writeTraceLine(const json::Value &value);
+    void writeTraceLineBestEffort(const json::Value &value);
     void traceCommand(i64 id, const String &method, const std::optional<String> &sessionId);
     void
     traceResponse(i64 id, const CdpPendingRequest *request, const std::optional<String> &error);
@@ -186,6 +190,7 @@ private:
     us::concurrent::Variable<SendState> sendState;
     std::string tracePath;
     us::fs::blocking::FileDescriptor traceFile;
+    eng::TaskProcessor &fsTaskProcessor;
     eng::Deadline overallDeadline;
     std::chrono::milliseconds commandTimeout;
     eng::Task readerTask;

@@ -68,28 +68,34 @@ struct HandshakeResponse final {
 };
 
 [[nodiscard]] Expected<us::fs::blocking::FileDescriptor, CdpFailure>
-openTraceFile(const std::string &tracePath)
+openTraceFile(eng::TaskProcessor &fsTaskProcessor, const std::string &tracePath)
 {
     using enum CdpError;
     try {
-        return us::fs::blocking::FileDescriptor::Open(
-            tracePath, us::fs::blocking::OpenMode{
-                           us::fs::blocking::OpenFlag::kWrite,
-                           us::fs::blocking::OpenFlag::kCreateIfNotExists,
-                           us::fs::blocking::OpenFlag::kAppend,
-                       }
-        );
+        return eng::AsyncNoSpan(
+                   fsTaskProcessor, [&tracePath] {
+                       return us::fs::blocking::FileDescriptor::Open(
+                           tracePath, us::fs::blocking::OpenMode{
+                                          us::fs::blocking::OpenFlag::kWrite,
+                                          us::fs::blocking::OpenFlag::kCreateIfNotExists,
+                                          us::fs::blocking::OpenFlag::kAppend,
+                                      }
+                       );
+                   }
+        ).Get();
     } catch (const std::runtime_error &) {
         return Unex(CdpFailure{.code = kTraceFileOpenFailed, .detail = {}});
     }
 }
 
-[[nodiscard]] Expected<void, CdpFailure>
-writeTraceBytes(us::fs::blocking::FileDescriptor &traceFile, const std::string &line)
+[[nodiscard]] Expected<void, CdpFailure> writeTraceBytes(
+    eng::TaskProcessor &fsTaskProcessor, us::fs::blocking::FileDescriptor &traceFile,
+    const std::string &line
+)
 {
     using enum CdpError;
     try {
-        traceFile.Write(line);
+        eng::AsyncNoSpan(fsTaskProcessor, [&traceFile, &line] { traceFile.Write(line); }).Get();
         return {};
     } catch (const std::runtime_error &) {
         return Unex(CdpFailure{.code = kTraceWriteFailed, .detail = {}});
@@ -405,20 +411,21 @@ extractRoutingSessionId(const dto::CdpEventMessage &eventMessage)
 CdpClient::CdpClient(
     std::string socketPath, String websocketPath,
     std::shared_ptr<us::websocket::WebSocketConnection> connection, std::string tracePath,
-    us::fs::blocking::FileDescriptor traceFile, eng::Deadline overallDeadline,
-    chrono::milliseconds commandTimeout
+    us::fs::blocking::FileDescriptor traceFile, eng::TaskProcessor &fsTaskProcessor,
+    eng::Deadline overallDeadline, chrono::milliseconds commandTimeout
 )
     : socketPath(std::move(socketPath)), websocketPath(std::move(websocketPath)),
       connection(std::move(connection)), tracePath(std::move(tracePath)),
-      traceFile(std::move(traceFile)), overallDeadline(overallDeadline),
-      commandTimeout(commandTimeout)
+      traceFile(std::move(traceFile)), fsTaskProcessor(fsTaskProcessor),
+      overallDeadline(overallDeadline), commandTimeout(commandTimeout)
 {
 }
 
 Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
     std::string socketPath, String websocketPath, std::string tracePath,
-    eng::Deadline overallDeadline, chrono::milliseconds handshakeTimeout,
-    chrono::milliseconds commandTimeout, i64 maxRemotePayloadBytes
+    eng::TaskProcessor &fsTaskProcessor, eng::Deadline overallDeadline,
+    chrono::milliseconds handshakeTimeout, chrono::milliseconds commandTimeout,
+    i64 maxRemotePayloadBytes
 )
 {
     using enum CdpError;
@@ -426,7 +433,7 @@ Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
     invariant(!tracePath.empty(), "cdp trace path must not be empty"_t);
     invariant(overallDeadline.IsReachable(), "cdp overall deadline must be reachable"_t);
 
-    auto traceFd = TRY(openTraceFile(tracePath));
+    auto traceFd = TRY(openTraceFile(fsTaskProcessor, tracePath));
 
     eng::io::Socket socket{eng::io::AddrDomain::kUnix, eng::io::SocketType::kStream};
     const auto handshakeDeadline = pickEarlierDeadline(
@@ -467,7 +474,7 @@ Expected<std::unique_ptr<CdpClient>, CdpFailure> CdpClient::connect(
 
     auto client = std::unique_ptr<CdpClient>(new CdpClient(
         std::move(socketPath), std::move(websocketPath), std::move(ws), std::move(tracePath),
-        std::move(traceFd), overallDeadline, commandTimeout
+        std::move(traceFd), fsTaskProcessor, overallDeadline, commandTimeout
     ));
     client->startReaderTask();
     return client;
@@ -550,11 +557,21 @@ Expected<json::Value, CdpFailure> CdpClient::sendRaw(
 
 Expected<void, CdpFailure> CdpClient::close()
 {
+    auto closeAlreadyResolved = false;
     {
         auto state = sharedState.Lock();
-        if (state->closed || state->terminalFailure)
-            return {};
-        state->closing = true;
+        if (state->closed || state->terminalFailure) {
+            state->closing = true;
+            state->closed = true;
+            closeAlreadyResolved = true;
+        } else {
+            state->closing = true;
+        }
+    }
+    if (closeAlreadyResolved) {
+        stopReaderTask();
+        connection.reset();
+        return {};
     }
 
     traceClose("out"_t, numericCast<int>(us::websocket::CloseStatus::kNormal));
@@ -568,15 +585,12 @@ Expected<void, CdpFailure> CdpClient::close()
         traceTransportError("close"_t, parsePrintableText(closedConnection.error()));
         CdpFailure failure{.code = CdpError::kTransport, .detail = {}};
         failTerminal(failure);
+        stopReaderTask();
         connection.reset();
         return Unex(failure);
     }
 
-    if (readerTask.IsValid()) {
-        readerTask.RequestCancel();
-        const eng::TaskCancellationBlocker blocker;
-        static_cast<void>(readerTask.WaitNothrow());
-    }
+    stopReaderTask();
     connection.reset();
     return {};
 }
@@ -660,9 +674,16 @@ Expected<void, CdpFailure> CdpClient::handleMessage(const std::string &payload)
         {
             auto state = sharedState.Lock();
             auto *request = state->pendingRequests.find(id);
-            invariant(
-                request != nullptr, text::format("cdp response for unknown request id {}", id)
-            );
+            if (request == nullptr) {
+                if (state->closing || state->closed || state->terminalFailure)
+                    return {};
+                return Unex(
+                    CdpFailure{
+                        .code = kProtocol,
+                        .detail = text::format("cdp response for unknown request id {}", id),
+                    }
+                );
+            }
             requestCopy = *request;
             const auto errorValue = value["error"];
             if (!errorValue.IsMissing()) {
@@ -675,10 +696,16 @@ Expected<void, CdpFailure> CdpClient::handleMessage(const std::string &payload)
                 return {};
             }
             const auto waiterIt = state->pendingWaiters.find(id);
-            invariant(
-                waiterIt != std::end(state->pendingWaiters),
-                text::format("missing cdp waiter for request id {}", id)
-            );
+            if (waiterIt == std::end(state->pendingWaiters)) {
+                if (state->closing || state->closed || state->terminalFailure)
+                    return {};
+                return Unex(
+                    CdpFailure{
+                        .code = kProtocol,
+                        .detail = text::format("missing cdp waiter for request id {}", id),
+                    }
+                );
+            }
             waiter = waiterIt->second;
             state->pendingWaiters.erase(waiterIt);
             state->pendingRequests.erase(id);
@@ -696,13 +723,30 @@ Expected<void, CdpFailure> CdpClient::handleMessage(const std::string &payload)
         return {};
     }
 
-    invariant(!value["method"].IsMissing(), "cdp message missing id and method"_t);
+    if (value["method"].IsMissing()) {
+        return Unex(
+            CdpFailure{
+                .code = kProtocol,
+                .detail = "cdp message missing id and method"_t,
+            }
+        );
+    }
 
     auto eventMessage = TRY(
         exu::json::as<dto::CdpEventMessage>(value, CdpFailure{.code = kProtocol, .detail = {}})
     );
-    const auto sessionId = text::optionalString(eventMessage.sessionId).expect();
-    const auto method = String::fromBytes(eventMessage.method).expect();
+    const auto sessionId = TRY_MAP_ERR(text::optionalString(eventMessage.sessionId), [](auto) {
+        return CdpFailure{
+            .code = CdpError::kProtocol,
+            .detail = "cdp event contained invalid session id text"_t,
+        };
+    });
+    const auto method = TRY_MAP_ERR(String::fromBytes(eventMessage.method), [](auto) {
+        return CdpFailure{
+            .code = CdpError::kProtocol,
+            .detail = "cdp event contained invalid method text"_t,
+        };
+    });
     const auto routingSessionId = extractRoutingSessionId(eventMessage);
     const auto routingTargetId = extractRoutingTargetId(eventMessage);
     traceEvent(method, sessionId);
@@ -801,11 +845,23 @@ void CdpClient::unregisterSession(
 
 void CdpClient::closeQuietly() noexcept
 {
-    auto state = sharedState.Lock();
-    state->closing = true;
-    state->closed = true;
-    if (readerTask.IsValid())
-        readerTask.RequestCancel();
+    {
+        auto state = sharedState.Lock();
+        state->closing = true;
+        state->closed = true;
+    }
+    stopReaderTask();
+    connection.reset();
+}
+
+void CdpClient::stopReaderTask() noexcept
+{
+    if (!readerTask.IsValid())
+        return;
+    readerTask.RequestCancel();
+    const eng::TaskCancellationBlocker blocker;
+    static_cast<void>(readerTask.WaitNothrow());
+    readerTask = {};
 }
 
 void CdpClient::failTerminal(CdpFailure failure)
@@ -864,8 +920,19 @@ Expected<void, CdpFailure> CdpClient::writeTraceLine(const json::Value &value)
         exu::json::stringifyBytes(value, CdpFailure{.code = kTraceWriteFailed, .detail = {}})
     );
     line.push_back('\n');
-    TRY(writeTraceBytes(traceFile, line));
+    TRY(writeTraceBytes(fsTaskProcessor, traceFile, line));
     return {};
+}
+
+void CdpClient::writeTraceLineBestEffort(const json::Value &value)
+{
+    const auto written = writeTraceLine(value);
+    if (written)
+        return;
+    LOG_WARNING() << std::format(
+        "Suppressing CDP trace write failure for {} (code={})", tracePath,
+        us::utils::UnderlyingValue(written.error().code)
+    );
 }
 
 void CdpClient::traceCommand(i64 id, const String &method, const std::optional<String> &sessionId)
@@ -878,7 +945,7 @@ void CdpClient::traceCommand(i64 id, const String &method, const std::optional<S
     entry["method"] = toBytes(method);
     if (sessionId)
         entry["sessionId"] = toBytes(*sessionId);
-    writeTraceLine(entry.ExtractValue()).expect();
+    writeTraceLineBestEffort(entry.ExtractValue());
 }
 
 void CdpClient::traceResponse(
@@ -897,7 +964,7 @@ void CdpClient::traceResponse(
     }
     if (error)
         entry["error"] = toBytes(*error);
-    writeTraceLine(entry.ExtractValue()).expect();
+    writeTraceLineBestEffort(entry.ExtractValue());
 }
 
 void CdpClient::traceEvent(const String &method, const std::optional<String> &sessionId)
@@ -909,7 +976,7 @@ void CdpClient::traceEvent(const String &method, const std::optional<String> &se
     entry["method"] = toBytes(method);
     if (sessionId)
         entry["sessionId"] = toBytes(*sessionId);
-    writeTraceLine(entry.ExtractValue()).expect();
+    writeTraceLineBestEffort(entry.ExtractValue());
 }
 
 void CdpClient::traceClose(const String &direction, int closeCode)
@@ -919,7 +986,7 @@ void CdpClient::traceClose(const String &direction, int closeCode)
     entry["direction"] = toBytes(direction);
     entry["kind"] = "close";
     entry["closeCode"] = closeCode;
-    writeTraceLine(entry.ExtractValue()).expect();
+    writeTraceLineBestEffort(entry.ExtractValue());
 }
 
 void CdpClient::traceTransportError(const String &operation, const String &error)
@@ -929,7 +996,7 @@ void CdpClient::traceTransportError(const String &operation, const String &error
     entry["kind"] = "transport_error";
     entry["operation"] = toBytes(operation);
     entry["error"] = toBytes(error);
-    writeTraceLine(entry.ExtractValue()).expect();
+    writeTraceLineBestEffort(entry.ExtractValue());
 }
 
 } // namespace v1::crawler

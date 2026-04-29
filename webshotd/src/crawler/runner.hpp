@@ -12,6 +12,7 @@
 
 #include <userver/clients/dns/resolver_fwd.hpp>
 #include <userver/engine/subprocess/process_starter.hpp>
+#include <userver/engine/task/task_processor_fwd.hpp>
 
 namespace v1 {
 class Denylist;
@@ -52,7 +53,8 @@ public:
     CrawlerRunner(
         Denylist &denylist, const Config &config, us::clients::dns::Resolver &dnsResolver,
         eng::subprocess::ProcessStarter &processStarter, std::chrono::seconds runTimeout,
-        std::string stateDir, std::optional<crawler::CgroupLimits> limits, i64 maxArchiveBytes,
+        eng::TaskProcessor &fsTaskProcessor, std::string stateDir,
+        std::optional<crawler::CgroupLimits> limits, i64 maxArchiveBytes,
         crawler::CaptureTimings timings, crawler::CrawlerTunables tunables,
         i64 networkDownBytesRatioMax
     );
@@ -64,6 +66,7 @@ private:
     const Config &config;
     us::clients::dns::Resolver &dnsResolver;
     eng::subprocess::ProcessStarter &processStarter;
+    eng::TaskProcessor &fsTaskProcessor;
     std::chrono::seconds runTimeout;
     std::string browserRunsRoot;
     std::string cgroupRootPath;

@@ -25,6 +25,7 @@ from s6.runtime_support import (
     write_executable,
     write_text,
 )
+from s6.userver_task_processors import fs_worker_threads
 
 TEST_HOST = "test-target"
 TEST_ASSET_HOST = "asset.test-target"
@@ -279,10 +280,13 @@ def _webshotd_scripts(ctx: RuntimeUpContext) -> ServiceScripts:
         ctx.binary_path.parent / "CMakeCache.txt",
         "WEBSHOT_RAPIDOC_ASSETS_DIR",
     )
+    static_config_path = ctx.repo_root / "webshotd/config/static_config.yaml"
+    static_config = yaml.safe_load(static_config_path.read_text(encoding="utf-8"))
     write_text(
         ctx.webshotd_config_vars_override_path,
         yaml.safe_dump(
             {
+                "fs_worker_threads": fs_worker_threads(static_config),
                 "rapidoc_assets_dir": rapidoc_assets_dir,
                 "openapi_public_dir": str(ctx.repo_root / "schema" / "public"),
                 "openapi_admin_dir": str(ctx.repo_root / "schema" / "admin"),

@@ -19,6 +19,7 @@
 #include <userver/clients/dns/resolver_fwd.hpp>
 #include <userver/engine/deadline.hpp>
 #include <userver/engine/subprocess/process_starter.hpp>
+#include <userver/engine/task/task_processor_fwd.hpp>
 
 namespace v1::crawler {
 
@@ -48,7 +49,7 @@ class [[nodiscard]] BrowserSession final {
 public:
     BrowserSession(
         us::clients::dns::Resolver &dnsResolver, eng::subprocess::ProcessStarter &processStarter,
-        BrowserSessionConfig config
+        eng::TaskProcessor &fsTaskProcessor, BrowserSessionConfig config
     );
     ~BrowserSession();
 
@@ -110,7 +111,7 @@ private:
 };
 
 [[nodiscard]] std::string buildBrowserRunsRoot(std::string stateDir);
-[[nodiscard]] std::string resolveDelegatedCgroupRootPath();
+[[nodiscard]] std::string resolveDelegatedCgroupRootPath(eng::TaskProcessor &fsTaskProcessor);
 [[nodiscard]] std::string localFixtureTrustDbSourcePath(std::string_view stateDir);
 
 } // namespace v1::crawler

@@ -27,7 +27,7 @@ fi
 proxy_pid=''
 cdp_pid=''
 browser_pid=''
-chromium_stderr_path='chromium-stderr.log'
+chromium_stderr_path='chromium_stderr.log'
 devtools_active_port_file=''
 
 for arg in "$@"; do
