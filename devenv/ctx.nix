@@ -13,7 +13,9 @@
     == "string"
     && lib.hasPrefix "${builtins.storeDir}/" config.devenv.root;
   projRootPath =
-    if rootType == "path"
+    if rootIsStoreString
+    then null
+    else if rootType == "path"
     then config.devenv.root
     else /. + config.devenv.root;
 
@@ -26,13 +28,7 @@
         fileset = lib.fileset.gitTracked projRootPath;
       };
 
-  s6Src = lib.fileset.toSource {
-    root = ../s6;
-    fileset =
-      lib.fileset.intersection
-      (lib.fileset.gitTracked projRootPath)
-      ../s6;
-  };
+  s6Src = projSrc + "/s6";
 
   srcs = import ./srcs.nix {
     inherit inputs lib;
