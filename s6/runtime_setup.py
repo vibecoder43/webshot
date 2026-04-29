@@ -34,6 +34,7 @@ class _BootstrappedDatabase:
 
 def prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
     snapshot_runtime_config_vars(ctx)
+    _validate_seaweedfs_s3_config_arg(ctx)
     definitions = active_service_definitions(ctx)
     ctx.state_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_postgres(ctx)
@@ -41,6 +42,28 @@ def prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
         shutil.rmtree(ctx.scan_dir)
     prepare_service_runtime(ctx, definitions)
     return render_service_tree(ctx, definitions)
+
+
+def _validate_seaweedfs_s3_config_arg(ctx: RuntimeUpContext) -> None:
+    raw_vars = read_yaml(ctx.runtime_config_vars_path)
+    dependency_modes = resolve_runtime_dependency_modes(
+        raw_vars, source=ctx.runtime_config_vars_path
+    )
+    if dependency_modes.s3_mode != "local":
+        if ctx.seaweedfs_s3_config_path is not None:
+            die("--seaweedfs-s3-config requires s3_mode: local", exit_code=2)
+        return
+
+    if ctx.seaweedfs_s3_config_path is not None and not ctx.seaweedfs_s3_config_path.is_file():
+        die(
+            f"Missing SeaweedFS S3 config file: {ctx.seaweedfs_s3_config_path}",
+            exit_code=2,
+        )
+
+    if ctx.service_profile == "test_infra":
+        return
+    if ctx.seaweedfs_s3_config_path is None:
+        die("--seaweedfs-s3-config is required when non-test s3_mode is local", exit_code=2)
 
 
 def ensure_local_s3_bootstrap(ctx: RuntimeStateContext) -> None:

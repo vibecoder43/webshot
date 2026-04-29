@@ -479,6 +479,7 @@ def _build_parser() -> argparse.ArgumentParser:
     up_parser.add_argument("--binary-path", required=True)
     up_parser.add_argument("--config-vars-source", required=True)
     up_parser.add_argument("--runtime-ld-library-path")
+    up_parser.add_argument("--seaweedfs-s3-config")
 
     down_parser = subparsers.add_parser("down")
     down_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
@@ -513,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
                 binary_path=args.binary_path,
                 config_vars_source=args.config_vars_source,
                 runtime_ld_library_path=args.runtime_ld_library_path,
+                seaweedfs_s3_config_path=args.seaweedfs_s3_config,
             )
             _up(ctx)
         elif args.action == "down":

@@ -57,6 +57,7 @@ class RuntimeUpContext(RuntimeInspectContext):
     binary_path: Path
     config_vars_source: Path
     runtime_ld_library_path: str | None
+    seaweedfs_s3_config_path: Path | None
 
     def load_config_vars(self) -> dict[str, object]:
         if self.runtime_config_vars_path.is_file():
@@ -223,6 +224,7 @@ def build_up_context(
     binary_path: str,
     config_vars_source: str,
     runtime_ld_library_path: str | None,
+    seaweedfs_s3_config_path: str | None,
 ) -> RuntimeUpContext:
     inspect_ctx = build_inspect_context(
         mode=mode,
@@ -240,4 +242,7 @@ def build_up_context(
         binary_path=Path(binary_path),
         config_vars_source=Path(config_vars_source),
         runtime_ld_library_path=runtime_ld_library_path,
+        seaweedfs_s3_config_path=(
+            Path(seaweedfs_s3_config_path) if seaweedfs_s3_config_path else None
+        ),
     )

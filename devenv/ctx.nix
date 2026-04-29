@@ -266,11 +266,37 @@ in {
         wrapProgram "$out/webshotd/webshotd_wrapper" \
           --set PATH "${lib.makeBinPath sets.runtimeTools}"
 
-        install -Dm0644 ${./systemd/webshot.service.in} "$out/lib/systemd/system/webshot.service"
-        substituteInPlace "$out/lib/systemd/system/webshot.service" \
-          --replace-fail '@out@' "$out" \
-          --replace-fail '@repoPython@' '${drv.repoPy}' \
-          --replace-fail '@runtimePath@' '${sets.systemdRuntimePath}'
+        installSystemdUnit() {
+          local unit_name="$1"
+          local description="$2"
+          local conflicts="$3"
+          local local_s3_assert="$4"
+          local exec_start_extra="$5"
+          local unit_path="$out/lib/systemd/system/$unit_name"
+
+          install -Dm0644 ${./systemd/webshot.service.in} "$unit_path"
+          substituteInPlace "$unit_path" \
+            --replace-fail '@description@' "$description" \
+            --replace-fail '@conflicts@' "$conflicts" \
+            --replace-fail '@localS3Assert@' "$local_s3_assert" \
+            --replace-fail '@out@' "$out" \
+            --replace-fail '@repoPython@' '${drv.repoPy}' \
+            --replace-fail '@runtimePath@' '${sets.systemdRuntimePath}' \
+            --replace-fail '@execStartExtra@' "$exec_start_extra"
+        }
+
+        installSystemdUnit \
+          webshot.service \
+          "webshot stack" \
+          webshot-local-s3.service \
+          "" \
+          ""
+        installSystemdUnit \
+          webshot-local-s3.service \
+          "webshot stack (local S3)" \
+          webshot.service \
+          "AssertPathExists=/etc/webshot/seaweedfs_s3_config.json" \
+          " --seaweedfs-s3-config /etc/webshot/seaweedfs_s3_config.json"
       '';
     };
 }

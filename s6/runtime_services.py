@@ -217,26 +217,70 @@ def _prepare_seaweedfs(ctx: RuntimeUpContext) -> None:
     ctx.seaweed_data_dir.mkdir(parents=True, exist_ok=True)
 
 
+def _seaweedfs_test_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list[str | Path]:
+    return [
+        "weed",
+        "server",
+        "-s3",
+        "-filer",
+        "-ip.bind=0.0.0.0",
+        f"-dir={ctx.seaweed_data_dir}",
+        "-filer.concurrentUploadLimitMB=512",
+        "-filer.maxMB=16",
+        "-volume.concurrentUploadLimitMB=512",
+        "-volume.max=256",
+        "-volume.port=8082",
+        "-volume.port.grpc=18082",
+        "-master.volumeSizeLimitMB=256",
+        "-metricsPort=9324",
+        f"-s3.config={s3_config_path}",
+    ]
+
+
+def _seaweedfs_full_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list[str | Path]:
+    return [
+        "weed",
+        "server",
+        "-master",
+        "-volume",
+        "-filer",
+        "-s3",
+        "-ip=127.0.0.1",
+        "-ip.bind=127.0.0.1",
+        "-s3.ip.bind=127.0.0.1",
+        "-s3.port=8333",
+        f"-dir={ctx.seaweed_data_dir}",
+        "-master.volumeSizeLimitMB=8192",
+        "-volume.max=0",
+        "-volume.minFreeSpace=5",
+        "-volume.index=leveldbMedium",
+        "-volume.port=8082",
+        "-volume.port.grpc=18082",
+        "-filer.concurrentUploadLimitMB=512",
+        "-filer.maxMB=64",
+        "-filer.disableDirListing=true",
+        "-volume.concurrentUploadLimitMB=512",
+        "-s3.iam=false",
+        "-s3.allowDeleteBucketNotEmpty=false",
+        "-s3.cacheCapacityMB=512",
+        "-metricsIp=127.0.0.1",
+        "-metricsPort=9324",
+        f"-s3.config={s3_config_path}",
+    ]
+
+
 def _seaweedfs_scripts(ctx: RuntimeUpContext) -> ServiceScripts:
+    s3_config_path = ctx.seaweedfs_s3_config_path
+    if s3_config_path is None:
+        s3_config_path = ctx.repo_root / "seaweedfs/s3_config.json"
+    if ctx.service_profile == "test_infra":
+        run_cmd = _seaweedfs_test_run_cmd(ctx, s3_config_path)
+    else:
+        run_cmd = _seaweedfs_full_run_cmd(ctx, s3_config_path)
+
     return ServiceScripts(
         check_cmd=_seaweedfs_ready_cmd(ctx),
-        run_cmd=[
-            "weed",
-            "server",
-            "-s3",
-            "-filer",
-            "-ip.bind=0.0.0.0",
-            f"-dir={ctx.seaweed_data_dir}",
-            "-filer.concurrentUploadLimitMB=512",
-            "-filer.maxMB=16",
-            "-volume.concurrentUploadLimitMB=512",
-            "-volume.max=256",
-            "-volume.port=8082",
-            "-volume.port.grpc=18082",
-            "-master.volumeSizeLimitMB=256",
-            "-metricsPort=9324",
-            f"-s3.config={ctx.repo_root / 'seaweedfs/s3_config.json'}",
-        ],
+        run_cmd=run_cmd,
         cwd=ctx.repo_root,
     )
 

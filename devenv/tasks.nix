@@ -90,6 +90,10 @@
       if profile == null
       then ""
       else " \\\n        --service-profile ${lib.escapeShellArg profile}";
+    seaweedfsS3ConfigArg =
+      if mode == "dev"
+      then " \\\n        --seaweedfs-s3-config ${lib.escapeShellArg "${config.devenv.root}/seaweedfs/s3_config.json"}"
+      else "";
   in
     if action == "up"
     then ''
@@ -97,7 +101,7 @@
         --mode ${lib.escapeShellArg cfg.infra}${profileArg} \
         --binary-path ${lib.escapeShellArg "${cfg.buildDir}/runtime_root/webshotd/webshotd_wrapper"} \
         --config-vars-source ${lib.escapeShellArg cfg.configVars} \
-        --runtime-ld-library-path ${lib.escapeShellArg runtimeLdPath}
+        --runtime-ld-library-path ${lib.escapeShellArg runtimeLdPath}${seaweedfsS3ConfigArg}
     ''
     else if action == "down"
     then ''
