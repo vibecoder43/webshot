@@ -7,9 +7,16 @@ import subprocess
 import sys
 import tempfile
 import time
+from enum import Enum
 from pathlib import Path
 
 import remote_compile
+
+
+class ConfigureAction(Enum):
+    RUN = "run"
+    FRESH = "fresh"
+    SKIP = "skip"
 
 
 def _repo_root() -> Path:
@@ -48,28 +55,40 @@ def _build_dir_has_configure_state(build_dir: Path) -> bool:
     )
 
 
-def _should_configure_fresh(build_dir: Path, configure_fingerprint: str) -> bool:
+def _configure_action(
+    build_dir: Path,
+    configure_fingerprint: str,
+    *,
+    force_fresh: bool,
+) -> ConfigureAction:
+    if force_fresh:
+        return ConfigureAction.FRESH
+
     fingerprint_path = build_dir / remote_compile.CONFIGURE_FINGERPRINT_NAME
     if fingerprint_path.is_file():
         previous_fingerprint = fingerprint_path.read_text(encoding="utf-8").strip()
         if previous_fingerprint != configure_fingerprint:
             print("CMake configure spec changed; reconfiguring with --fresh")
-            return True
-        return False
+            return ConfigureAction.FRESH
+        return ConfigureAction.SKIP
 
     if _build_dir_has_configure_state(build_dir):
         print("Existing build dir has no configure fingerprint; reconfiguring with --fresh")
-        return True
+        return ConfigureAction.FRESH
 
-    return False
+    return ConfigureAction.RUN
 
 
-def _should_configure_fresh_remote(
+def _configure_action_remote(
     *,
     remote_config: remote_compile.RemoteCompileConfig,
     remote_build_dir: str,
     configure_fingerprint: str,
-) -> bool:
+    force_fresh: bool,
+) -> ConfigureAction:
+    if force_fresh:
+        return ConfigureAction.FRESH
+
     fingerprint_path = f"{remote_build_dir.rstrip('/')}/{remote_compile.CONFIGURE_FINGERPRINT_NAME}"
     previous_fingerprint = remote_compile.read_remote_text_file(
         remote_config,
@@ -79,25 +98,29 @@ def _should_configure_fresh_remote(
         previous_fingerprint = previous_fingerprint.strip()
         if previous_fingerprint != configure_fingerprint:
             print("Remote CMake configure spec changed; reconfiguring with --fresh")
-            return True
-        return False
+            return ConfigureAction.FRESH
+        return ConfigureAction.SKIP
 
     if remote_compile.remote_build_dir_has_configure_state(remote_config, remote_build_dir):
         print("Remote build has no configure fingerprint; reconfiguring with --fresh")
-        return True
+        return ConfigureAction.FRESH
 
-    return False
+    return ConfigureAction.RUN
 
 
-def _configure_command(configure_argv: list[str], *, fresh: bool) -> list[str]:
+def _configure_command(configure_argv: list[str], *, action: ConfigureAction) -> list[str] | None:
+    if action == ConfigureAction.SKIP:
+        return None
     if not configure_argv:
         raise RuntimeError("missing configure argv")
     if configure_argv[0] != "cmake":
         raise RuntimeError(
             f"expected configure argv to start with cmake, got: {configure_argv[0]!r}"
         )
-    if not fresh:
+    if action == ConfigureAction.RUN:
         return configure_argv
+    if action != ConfigureAction.FRESH:
+        raise RuntimeError(f"unknown configure action: {action}")
     return [configure_argv[0], "--fresh", *configure_argv[1:]]
 
 
@@ -185,12 +208,13 @@ def main(argv: list[str] | None = None) -> int:
         remote_config,
     )
     shadow_build_dir: Path | None = None
-    configure_fresh: bool
+    configure_action: ConfigureAction
     if remote_config is None:
         configure_fingerprint_path = build_dir / remote_compile.CONFIGURE_FINGERPRINT_NAME
-        configure_fresh = args.force_configure_fresh or _should_configure_fresh(
+        configure_action = _configure_action(
             build_dir,
             configure_fingerprint,
+            force_fresh=args.force_configure_fresh,
         )
     else:
         shadow_build_dir = remote_compile.shadow_build_dir_for(build_dir, repo_root=repo_root)
@@ -202,10 +226,11 @@ def main(argv: list[str] | None = None) -> int:
             remote_root=remote_config.remote_root,
         )
         remote_compile.sync_source(remote_config, repo_root)
-        configure_fresh = args.force_configure_fresh or _should_configure_fresh_remote(
+        configure_action = _configure_action_remote(
             remote_config=remote_config,
             remote_build_dir=remote_build_dir,
             configure_fingerprint=configure_fingerprint,
+            force_fresh=args.force_configure_fresh,
         )
 
     before_log_path: Path | None = None
@@ -232,10 +257,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if remote_config is None:
         configure_started_ms = _time_ms()
-        configure_exit_code = _run(
-            _configure_command(args.configure_arg, fresh=configure_fresh),
-            cwd=repo_root,
-        )
+        configure_cmd = _configure_command(args.configure_arg, action=configure_action)
+        configure_exit_code = 0 if configure_cmd is None else _run(configure_cmd, cwd=repo_root)
         configure_finished_ms = _time_ms()
         configure_time_ms = configure_finished_ms - configure_started_ms
     else:
@@ -255,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
                     repo_root=repo_root,
                     remote_root=remote_config.remote_root,
                 ),
-                fresh=configure_fresh,
+                action=configure_action,
             ),
             configure_fingerprint=configure_fingerprint,
             configure_fingerprint_path=remote_configure_fingerprint_path,
@@ -273,7 +296,11 @@ def main(argv: list[str] | None = None) -> int:
         configure_exit_code = remote_result.configure_exit_code
         configure_time_ms = remote_result.configure_time_ms
 
-    if configure_exit_code == 0 and remote_config is None:
+    if (
+        configure_exit_code == 0
+        and remote_config is None
+        and configure_action != ConfigureAction.SKIP
+    ):
         configure_fingerprint_path.write_text(configure_fingerprint + "\n", encoding="utf-8")
 
     build_started_ms = _time_ms()

@@ -189,7 +189,7 @@ def remote_build_dir_has_configure_state(
 def run_remote_build(
     config: RemoteCompileConfig,
     *,
-    configure_cmd: list[str],
+    configure_cmd: list[str] | None,
     configure_fingerprint: str,
     configure_fingerprint_path: str,
     build_cmd: list[str],
@@ -309,26 +309,42 @@ def _relative_to_repo(path: Path, *, repo_root: Path) -> Path:
 
 def _remote_build_script(
     *,
-    configure_cmd: list[str],
+    configure_cmd: list[str] | None,
     configure_fingerprint: str,
     configure_fingerprint_path: str,
     build_cmd: list[str],
 ) -> str:
+    configure_lines = [
+        "_configure_started=$(_time_ms)",
+    ]
+    if configure_cmd is None:
+        configure_lines.extend(
+            [
+                "_configure_exit_code=0",
+                "_configure_finished=${_configure_started}",
+            ]
+        )
+    else:
+        configure_lines.extend(
+            [
+                shlex.join(configure_cmd),
+                "_configure_exit_code=$?",
+                "_configure_finished=$(_time_ms)",
+                "if (( _configure_exit_code == 0 )); then",
+                f'  mkdir -p -- "$(dirname -- {shlex.quote(configure_fingerprint_path)})" '
+                "&& printf '%s\\n' "
+                f"{shlex.quote(configure_fingerprint)} "
+                f"> {shlex.quote(configure_fingerprint_path)}",
+                "  _configure_exit_code=$?",
+                "fi",
+            ]
+        )
+
     return "\n".join(
         [
             "set -uo pipefail",
             "_time_ms() { python3 -c 'import time; print(time.time_ns() // 1000000)'; }",
-            "_configure_started=$(_time_ms)",
-            shlex.join(configure_cmd),
-            "_configure_exit_code=$?",
-            "_configure_finished=$(_time_ms)",
-            "if (( _configure_exit_code == 0 )); then",
-            f'  mkdir -p -- "$(dirname -- {shlex.quote(configure_fingerprint_path)})" '
-            "&& printf '%s\\n' "
-            f"{shlex.quote(configure_fingerprint)} "
-            f"> {shlex.quote(configure_fingerprint_path)}",
-            "  _configure_exit_code=$?",
-            "fi",
+            *configure_lines,
             "_build_exit_code=0",
             "_build_started=$(_time_ms)",
             "if (( _configure_exit_code == 0 )); then",
