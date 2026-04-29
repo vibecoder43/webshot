@@ -8,19 +8,19 @@ def _enable_allowlist_only(_config_yaml, config_vars):
 
 @pytest.mark.asyncio
 async def test_allowlist_check_not_exposed_on_main_listener(service_client):
-    resp = await service_client.post("/v1/allowlist/check", data=b"http://example.com/")
+    resp = await service_client.post("/v1/allowlist/check", json={"link": "http://example.com/"})
     assert resp.status == 404
 
 
 @pytest.mark.asyncio
 async def test_allowlist_add_not_exposed_on_main_listener(service_client):
-    resp = await service_client.post("/v1/allowlist/add", params={"link": "example.com"})
+    resp = await service_client.post("/v1/allowlist/add", json={"link": "example.com"})
     assert resp.status == 404
 
 
 @pytest.mark.asyncio
 async def test_allowlist_remove_not_exposed_on_main_listener(service_client):
-    resp = await service_client.post("/v1/allowlist/remove", params={"link": "example.com"})
+    resp = await service_client.post("/v1/allowlist/remove", json={"link": "example.com"})
     assert resp.status == 404
 
 
@@ -40,35 +40,36 @@ async def test_allowlist_check_missing_body(monitor_client):
 async def test_allowlist_check_invalid_body(monitor_client):
     resp = await monitor_client.post("/v1/allowlist/check", data=b"not a link")
     assert resp.status == 400
+    assert resp.json()["error"]["message"] == "invalid request body"
 
 
 @pytest.mark.asyncio
 async def test_allowlist_add_missing_link(monitor_client):
     resp = await monitor_client.post("/v1/allowlist/add")
     assert resp.status == 400
-    assert resp.json()["error"]["message"] == "link: missing parameter"
+    assert resp.json()["error"]["message"] == "invalid request body"
 
 
 @pytest.mark.asyncio
 async def test_allowlist_add_check_and_remove(monitor_client):
     link = f"http://{TEST_ASSET_HOST}/pixel?cache=bust"
 
-    resp = await monitor_client.post("/v1/allowlist/check", data=link.encode("ascii"))
+    resp = await monitor_client.post("/v1/allowlist/check", json={"link": link})
     assert resp.status == 403
 
-    add_resp = await monitor_client.post("/v1/allowlist/add", params={"link": link})
+    add_resp = await monitor_client.post("/v1/allowlist/add", json={"link": link})
     assert add_resp.status == 204
 
     resp = await monitor_client.post(
         "/v1/allowlist/check",
-        data=f"http://{TEST_ASSET_HOST}/pixel?other=value".encode("ascii"),
+        json={"link": f"http://{TEST_ASSET_HOST}/pixel?other=value"},
     )
     assert resp.status == 204
 
-    remove_resp = await monitor_client.post("/v1/allowlist/remove", params={"link": link})
+    remove_resp = await monitor_client.post("/v1/allowlist/remove", json={"link": link})
     assert remove_resp.status == 204
 
-    resp = await monitor_client.post("/v1/allowlist/check", data=link.encode("ascii"))
+    resp = await monitor_client.post("/v1/allowlist/check", json={"link": link})
     assert resp.status == 403
 
 
@@ -76,10 +77,10 @@ async def test_allowlist_add_check_and_remove(monitor_client):
 async def test_regular_mode_allowlist_overrides_denylist(service_client, monitor_client):
     link = f"https://{TEST_HOST}/allowlist-overrides-denylist"
 
-    allow_resp = await monitor_client.post("/v1/allowlist/add", params={"link": link})
+    allow_resp = await monitor_client.post("/v1/allowlist/add", json={"link": link})
     assert allow_resp.status == 204
 
-    deny_resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    deny_resp = await monitor_client.post("/v1/denylist/disallow_and_purge", json={"link": link})
     assert deny_resp.status == 202
 
     resp = await service_client.post("/v1/capture", json={"link": link})
@@ -102,10 +103,10 @@ async def test_allowlist_only_blocks_non_allowlisted_seed(service_client):
 async def test_allowlist_only_denylist_wins(service_client, monitor_client):
     link = f"https://{TEST_HOST}/allowlist-only-denylist-wins"
 
-    allow_resp = await monitor_client.post("/v1/allowlist/add", params={"link": link})
+    allow_resp = await monitor_client.post("/v1/allowlist/add", json={"link": link})
     assert allow_resp.status == 204
 
-    deny_resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    deny_resp = await monitor_client.post("/v1/denylist/disallow_and_purge", json={"link": link})
     assert deny_resp.status == 202
 
     resp = await service_client.post("/v1/capture", json={"link": link})

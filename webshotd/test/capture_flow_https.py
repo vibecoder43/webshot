@@ -21,7 +21,7 @@ async def test_allowlist_only_blocks_non_allowlisted_redirect_target(
 ):
     seed = f"https://{TEST_HOST}/redirect-seed"
 
-    resp = await monitor_client.post("/v1/allowlist/add", params={"link": seed})
+    resp = await monitor_client.post("/v1/allowlist/add", json={"link": seed})
     assert resp.status == 204
 
     resp = await service_client.post("/v1/capture", json={"link": seed})

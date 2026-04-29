@@ -164,7 +164,7 @@ async def test_disallow_and_purge_blocks_new_captures(service_client, monitor_cl
     first_job_id = resp.json()["uuid"]
     await wait_for_job_status(service_client, first_job_id, expected_status="succeeded")
 
-    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", json={"link": link})
     assert resp.status == 202
 
     db = pgsql["capture_meta_db"]

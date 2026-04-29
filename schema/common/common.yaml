@@ -24,3 +24,10 @@ components:
       type: string
       description: "Either an absolute HTTP/HTTPS link (e.g., https://example.com/a) or a link without scheme (e.g., example.com/a). Must not start with '/'. Hostnames only; IP literals (IPv4/IPv6) are not allowed. When HTTPS-only mode is enabled, HTTP inputs are accepted but crawler egress uses HTTPS only."
       pattern: ^(?:[Hh][Tt][Tt][Pp][Ss]?://|[^/].+)$
+    LinkRequest:
+      type: object
+      additionalProperties: false
+      required: [link]
+      properties:
+        link:
+          $ref: '#/components/schemas/Link'

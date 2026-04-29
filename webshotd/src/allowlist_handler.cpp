@@ -31,7 +31,6 @@
 namespace v1 {
 using namespace std::chrono_literals;
 using namespace text::literals;
-using text::toBytes;
 
 namespace {
 
@@ -41,33 +40,6 @@ void applyDeadline(
 {
     auto finalDeadline = computeHandlerDeadline(request, requestTimeout);
     eng::current_task::SetDeadline(finalDeadline);
-}
-
-[[nodiscard]] Expected<Link, ParamError>
-parseRequiredLinkParam(const server::http::HttpRequest &request, const Config &config)
-{
-    const auto paramName = "link"_t;
-    const std::string arg = request.GetArg(toBytes(paramName));
-    ENSURE(!arg.empty(), (ParamError{.name = paramName, .message = "missing parameter"_t}));
-
-    const auto text = TRY_MAP_ERR(String::fromBytes(arg), ([&](const auto &) {
-                                      return ParamError{
-                                          .name = paramName, .message = "invalid parameter"_t
-                                      };
-                                  }));
-    return TRY_MAP_ERR(Link::fromText(text, config.urlBytesMax()), ([&](const auto &) {
-                           return ParamError{.name = paramName, .message = "invalid parameter"_t};
-                       }));
-}
-
-[[nodiscard]] Expected<Link, String>
-parseBodyLink(const server::http::HttpRequest &request, const Config &config)
-{
-    const auto body = TRY_ERR_AS(
-        String::fromBytes(request.RequestBody()), "invalid request body"_t
-    );
-    ENSURE(!body.view().empty(), "invalid request body"_t);
-    return TRY_ERR_AS(Link::fromText(body, config.urlBytesMax()), "invalid request body"_t);
 }
 
 } // namespace
@@ -110,11 +82,9 @@ std::string AllowlistCheckHandler::HandleRequestThrow(
         return {};
     }
 
-    const auto link = parseBodyLink(request, config);
-    if (!link) {
-        response.SetStatus(kBadRequest);
-        return {};
-    }
+    const auto link = parseJsonLinkBody(request, config);
+    if (!link)
+        return httpu::respondError(response, kBadRequest, link.error());
 
     const auto allowed = denylist.isAllowlistedPrefix(prefix::makePrefixKey(*link));
     if (!allowed) {
@@ -169,11 +139,9 @@ std::string AllowlistAddHandler::HandleRequestThrow(
         return {};
     }
 
-    const auto link = parseRequiredLinkParam(request, config);
+    const auto link = parseJsonLinkBody(request, config);
     if (!link)
-        return httpu::respondParamError(
-            response, kBadRequest, link.error().name, link.error().message
-        );
+        return httpu::respondError(response, kBadRequest, link.error());
 
     const auto prefixKey = prefix::makePrefixKey(*link);
     const auto inserted = denylist.insertAllowlistPrefix(prefixKey, "allowlist_add"_t);
@@ -225,11 +193,9 @@ std::string AllowlistRemoveHandler::HandleRequestThrow(
         return {};
     }
 
-    const auto link = parseRequiredLinkParam(request, config);
+    const auto link = parseJsonLinkBody(request, config);
     if (!link)
-        return httpu::respondParamError(
-            response, kBadRequest, link.error().name, link.error().message
-        );
+        return httpu::respondError(response, kBadRequest, link.error());
 
     const auto prefixKey = prefix::makePrefixKey(*link);
     const auto removed = denylist.removeAllowlistPrefix(prefixKey);

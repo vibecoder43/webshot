@@ -8,6 +8,7 @@
 #include "invariant.hpp"
 #include "json.hpp"
 #include "link.hpp"
+#include "schema/common/common.hpp"
 #include "text.hpp"
 #include "try.hpp"
 #include "userver_namespaces.hpp"
@@ -33,6 +34,27 @@ struct [[nodiscard]] ParamError final {
     String name;
     String message;
 };
+
+template <typename T>
+[[nodiscard]] Expected<T, String> parseJsonBodyRequest(const server::http::HttpRequest &request)
+{
+    using namespace text::literals;
+
+    const auto body = TRY_MAP_ERR(String::fromBytes(request.RequestBody()), [](const auto &) {
+        return "invalid request body"_t;
+    });
+    return exu::json::parse<T>(body, "invalid request body"_t);
+}
+
+[[nodiscard]] inline Expected<Link, String>
+parseJsonLinkBody(const server::http::HttpRequest &request, const Config &config)
+{
+    using namespace text::literals;
+
+    const auto body = TRY(parseJsonBodyRequest<::dto::LinkRequest>(request));
+    const auto text = TRY_ERR_AS(String::fromBytes(body.link), "invalid parameter"_t);
+    return TRY_ERR_AS(Link::fromText(text, config.urlBytesMax()), "invalid parameter"_t);
+}
 
 enum class ClientRequestError {
     kInvalidClientIp,
@@ -80,12 +102,7 @@ public:
     template <typename T>
     [[nodiscard]] Expected<T, String> parseJsonBody(const server::http::HttpRequest &request) const
     {
-        using namespace text::literals;
-
-        const auto body = TRY_MAP_ERR(String::fromBytes(request.RequestBody()), [](const auto &) {
-            return "invalid request body"_t;
-        });
-        return exu::json::parse<T>(body, "invalid request body"_t);
+        return parseJsonBodyRequest<T>(request);
     }
 
     [[nodiscard]] Expected<Link, ParamError>

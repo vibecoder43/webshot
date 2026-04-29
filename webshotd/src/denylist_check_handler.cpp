@@ -6,6 +6,8 @@
 #include "config.hpp"
 #include "deadline_utils.hpp"
 #include "denylist.hpp"
+#include "handler_request_support.hpp"
+#include "http_utils.hpp"
 #include "integers.hpp"
 #include "link.hpp"
 #include "metrics.hpp"
@@ -70,17 +72,9 @@ std::string DenylistCheckHandler::HandleRequestThrow(
         return {};
     }
 
-    auto body = String::fromBytes(request.RequestBody());
-    if (!body || body->view().empty()) {
-        response.SetStatus(kBadRequest);
-        return {};
-    }
-
-    const auto link = Link::fromText(*body, config.urlBytesMax());
-    if (!link) {
-        response.SetStatus(kBadRequest);
-        return {};
-    }
+    const auto link = parseJsonLinkBody(request, config);
+    if (!link)
+        return httpu::respondError(response, kBadRequest, link.error());
 
     auto prefixKey = prefix::makePrefixKey(*link);
     const auto allowed = denylist.isAllowedPrefix(prefixKey);

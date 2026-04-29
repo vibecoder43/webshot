@@ -68,7 +68,7 @@ async def test_disallow_and_purge_blocks_concurrent_new_captures(
     link = f"https://{host}/concurrent-purge"
     prefix_key = prefix_key_from_link(link)
 
-    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", params={"host": link})
+    resp = await monitor_client.post("/v1/denylist/disallow_and_purge", json={"link": link})
     assert resp.status == 202
 
     tasks = [

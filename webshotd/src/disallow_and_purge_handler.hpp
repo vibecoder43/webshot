@@ -19,7 +19,7 @@ class Config;
 /**
  * @brief HTTP handler that disallows a host and enqueues purge.
  *
- * Accepts a `host` query argument, normalizes it via Crud, inserts it into
+ * Accepts a JSON link request body, normalizes it via Crud, inserts it into
  * the denylist, and enqueues background purge of matching captures.
  */
 class [[nodiscard]] DisallowAndPurgeHandler : public server::handlers::HttpHandlerBase {

@@ -64,11 +64,9 @@ std::string DisallowAndPurgeHandler::HandleRequestThrow(
     HandlerRequestSupport requestSupport{crud, config};
     requestSupport.applyRequestDeadline(request, requestTimeout);
 
-    const auto link = requestSupport.parseRequiredQueryLink(request, "host"_t);
+    const auto link = parseJsonLinkBody(request, config);
     if (!link)
-        return httpu::respondParamError(
-            response, kBadRequest, link.error().name, link.error().message
-        );
+        return httpu::respondError(response, kBadRequest, link.error());
 
     LOG_INFO() << std::format("invoked for: {}", link->host());
     auto prefixKey = prefix::makePrefixKey(*link);

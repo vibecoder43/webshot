@@ -12,27 +12,30 @@ paths:
       description: |
         Checks whether the provided link matches the current allowlist.
 
-        The request body is the raw link text (not JSON). The service normalizes the link
+        The service normalizes the link
         scheme-insensitively and checks the derived allowlist prefix.
       requestBody:
         required: true
         content:
-          text/plain:
+          application/json:
             schema:
-              $ref: '../common/common.yaml#/components/schemas/Link'
+              $ref: '../common/common.yaml#/components/schemas/LinkRequest'
             examples:
               absolute:
-                value: https://example.com/a?b=1
+                value:
+                  link: https://example.com/a?b=1
               host-without-scheme:
-                value: example.com/a?b=1
-          application/octet-stream:
-            schema:
-              $ref: '../common/common.yaml#/components/schemas/Link'
+                value:
+                  link: example.com/a?b=1
       responses:
         '204':
           description: Link is allowlisted.
         '400':
           description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
         '403':
           description: Link is not allowlisted.
         '500':
@@ -46,25 +49,24 @@ paths:
         the allowlist. The operation is idempotent.
 
         Port and query are ignored for allowlisting; only the normalized host and path are used.
-      parameters:
-        - in: query
-          name: link
-          required: true
-          description: |
-            Link prefix to allow. Accepts a full HTTP/HTTPS link or a bare hostname;
-            the normalized host and path (without query) are used for allowlisting.
-          schema:
-            $ref: '../common/common.yaml#/components/schemas/Link'
-          examples:
-            simple:
-              value: example.com
-            idn:
-              value: bucher.de
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../common/common.yaml#/components/schemas/LinkRequest'
+            examples:
+              simple:
+                value:
+                  link: example.com
+              idn:
+                value:
+                  link: bucher.de
       responses:
         '204':
           description: Prefix is present in the allowlist.
         '400':
-          description: Invalid or missing link parameter.
+          description: Missing or invalid request body.
           content:
             application/json:
               schema:
@@ -84,25 +86,24 @@ paths:
         the allowlist. The operation is idempotent.
 
         Port and query are ignored for allowlisting; only the normalized host and path are used.
-      parameters:
-        - in: query
-          name: link
-          required: true
-          description: |
-            Link prefix to remove. Accepts a full HTTP/HTTPS link or a bare hostname;
-            the normalized host and path (without query) are used for allowlisting.
-          schema:
-            $ref: '../common/common.yaml#/components/schemas/Link'
-          examples:
-            simple:
-              value: example.com
-            idn:
-              value: bucher.de
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../common/common.yaml#/components/schemas/LinkRequest'
+            examples:
+              simple:
+                value:
+                  link: example.com
+              idn:
+                value:
+                  link: bucher.de
       responses:
         '204':
           description: Prefix is absent from the allowlist.
         '400':
-          description: Invalid or missing link parameter.
+          description: Missing or invalid request body.
           content:
             application/json:
               schema:
@@ -120,27 +121,30 @@ paths:
       description: |
         Checks whether the provided link is allowed under the current denylist.
 
-        The request body is the raw link text (not JSON). The service normalizes the link
+        The service normalizes the link
         scheme-insensitively and checks the derived denylist prefix.
       requestBody:
         required: true
         content:
-          text/plain:
+          application/json:
             schema:
-              $ref: '../common/common.yaml#/components/schemas/Link'
+              $ref: '../common/common.yaml#/components/schemas/LinkRequest'
             examples:
               absolute:
-                value: https://example.com/a?b=1
+                value:
+                  link: https://example.com/a?b=1
               host-without-scheme:
-                value: example.com/a?b=1
-          application/octet-stream:
-            schema:
-              $ref: '../common/common.yaml#/components/schemas/Link'
+                value:
+                  link: example.com/a?b=1
       responses:
         '204':
           description: Link is allowed (not denylisted).
         '400':
           description: Missing or invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
         '403':
           description: Link is denylisted.
         '500':
@@ -150,42 +154,41 @@ paths:
       operationId: disallowAndPurgePrefix
       summary: Disallow a host prefix and enqueue purge
       description: |
-        Normalizes the provided host or URL, derives a host+path prefix, inserts it into the
+        Normalizes the provided link, derives a host+path prefix, inserts it into the
         denylist, and enqueues background purge of all captures matching that prefix.
 
         Port and query are ignored for denylisting; only the normalized host and path are used.
-      parameters:
-        - in: query
-          name: host
-          required: true
-          description: |
-            Host or URL prefix to disallow. Accepts a full HTTP/HTTPS link or a bare hostname;
-            the normalized host and path (without query) are used for denylisting.
-          schema:
-            $ref: '../common/common.yaml#/components/schemas/Link'
-          examples:
-            simple:
-              value: example.com
-            idn:
-              value: bucher.de
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../common/common.yaml#/components/schemas/LinkRequest'
+            examples:
+              simple:
+                value:
+                  link: example.com
+              idn:
+                value:
+                  link: bucher.de
       responses:
         '202':
           description: Purge successfully enqueued for the normalized prefix.
         '400':
-          description: Invalid or missing host parameter.
+          description: Missing or invalid request body.
           content:
             application/json:
               schema:
                 $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
               examples:
-                missing_host:
+                missing_link:
                   value:
                     error:
-                      message: "host: missing parameter"
-                invalid_host:
+                      message: invalid request body
+                invalid_link:
                   value:
                     error:
-                      message: "host: invalid parameter"
+                      message: invalid parameter
         '429':
           description: Client IP is still in cooldown.
           headers:

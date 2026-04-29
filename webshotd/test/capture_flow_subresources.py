@@ -64,7 +64,7 @@ async def test_denylist_blocks_subresource_fetch(
 ):
     deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
-        params={"host": f"https://{TEST_HOST}/denylist/style.css"},
+        json={"link": f"https://{TEST_HOST}/denylist/style.css"},
     )
     assert deny_resp.status == 202
 
@@ -85,12 +85,12 @@ async def test_regular_mode_allowlist_overrides_denylisted_subresource_fetch(
 ):
     script = f"https://{TEST_HOST}/denylist/script.js"
 
-    allow_resp = await monitor_client.post("/v1/allowlist/add", params={"link": script})
+    allow_resp = await monitor_client.post("/v1/allowlist/add", json={"link": script})
     assert allow_resp.status == 204
 
     deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
-        params={"host": script},
+        json={"link": script},
     )
     assert deny_resp.status == 202
 
@@ -110,7 +110,7 @@ async def test_allowlist_only_fetches_allowlisted_subresources(
     style = f"https://{TEST_HOST}/style.css"
     script = f"https://{TEST_HOST}/script.js"
     for link in [seed, style, script]:
-        resp = await monitor_client.post("/v1/allowlist/add", params={"link": link})
+        resp = await monitor_client.post("/v1/allowlist/add", json={"link": link})
         assert resp.status == 204
 
     job_id, _job = await _capture_and_wait(service_client, seed)
@@ -131,7 +131,7 @@ async def test_allowlist_only_blocks_non_allowlisted_subresources(
     seed = f"https://{TEST_HOST}/with-https-asset-subresource"
     asset_script = f"https://{TEST_ASSET_HOST}/asset.js"
 
-    resp = await monitor_client.post("/v1/allowlist/add", params={"link": seed})
+    resp = await monitor_client.post("/v1/allowlist/add", json={"link": seed})
     assert resp.status == 204
 
     job_id, _job = await _capture_and_wait(service_client, seed)
@@ -185,7 +185,7 @@ async def test_denylist_blocks_https_subresource_fetch(
 ):
     deny_resp = await monitor_client.post(
         "/v1/denylist/disallow_and_purge",
-        params={"host": f"https://{TEST_ASSET_HOST}/denylist/asset.css"},
+        json={"link": f"https://{TEST_ASSET_HOST}/denylist/asset.css"},
     )
     assert deny_resp.status == 202
 
