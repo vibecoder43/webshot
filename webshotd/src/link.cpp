@@ -46,10 +46,12 @@ namespace {
 
 Expected<Link, LinkError> fromTextImpl(const String &text, usize urlBytesMax)
 {
+    using enum LinkError::Code;
+
     std::string in(text.view());
     absl::StripAsciiWhitespace(&in);
     if (in.starts_with("//"))
-        return Unex(LinkError{.code = LinkError::Code::kMissingScheme});
+        return Unex(LinkError{.code = kMissingScheme});
     const auto schemePos = in.find("://");
     if (schemePos == std::string::npos ||
         !isValidScheme(std::string_view(in).substr(0, schemePos))) {
@@ -57,24 +59,24 @@ Expected<Link, LinkError> fromTextImpl(const String &text, usize urlBytesMax)
     } else {
         std::string scheme = in.substr(0, schemePos);
         if (!(scheme == "http" || scheme == "https"))
-            return Unex(LinkError{.code = LinkError::Code::kUnsupportedScheme});
+            return Unex(LinkError{.code = kUnsupportedScheme});
     }
     if (usz(in) > urlBytesMax)
-        return Unex(LinkError{.code = LinkError::Code::kUrlTooLong});
+        return Unex(LinkError{.code = kUrlTooLong});
     auto url = ada::parse<ada::url_aggregator>(in);
     if (!url)
-        return Unex(LinkError{.code = LinkError::Code::kFailedToParse});
+        return Unex(LinkError{.code = kFailedToParse});
     auto parsedUrl = Url::fromParsed(std::move(*url));
     if (!parsedUrl.isHttpOrHttps())
-        return Unex(LinkError{.code = LinkError::Code::kUnsupportedScheme});
+        return Unex(LinkError{.code = kUnsupportedScheme});
     if (!parsedUrl.hasHostname())
-        return Unex(LinkError{.code = LinkError::Code::kMissingHostname});
+        return Unex(LinkError{.code = kMissingHostname});
 
     if (isIpLiteralHostname(parsedUrl.hostname()))
-        return Unex(LinkError{.code = LinkError::Code::kIpAddressNotAllowed});
+        return Unex(LinkError{.code = kIpAddressNotAllowed});
 
     if (!parsedUrl.hasValidDomain())
-        return Unex(LinkError{.code = LinkError::Code::kInvalidHost});
+        return Unex(LinkError{.code = kInvalidHost});
 
     auto normalized = parsedUrl.copyParsed();
     normalized.set_username("");
