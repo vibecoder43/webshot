@@ -132,7 +132,7 @@ struct [[nodiscard]] ParsedRequest final {
         return {};
 
     ParsedRequest out;
-    out.header_bytes = usz(header_part);
+    out.header_bytes = unsize(header_part);
     {
         const auto first_sp = request_line->find(' ');
         if (first_sp == std::string_view::npos)
@@ -531,7 +531,7 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 [[nodiscard]] std::string BuildForwardRequest(const ParsedRequest &req, std::string_view path)
 {
     std::string out;
-    out.reserve(NumericCast<size_t>(req.header_bytes + 64_uz + usz(path)));
+    out.reserve(NumericCast<size_t>(req.header_bytes + 64_uz + unsize(path)));
     out.append(req.method);
     out.push_back(' ');
     out.append(path);
@@ -899,7 +899,7 @@ struct EgressProxy::Impl final {
         std::span<char> buffer{storage};
         try {
             while (!header.contains("\r\n\r\n")) {
-                if (usz(header) > kMaxHeaderBytes) {
+                if (unsize(header) > kMaxHeaderBytes) {
                     Send400(client, "header too large", deadline);
                     client.Close();
                     return;
@@ -918,7 +918,7 @@ struct EgressProxy::Impl final {
             Send400(client, "invalid request", deadline);
             return;
         }
-        if (usz(parsed->target) > config.url_bytes_max) {
+        if (unsize(parsed->target) > config.url_bytes_max) {
             Send400(client, "target too long", deadline);
             return;
         }

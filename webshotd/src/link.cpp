@@ -59,7 +59,7 @@ Expected<Link, LinkError> Link::FromText(const String &text, usize url_bytes_max
         if (!(scheme == "http" || scheme == "https"))
             return Unex(LinkError{.code = kUnsupportedScheme});
     }
-    if (usz(in) > url_bytes_max)
+    if (unsize(in) > url_bytes_max)
         return Unex(LinkError{.code = kUrlTooLong});
     auto url = ada::parse<ada::url_aggregator>(in);
     if (!url)

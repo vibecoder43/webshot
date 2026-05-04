@@ -1859,7 +1859,7 @@ private:
             wacz->size(), pages.size()
         );
 
-        const auto wacz_bytes = i64(wacz->size());
+        const auto wacz_bytes = ssize(wacz);
         if (wacz_bytes > max_archive_bytes) {
             const auto max_archive_mi_b = max_archive_bytes / (1024_i64 * 1024_i64);
             const auto detail = text::Format(
@@ -1871,7 +1871,7 @@ private:
             out.attempt.wacz_exists = false;
             out.attempt.seed_probe = crawler::SeedPageProbe{
                 .status = Raw(exchange.status_code),
-                .load_state = Raw(0_i64),
+                .load_state = 0,
             };
             out.attempt.failure_detail = detail;
             out.wacz.reset();
@@ -1902,7 +1902,7 @@ private:
             out.attempt.wacz_exists = false;
             out.attempt.seed_probe = crawler::SeedPageProbe{
                 .status = Raw(exchange.status_code),
-                .load_state = Raw(0_i64),
+                .load_state = 0,
             };
             out.attempt.failure_detail = detail;
             out.wacz.reset();

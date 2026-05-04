@@ -200,8 +200,7 @@ Raw(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value
 struct SSizeFn {
     template <typename C> [[nodiscard]] constexpr i64 operator()(const C &c) const noexcept
     {
-        const auto size_value = usize(c.size());
-        return i64(size_value);
+        return i64{c.size()};
     }
 };
 
@@ -210,14 +209,14 @@ struct USizeFn {
         requires requires(const C &c) { c.size(); }
     [[nodiscard]] constexpr usize operator()(const C &c) const noexcept
     {
-        return usize(c.size());
+        return usize{c.size()};
     }
 };
 
 // NOLINTNEXTLINE(readability-identifier-naming)
 inline constexpr SSizeFn ssize{};
 // NOLINTNEXTLINE(readability-identifier-naming)
-inline constexpr USizeFn usz{};
+inline constexpr USizeFn unsize{};
 
 } // namespace integers
 
@@ -244,13 +243,12 @@ using integers::i32;
 using integers::i64;
 using integers::NumericCast;
 using integers::Raw;
-using integers::SafeInteger;
 using integers::ssize;
 using integers::u16;
 using integers::u32;
 using integers::u64;
+using integers::unsize;
 using integers::usize;
-using integers::usz;
 using namespace integers::literals;
 
 template <> struct std::formatter<u16, char> : std::formatter<uint16_t, char> {
