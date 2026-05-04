@@ -8,7 +8,7 @@
 
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 
 struct [[nodiscard]] LinkError final {
     enum class Code {
@@ -64,4 +64,4 @@ struct [[nodiscard]] Link {
     [[nodiscard]] String Normalized() const;
 };
 
-} // namespace v1
+} // namespace ws

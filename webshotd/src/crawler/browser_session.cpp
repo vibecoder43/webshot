@@ -46,9 +46,9 @@ namespace chrono = std::chrono;
 using namespace std::chrono_literals;
 
 using namespace text::literals;
-using v1::uuidu::ToBytes;
+using ws::uuid::ToBytes;
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
 namespace datetime = us::utils::datetime;
@@ -1256,4 +1256,4 @@ std::string LocalFixtureTrustDbSourcePath(std::string_view state_dir)
     return NormalizeDirPath(std::string(state_dir)) + "/test_pki/chromium_nssdb";
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

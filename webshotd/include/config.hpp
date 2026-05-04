@@ -10,14 +10,14 @@
 #include <userver/components/component_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 enum class ClientIpSource {
     kPeer,
     kTrustedHeader,
 };
 
-enum class S3Mode {
+enum class Mode {
     kLocal,
     kExternal,
 };
@@ -61,11 +61,11 @@ public:
 
     /** @name S3 parameters */
     ///@{
-    [[nodiscard]] S3Mode S3Mode() const noexcept { return s3_mode_; }
+    [[nodiscard]] Mode S3Mode() const noexcept { return s3_mode_; }
     [[nodiscard]] const String &S3Bucket() const noexcept { return s3_bucket_name_; }
     [[nodiscard]] const String &S3Endpoint() const noexcept { return s3_endpoint_url_; }
     [[nodiscard]] const String &S3Region() const noexcept { return s3_region_name_; }
-    [[nodiscard]] const String &PublicBaseUrl() const noexcept { return public_base_url_; }
+    [[nodiscard]] const String &S3PublicBaseUrl() const noexcept { return public_base_url_; }
     [[nodiscard]] std::chrono::milliseconds S3Timeout() const noexcept
     {
         return s3_timeout_duration_;
@@ -79,11 +79,11 @@ private:
     std::string state_dir_;
     enum ClientIpSource client_ip_source_;
     std::string client_ip_header_name_;
-    enum S3Mode s3_mode_;
+    enum Mode s3_mode_;
     String s3_bucket_name_;
     String s3_endpoint_url_;
     String s3_region_name_;
     String public_base_url_;
     std::chrono::milliseconds s3_timeout_duration_;
 };
-} // namespace v1
+} // namespace ws

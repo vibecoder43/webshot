@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace sml = boost::sml;
 
 namespace {
@@ -88,4 +88,4 @@ bool BrowserPageSessionLifecycle::MarkDisposed() { return impl_->Process(Dispose
 
 bool BrowserPageSessionLifecycle::MarkClosed() { return impl_->Process(Closed{}); }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

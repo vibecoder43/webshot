@@ -40,7 +40,7 @@ std::string SerializeHref(const ada::url_aggregator &url)
 
 } // namespace
 
-namespace v1 {
+namespace ws {
 
 Expected<Link, LinkError> Link::FromText(const String &text, usize url_bytes_max)
 {
@@ -112,4 +112,4 @@ String Link::Normalized() const
     return String::FromBytes(SerializeHref(copy).substr(http_prefix.size())).Expect();
 }
 
-} // namespace v1
+} // namespace ws

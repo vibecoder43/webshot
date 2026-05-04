@@ -8,7 +8,7 @@
 
 #include <optional>
 
-namespace v1 {
+namespace ws {
 
 enum class StorageUrlError {
     kInvalidPublicBaseUrl,
@@ -17,10 +17,10 @@ enum class StorageUrlError {
 };
 
 [[nodiscard]] Expected<Url, StorageUrlError> BuildCaptureDownloadUrl(
-    uuidu::Uuid uuid, S3Mode s3_mode, const String &public_base_url,
+    ws::uuid::Uuid uuid, Mode s3_mode, const String &public_base_url,
     const std::optional<String> &request_host
 );
 
 [[nodiscard]] String StorageUrlErrorMessage(StorageUrlError error);
 
-} // namespace v1
+} // namespace ws

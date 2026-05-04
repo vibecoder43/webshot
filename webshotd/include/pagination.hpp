@@ -14,7 +14,7 @@
 
 #include <boost/uuid/uuid.hpp>
 
-namespace v1::crud {
+namespace ws::crud {
 
 using Uuid = boost::uuids::uuid;
 
@@ -46,4 +46,4 @@ EncodeCursor(Clock::time_point created_at, const Uuid &id, PageDirection directi
  */
 [[nodiscard]] std::optional<Cursor> DecodeCursor(const String &token);
 
-} // namespace v1::crud
+} // namespace ws::crud

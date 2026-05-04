@@ -17,7 +17,7 @@
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
 
-namespace v1::ex {
+namespace ws::json {
 namespace us = userver;
 namespace ujson = us::formats::json;
 
@@ -84,8 +84,6 @@ template <typename E, typename F>
 {
     return CatchException<std::exception, E>(std::forward<F>(f), std::move(error));
 }
-
-namespace json {
 
 template <typename T, typename E, typename G>
     requires std::invocable<G, const ujson::Exception &> &&
@@ -199,16 +197,14 @@ template <typename T, typename E, typename G>
 [[nodiscard]] Expected<String, E> Stringify(const T &value, G &&map_error)
 {
     auto mapper = std::forward<G>(map_error);
-    return stringify<E>(TRY(ValueOf<T, E>(value, mapper)), mapper);
+    return Stringify<E>(TRY(ValueOf<T, E>(value, mapper)), mapper);
 }
 
 template <typename T, typename E>
     requires std::copy_constructible<E> && (!detail::JsonTextInput<T>)
 [[nodiscard]] Expected<String, E> Stringify(const T &value, E error)
 {
-    return stringify<E>(TRY(ValueOf<T, E>(value, error)), std::move(error));
+    return Stringify<E>(TRY(ValueOf<T, E>(value, error)), std::move(error));
 }
 
-} // namespace json
-
-} // namespace v1::ex
+} // namespace ws::json

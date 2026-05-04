@@ -2,13 +2,12 @@ function(_add_cpp_test_target target)
   cmake_parse_arguments(ARGS "WITH_UTEST;REGISTER_CTEST;ENABLE_COVERAGE" ""
                         "SOURCES;LIBS;INCLUDE_DIRS" ${ARGN})
 
-  set(linkLibs ada::ada uni-algo::uni-algo absl::strings ${ARGS_LIBS})
+  set(link_libs ada::ada uni-algo::uni-algo absl::strings ${ARGS_LIBS})
   if(ARGS_WITH_UTEST)
-    list(PREPEND linkLibs userver::utest)
+    list(PREPEND link_libs userver::utest)
   endif()
-
   add_executable(${target} ${ARGS_SOURCES})
-  target_link_libraries(${target} PRIVATE ${linkLibs})
+  target_link_libraries(${target} PRIVATE ${link_libs})
   target_include_directories(
     ${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include
                       ${PROJECT_BINARY_DIR}/src ${ARGS_INCLUDE_DIRS})
@@ -45,12 +44,12 @@ add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src/url.cpp)
 
 add_cpp_test(
-  s3_v4_client_test
+  s3_client_test
   SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/s3_v4_client.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/s3/client.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
-  ${CMAKE_SOURCE_DIR}/src/s3/s3_v4_client.cpp
-  ${CMAKE_SOURCE_DIR}/src/s3/s3_url_utils.cpp
+  ${CMAKE_SOURCE_DIR}/src/s3/client.cpp
+  ${CMAKE_SOURCE_DIR}/src/s3/url_utils.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
   ${CMAKE_SOURCE_DIR}/src/url.cpp
   LIBS
@@ -59,16 +58,16 @@ add_cpp_test(
   ${CMAKE_SOURCE_DIR}/src)
 
 add_cpp_test(
-  s3_url_utils_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3_url_utils.cpp
-  ${CMAKE_SOURCE_DIR}/src/s3/s3_url_utils.cpp ${CMAKE_SOURCE_DIR}/src/url.cpp)
+  s3_url_utils_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3/url_utils.cpp
+  ${CMAKE_SOURCE_DIR}/src/s3/url_utils.cpp ${CMAKE_SOURCE_DIR}/src/url.cpp)
 
 add_cpp_test(
   s3_sts_client_test
   SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/s3_sts_client.cpp
-  ${CMAKE_SOURCE_DIR}/src/s3/s3_sts_client.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/s3/sts_client.cpp
+  ${CMAKE_SOURCE_DIR}/src/s3/sts_client.cpp
   ${CMAKE_SOURCE_DIR}/src/s3/sigv4_signer.cpp
-  ${CMAKE_SOURCE_DIR}/src/s3/s3_url_utils.cpp
+  ${CMAKE_SOURCE_DIR}/src/s3/url_utils.cpp
   ${CMAKE_SOURCE_DIR}/src/link.cpp
   ${CMAKE_SOURCE_DIR}/src/url.cpp
   LIBS
@@ -107,11 +106,11 @@ add_cpp_test(text_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/text.cpp)
 
 add_cpp_test(ip_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/ip.cpp)
 
-add_cpp_test(s3_secdist_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3_secdist.cpp
+add_cpp_test(s3_secdist_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/s3/secdist.cpp
              LIBS userver::core)
 
 add_cpp_test(s3_refresh_schedule_test SOURCES
-             ${CMAKE_CURRENT_SOURCE_DIR}/s3_refresh_schedule.cpp)
+             ${CMAKE_CURRENT_SOURCE_DIR}/s3/refresh_schedule.cpp)
 
 add_cpp_test(
   storage_url_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/storage_url.cpp

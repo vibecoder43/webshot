@@ -228,8 +228,8 @@ UTEST(TextString, Idempotence)
 
 UTEST(TextString, RejectsVariousInvalidUtf8)
 {
-    auto v1 = String::FromBytes(std::string{"\x80"});
-    EXPECT_FALSE(v1);
+    auto ws = String::FromBytes(std::string{"\x80"});
+    EXPECT_FALSE(ws);
 
     auto v2 = String::FromBytes(std::string{"\xC2"});
     EXPECT_FALSE(v2);

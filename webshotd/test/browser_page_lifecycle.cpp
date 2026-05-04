@@ -2,7 +2,7 @@
 
 #include <userver/utest/utest.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace {
 
 UTEST(BrowserPageSessionLifecycle, HappyPathTransitions)
@@ -56,4 +56,4 @@ UTEST(BrowserPageSessionLifecycle, CleanupTransitionsAreIdempotent)
 }
 
 } // namespace
-} // namespace v1::crawler
+} // namespace ws::crawler

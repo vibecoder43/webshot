@@ -24,7 +24,7 @@
 #include <userver/server/http/http_status.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
 namespace eng = us::engine;
@@ -62,7 +62,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/allowlist/check handler in milliseconds
+    description: Upper bound for /ws/allowlist/check handler in milliseconds
 )");
 }
 
@@ -119,7 +119,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/allowlist/add handler in milliseconds
+    description: Upper bound for /ws/allowlist/add handler in milliseconds
 )");
 }
 
@@ -173,7 +173,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/allowlist/remove handler in milliseconds
+    description: Upper bound for /ws/allowlist/remove handler in milliseconds
 )");
 }
 
@@ -206,4 +206,4 @@ std::string AllowlistRemoveHandler::HandleRequestThrow(
     return {};
 }
 
-} // namespace v1
+} // namespace ws

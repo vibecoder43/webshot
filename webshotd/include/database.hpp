@@ -11,7 +11,7 @@
 #include <userver/storages/postgres/exceptions.hpp>
 #include <userver/storages/postgres/transaction.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 namespace pg = us::storages::postgres;
@@ -75,4 +75,4 @@ template <typename F> [[nodiscard]] auto ReadwriteTransaction(const pg::ClusterP
 
 } // namespace pgx
 
-} // namespace v1
+} // namespace ws

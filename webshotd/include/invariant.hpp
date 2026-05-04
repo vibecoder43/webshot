@@ -4,7 +4,7 @@
 
 #include <userver/utils/assert.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 
 [[noreturn]] inline void Invariant(const String &message) noexcept
@@ -20,4 +20,4 @@ inline void Invariant(const Condition &condition, const String &message) noexcep
     Invariant(message);
 }
 
-} // namespace v1
+} // namespace ws

@@ -23,17 +23,17 @@ struct MoveOnly final {
     std::unique_ptr<int> value;
 };
 
-[[nodiscard]] v1::Expected<int, TestError> MakeValue(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> MakeValue(bool ok)
 {
     if (!ok)
-        return v1::Unex(TestError::kAlpha);
+        return ws::Unex(TestError::kAlpha);
     return 21;
 }
 
-[[nodiscard]] v1::Expected<void, TestError> MakeVoid(bool ok)
+[[nodiscard]] ws::Expected<void, TestError> MakeVoid(bool ok)
 {
     if (!ok)
-        return v1::Unex(TestError::kBeta);
+        return ws::Unex(TestError::kBeta);
     return {};
 }
 
@@ -51,19 +51,19 @@ struct MoveOnly final {
     return std::make_unique<int>(13);
 }
 
-[[nodiscard]] v1::Expected<MoveOnly, TestError> MakeMoveOnly(bool ok)
+[[nodiscard]] ws::Expected<MoveOnly, TestError> MakeMoveOnly(bool ok)
 {
     if (!ok)
-        return v1::Unex(TestError::kBeta);
+        return ws::Unex(TestError::kBeta);
     return MoveOnly{33};
 }
 
-[[nodiscard]] v1::Expected<int, TestError> DoubleExpected(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> DoubleExpected(bool ok)
 {
     return TRY(MakeValue(ok)) * 2;
 }
 
-[[nodiscard]] v1::Expected<int, TestError> PropagateVoid(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> PropagateVoid(bool ok)
 {
     TRY(MakeVoid(ok));
     return 9;
@@ -91,28 +91,28 @@ struct MoveOnly final {
     return TRY(value) + 1;
 }
 
-[[nodiscard]] v1::Expected<int, TestError> LvalueExpected(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> LvalueExpected(bool ok)
 {
     auto value = MakeValue(ok);
     return TRY(value) + 1;
 }
 
-[[nodiscard]] v1::Expected<int, TestError> TwoTrys(bool left_ok, bool right_ok)
+[[nodiscard]] ws::Expected<int, TestError> TwoTrys(bool left_ok, bool right_ok)
 {
     return TRY(MakeValue(left_ok)) + TRY(MakeValue(right_ok));
 }
 
-[[nodiscard]] v1::Expected<int, TestError> SingleEvaluation(int &calls, bool ok)
+[[nodiscard]] ws::Expected<int, TestError> SingleEvaluation(int &calls, bool ok)
 {
-    return TRY(([&]() -> v1::Expected<int, TestError> {
+    return TRY(([&]() -> ws::Expected<int, TestError> {
         calls++;
         if (!ok)
-            return v1::Unex(TestError::kBeta);
+            return ws::Unex(TestError::kBeta);
         return 5;
     })());
 }
 
-[[nodiscard]] v1::Expected<int, TestError> UnwrapMoveOnly(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> UnwrapMoveOnly(bool ok)
 {
     auto value = TRY(MakeMoveOnly(ok));
     return *value.value;
@@ -124,24 +124,24 @@ struct MoveOnly final {
     return *value;
 }
 
-[[nodiscard]] v1::Expected<int, TestError> MapExpectedValue(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> MapExpectedValue(bool ok)
 {
     return TRY_MAP(MakeValue(ok), [](int value) { return value * 2; }) + 1;
 }
 
-[[nodiscard]] v1::Expected<int, int> MapExpectedError(bool ok)
+[[nodiscard]] ws::Expected<int, int> MapExpectedError(bool ok)
 {
     return TRY_MAP_ERR(MakeValue(ok), [](auto err) { return err == TestError::kAlpha ? 10 : 20; }) *
            2;
 }
 
-[[nodiscard]] v1::Expected<int, int> MapVoidError(bool ok)
+[[nodiscard]] ws::Expected<int, int> MapVoidError(bool ok)
 {
     TRY_MAP_ERR(MakeVoid(ok), [](auto err) { return err == TestError::kBeta ? 30 : 40; });
     return 9;
 }
 
-[[nodiscard]] v1::Expected<int, int> ReplaceExpectedError(bool ok, int &err_calls)
+[[nodiscard]] ws::Expected<int, int> ReplaceExpectedError(bool ok, int &err_calls)
 {
     return TRY_ERR_AS(MakeValue(ok), ([&]() {
                           err_calls++;
@@ -150,20 +150,20 @@ struct MoveOnly final {
            1;
 }
 
-[[nodiscard]] v1::Expected<int, int> ReplaceVoidError(bool ok)
+[[nodiscard]] ws::Expected<int, int> ReplaceVoidError(bool ok)
 {
     TRY_ERR_AS(MakeVoid(ok), 96);
     return 9;
 }
 
-[[nodiscard]] v1::Expected<int, int>
+[[nodiscard]] ws::Expected<int, int>
 MapErrorSingleEvaluation(int &expr_calls, int &mapper_calls, bool ok)
 {
     return TRY_MAP_ERR(
-               ([&]() -> v1::Expected<int, TestError> {
+               ([&]() -> ws::Expected<int, TestError> {
                    expr_calls++;
                    if (!ok)
-                       return v1::Unex(TestError::kAlpha);
+                       return ws::Unex(TestError::kAlpha);
                    return 4;
                })(),
                [&](auto err) {
@@ -174,12 +174,12 @@ MapErrorSingleEvaluation(int &expr_calls, int &mapper_calls, bool ok)
            1;
 }
 
-[[nodiscard]] v1::Expected<int, int> OkOrOptional(bool ok)
+[[nodiscard]] ws::Expected<int, int> OkOrOptional(bool ok)
 {
     return TRY_OK_OR(MaybeValue(ok), 70) + 1;
 }
 
-[[nodiscard]] v1::Expected<int, int> OkOrElseOptional(bool ok, int &err_calls)
+[[nodiscard]] ws::Expected<int, int> OkOrElseOptional(bool ok, int &err_calls)
 {
     return TRY_OK_OR_ELSE(
                MaybeValue(ok),
@@ -191,7 +191,7 @@ MapErrorSingleEvaluation(int &expr_calls, int &mapper_calls, bool ok)
            1;
 }
 
-[[nodiscard]] v1::Expected<int, int> EnsureValue(bool ok, int &err_calls)
+[[nodiscard]] ws::Expected<int, int> EnsureValue(bool ok, int &err_calls)
 {
     ENSURE(ok, ([&]() {
                err_calls++;

@@ -13,7 +13,7 @@
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/request/task_inherited_data.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
 namespace eng = us::engine;
@@ -107,4 +107,4 @@ SleepWithinDeadline(eng::Deadline deadline, std::chrono::milliseconds delay)
     return {};
 }
 
-} // namespace v1
+} // namespace ws

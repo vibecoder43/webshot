@@ -7,7 +7,7 @@
 
 #include "invariant.hpp"
 
-namespace v1 {
+namespace ws {
 
 using namespace text::literals;
 using text::ToBytes;
@@ -187,4 +187,4 @@ Url Url::WithoutHash() const
 
 ada::url_aggregator Url::CopyParsed() const { return ada_url_; }
 
-} // namespace v1
+} // namespace ws

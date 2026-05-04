@@ -13,7 +13,7 @@
 #include <userver/engine/subprocess/process_starter.hpp>
 #include <userver/engine/task/task_processor_fwd.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace eng = us::engine;
 class Denylist;
@@ -78,4 +78,4 @@ private:
     i64 network_down_bytes_ratio_max_;
 };
 
-} // namespace v1
+} // namespace ws

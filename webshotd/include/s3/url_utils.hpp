@@ -7,9 +7,9 @@
 #include <utility>
 #include <vector>
 
-namespace v1::s3v4 {
+namespace ws::s3 {
 
-using v1::Expected;
+using ws::Expected;
 
 enum class QueryStringError {
     kInvalidUtf8Key,
@@ -20,4 +20,4 @@ enum class QueryStringError {
 [[nodiscard]] Expected<std::vector<std::pair<String, String>>, QueryStringError>
 DecodeQueryString(String search);
 
-} // namespace v1::s3v4
+} // namespace ws::s3

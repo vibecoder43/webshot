@@ -6,7 +6,7 @@
 #include <userver/engine/exception.hpp>
 #include <userver/fs/read.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
 using namespace text::literals;
@@ -153,4 +153,4 @@ String FormatAttemptStatus(std::string_view label, const AttemptSummary &attempt
     return msg;
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

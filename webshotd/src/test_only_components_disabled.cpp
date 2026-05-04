@@ -5,9 +5,9 @@
  * @brief Release implementation for test-only component registration.
  */
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 void AppendTestOnlyComponents(us::components::ComponentList &) {}
 
-} // namespace v1
+} // namespace ws

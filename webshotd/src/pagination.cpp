@@ -10,7 +10,7 @@
 #include "text.hpp"
 #include "try.hpp"
 
-namespace v1::crud {
+namespace ws::crud {
 
 namespace {
 [[nodiscard]] dto::PaginationCursor::D ToDto(PageDirection direction)
@@ -56,4 +56,4 @@ EncodeCursor(Clock::time_point created_at, const Uuid &id, PageDirection directi
     };
 }
 
-} // namespace v1::crud
+} // namespace ws::crud

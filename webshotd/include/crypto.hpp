@@ -12,7 +12,7 @@
 #include <userver/crypto/base64.hpp>
 #include <userver/crypto/exception.hpp>
 
-namespace v1::ex::crypto {
+namespace ws::crypto {
 
 namespace us = userver;
 namespace detail {
@@ -71,4 +71,4 @@ template <typename E>
     );
 }
 
-} // namespace v1::ex::crypto
+} // namespace ws::crypto

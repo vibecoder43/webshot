@@ -5,7 +5,7 @@
 
 #include "cursor.hpp"
 
-namespace v1::crud {
+namespace ws::crud {
 
 [[nodiscard]] int64_t TimePointToMicros(Clock::time_point tp)
 {
@@ -17,4 +17,4 @@ namespace v1::crud {
     return Clock::time_point(std::chrono::microseconds(micros));
 }
 
-} // namespace v1::crud
+} // namespace ws::crud

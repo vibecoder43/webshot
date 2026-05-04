@@ -2,7 +2,7 @@
 
 #include <memory>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 class [[nodiscard]] BrowserPageSessionLifecycle final {
 public:
@@ -27,4 +27,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace v1::crawler
+} // namespace ws::crawler

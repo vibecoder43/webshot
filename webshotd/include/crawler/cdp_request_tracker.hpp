@@ -12,7 +12,7 @@
 
 #include <userver/utils/assert.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 using text::literals::operator""_t;
 
 struct [[nodiscard]] CdpPendingRequest final {
@@ -84,4 +84,4 @@ private:
     std::unordered_map<i64, CdpPendingRequest> requests_;
 };
 
-} // namespace v1::crawler
+} // namespace ws::crawler

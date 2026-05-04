@@ -12,7 +12,7 @@
 
 #include <userver/clients/dns/resolver_fwd.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 namespace us = userver;
 namespace eng = us::engine;
@@ -60,4 +60,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace v1::crawler
+} // namespace ws::crawler

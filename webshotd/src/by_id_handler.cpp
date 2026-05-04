@@ -29,12 +29,12 @@
 #include <userver/utils/boost_uuid4.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 using namespace text::literals;
 using namespace std::chrono_literals;
 using text::ToBytes;
@@ -58,7 +58,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/capture/{uuid} handler in milliseconds
+    description: Upper bound for /ws/capture/{uuid} handler in milliseconds
 )");
 }
 
@@ -93,7 +93,7 @@ std::string ById::HandleRequestThrow(
     }
 
     const auto download_url = BuildCaptureDownloadUrl(
-        (**capture).uuid, config_.S3Mode(), config_.PublicBaseUrl(),
+        (**capture).uuid, config_.S3Mode(), config_.S3PublicBaseUrl(),
         request_support.RequestHost(request)
     );
     if (!download_url) {

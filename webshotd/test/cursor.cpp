@@ -10,17 +10,17 @@
 #include "schema/public/webshot.hpp"
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
-using v1::crud::Clock;
-using v1::crud::DecodeToken;
-using v1::crud::EncodeToken;
-using v1::crud::MicrosToTimePoint;
-using v1::crud::TimePointToMicros;
+using ws::crud::Clock;
+using ws::crud::DecodeToken;
+using ws::crud::EncodeToken;
+using ws::crud::MicrosToTimePoint;
+using ws::crud::TimePointToMicros;
 using namespace text::literals;
 
 namespace {

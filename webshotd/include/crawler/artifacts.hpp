@@ -11,9 +11,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
-using v1::Expected;
+using ws::Expected;
 
 enum class ReusedBrowser {
     kNo,
@@ -108,4 +108,4 @@ BuildWarc(const CapturedExchange &exchange);
  */
 [[nodiscard]] std::string ComputeContentSha256(const CapturedExchange &exchange);
 
-} // namespace v1::crawler
+} // namespace ws::crawler

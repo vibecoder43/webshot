@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace v1::detail {
+namespace ws::detail {
 
 template <typename T> struct IsOptional : std::false_type {};
 template <typename T> struct IsOptional<std::optional<T>> : std::true_type {};
@@ -88,7 +88,7 @@ template <typename T> inline T TryExtract(std::optional<T> &&opt)
 
 template <typename T> [[nodiscard]] inline auto TryFailure(T &&value)
 {
-    static_assert(IsTrySupported<T>::value, "TRY only supports v1::Expected and std::optional");
+    static_assert(IsTrySupported<T>::value, "TRY only supports ws::Expected and std::optional");
 
     if constexpr (IsExpected<RemoveCvref<T>>::value) {
         return TryExpectedFailure{std::forward<T>(value).Error()};
@@ -99,13 +99,13 @@ template <typename T> [[nodiscard]] inline auto TryFailure(T &&value)
 
 template <typename T, typename F> [[nodiscard]] constexpr auto TryMapError(T &&value, F &&map_error)
 {
-    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP_ERR only supports v1::Expected");
+    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP_ERR only supports ws::Expected");
     return std::forward<T>(value).TransformError(std::forward<F>(map_error));
 }
 
 template <typename T, typename F> [[nodiscard]] constexpr auto TryMap(T &&value, F &&map_value)
 {
-    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP only supports v1::Expected");
+    static_assert(IsExpected<RemoveCvref<T>>::value, "TRY_MAP only supports ws::Expected");
     return std::forward<T>(value).Transform(std::forward<F>(map_value));
 }
 
@@ -124,19 +124,19 @@ template <typename T, typename F>
     return Expected<Value, Error>{Unex(std::invoke(std::forward<F>(make_error)))};
 }
 
-} // namespace v1::detail
+} // namespace ws::detail
 
 #if defined(__clang__)
-#define V1_TRY_DIAGNOSTIC_PUSH _Pragma("clang diagnostic push")
-#define V1_TRY_DIAGNOSTIC_IGNORE                                                                   \
+#define WS_TRY_DIAGNOSTIC_PUSH _Pragma("clang diagnostic push")
+#define WS_TRY_DIAGNOSTIC_IGNORE                                                                   \
     _Pragma("clang diagnostic ignored \"-Wgnu-statement-expression-from-macro-expansion\"")        \
         _Pragma("clang diagnostic ignored \"-Wshadow\"")
-#define V1_TRY_DIAGNOSTIC_POP _Pragma("clang diagnostic pop")
+#define WS_TRY_DIAGNOSTIC_POP _Pragma("clang diagnostic pop")
 #elif defined(__GNUC__)
-#define V1_TRY_DIAGNOSTIC_PUSH _Pragma("GCC diagnostic push")
-#define V1_TRY_DIAGNOSTIC_IGNORE                                                                   \
+#define WS_TRY_DIAGNOSTIC_PUSH _Pragma("GCC diagnostic push")
+#define WS_TRY_DIAGNOSTIC_IGNORE                                                                   \
     _Pragma("GCC diagnostic ignored \"-Wpedantic\"") _Pragma("GCC diagnostic ignored \"-Wshadow\"")
-#define V1_TRY_DIAGNOSTIC_POP _Pragma("GCC diagnostic pop")
+#define WS_TRY_DIAGNOSTIC_POP _Pragma("GCC diagnostic pop")
 #else
 #error "TRY requires compiler support for GNU statement expressions"
 #endif
@@ -170,34 +170,34 @@ template <typename T, typename F>
 #endif
 
 #define TRY(...)                                                                                   \
-    V1_TRY_DIAGNOSTIC_PUSH V1_TRY_DIAGNOSTIC_IGNORE({                                              \
+    WS_TRY_DIAGNOSTIC_PUSH WS_TRY_DIAGNOSTIC_IGNORE({                                              \
         auto &&_temporaryTryResult = (__VA_ARGS__);                                                \
         static_assert(                                                                             \
-            ::v1::detail::IsTrySupported<decltype(_temporaryTryResult)>::value,                    \
-            "TRY only supports v1::Expected and std::optional"                                     \
+            ::ws::detail::IsTrySupported<decltype(_temporaryTryResult)>::value,                    \
+            "TRY only supports ws::Expected and std::optional"                                     \
         );                                                                                         \
-        if (!::v1::detail::TryHasValue(_temporaryTryResult)) [[unlikely]] {                        \
-            return ::v1::detail::TryFailure(                                                       \
+        if (!::ws::detail::TryHasValue(_temporaryTryResult)) [[unlikely]] {                        \
+            return ::ws::detail::TryFailure(                                                       \
                 std::forward<decltype(_temporaryTryResult)>(_temporaryTryResult)                   \
             );                                                                                     \
         }                                                                                          \
-        ::v1::detail::TryExtract(                                                                  \
+        ::ws::detail::TryExtract(                                                                  \
             std::forward<decltype(_temporaryTryResult)>(_temporaryTryResult)                       \
         );                                                                                         \
-    }) V1_TRY_DIAGNOSTIC_POP
+    }) WS_TRY_DIAGNOSTIC_POP
 
-#define TRY_MAP_ERR(expr, mapper) TRY(::v1::detail::TryMapError((expr), (mapper)))
+#define TRY_MAP_ERR(expr, mapper) TRY(::ws::detail::TryMapError((expr), (mapper)))
 
 #define TRY_ERR_AS(expr, err) TRY_MAP_ERR((expr), [&](auto &&) { return (err); })
 
-#define TRY_MAP(expr, mapper) TRY(::v1::detail::TryMap((expr), (mapper)))
+#define TRY_MAP(expr, mapper) TRY(::ws::detail::TryMap((expr), (mapper)))
 
-#define TRY_OK_OR(opt, err) TRY(::v1::detail::TryOkOrElse((opt), [&]() { return (err); }))
+#define TRY_OK_OR(opt, err) TRY(::ws::detail::TryOkOrElse((opt), [&]() { return (err); }))
 
-#define TRY_OK_OR_ELSE(opt, make_error) TRY(::v1::detail::TryOkOrElse((opt), (make_error)))
+#define TRY_OK_OR_ELSE(opt, make_error) TRY(::ws::detail::TryOkOrElse((opt), (make_error)))
 
 #define ENSURE(cond, err)                                                                          \
     do {                                                                                           \
         if (!(cond)) [[unlikely]]                                                                  \
-            return ::v1::Unex((err));                                                              \
+            return ::ws::Unex((err));                                                              \
     } while (false)

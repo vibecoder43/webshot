@@ -7,18 +7,18 @@
 #include "pagination.hpp"
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
-using v1::crud::Clock;
-using v1::crud::Cursor;
-using v1::crud::DecodeCursor;
-using v1::crud::EncodeCursor;
-using v1::crud::PageDirection;
-using v1::crud::TimePointToMicros;
+using ws::crud::Clock;
+using ws::crud::Cursor;
+using ws::crud::DecodeCursor;
+using ws::crud::EncodeCursor;
+using ws::crud::PageDirection;
+using ws::crud::TimePointToMicros;
 using namespace text::literals;
 
 UTEST(Pagination, CursorRoundTrip)

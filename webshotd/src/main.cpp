@@ -32,13 +32,13 @@
 #include <userver/storages/secdist/provider_component.hpp>
 #include <userver/utils/daemon_run.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace eng = us::engine;
 namespace httpc = us::clients::http;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
 int main(int argc, char *argv[])
 {
@@ -53,22 +53,22 @@ int main(int argc, char *argv[])
             .Append<us::components::Postgres>("shared_state_db")
             .Append<us::congestion_control::Component>()
             .Append<eng::TaskProcessorsLoadMonitor>()
-            .Append<v1::Denylist>()
-            .Append<v1::Config>()
-            .Append<v1::Metrics>()
-            .Append<v1::Crud>()
-            .Append<v1::ByPrefixHandler>()
-            .Append<v1::Handler>()
-            .Append<v1::JobHandler>()
-            .Append<v1::DisallowAndPurgeHandler>()
-            .Append<v1::DenylistCheckHandler>()
-            .Append<v1::AllowlistCheckHandler>()
-            .Append<v1::AllowlistAddHandler>()
-            .Append<v1::AllowlistRemoveHandler>()
-            .Append<v1::ById>()
-            .Append<v1::DocsHandler>()
-            .Append<v1::DocsHandler>("docs_admin")
-            .Append<v1::UiReplayHandler>()
+            .Append<ws::Denylist>()
+            .Append<ws::Config>()
+            .Append<ws::Metrics>()
+            .Append<ws::Crud>()
+            .Append<ws::ByPrefixHandler>()
+            .Append<ws::Handler>()
+            .Append<ws::JobHandler>()
+            .Append<ws::DisallowAndPurgeHandler>()
+            .Append<ws::DenylistCheckHandler>()
+            .Append<ws::AllowlistCheckHandler>()
+            .Append<ws::AllowlistAddHandler>()
+            .Append<ws::AllowlistRemoveHandler>()
+            .Append<ws::ById>()
+            .Append<ws::DocsHandler>()
+            .Append<ws::DocsHandler>("docs_admin")
+            .Append<ws::UiReplayHandler>()
             .Append<us::components::FsCache>("rapidoc_assets_cache")
             .Append<us::components::FsCache>("openapi_public_cache")
             .Append<us::components::FsCache>("openapi_common_cache")
@@ -86,6 +86,6 @@ int main(int argc, char *argv[])
             .Append<us::server::handlers::HttpHandlerStatic>("web_ui_index_static")
             .Append<us::server::handlers::HttpHandlerStatic>("web_ui_root_static")
             .Append<us::server::handlers::ServerMonitor>();
-    v1::AppendTestOnlyComponents(component_list);
+    ws::AppendTestOnlyComponents(component_list);
     return us::utils::DaemonMain(argc, argv, component_list);
 }

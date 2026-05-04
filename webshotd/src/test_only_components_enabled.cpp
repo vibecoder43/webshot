@@ -9,7 +9,7 @@
 
 #include <userver/testsuite/testsuite_support.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 void AppendTestOnlyComponents(us::components::ComponentList &component_list)
@@ -17,4 +17,4 @@ void AppendTestOnlyComponents(us::components::ComponentList &component_list)
     component_list.Append<us::components::TestsuiteSupport>().Append<BrowserProbeHandler>();
 }
 
-} // namespace v1
+} // namespace ws

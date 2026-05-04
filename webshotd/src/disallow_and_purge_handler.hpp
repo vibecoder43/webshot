@@ -11,7 +11,7 @@
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
 class Crud;
@@ -43,4 +43,4 @@ private:
     const Config &config_;
     const std::chrono::milliseconds request_timeout;
 };
-} // namespace v1
+} // namespace ws

@@ -25,9 +25,9 @@
 #include <type_traits>
 #include <utility>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
-} // namespace v1
+} // namespace ws
 
 namespace integers {
 
@@ -45,12 +45,12 @@ struct SafeIntegerAbort {
         );
 
         if (written <= 0) {
-            v1::us::utils::AbortWithStacktrace("safe integer operation failed");
+            ws::us::utils::AbortWithStacktrace("safe integer operation failed");
         }
 
         const size_t len = static_cast<size_t>(written) < buf.size() ? static_cast<size_t>(written)
                                                                      : (buf.size() - 1);
-        v1::us::utils::AbortWithStacktrace(std::string_view{buf.data(), len});
+        ws::us::utils::AbortWithStacktrace(std::string_view{buf.data(), len});
     }
 };
 
@@ -106,19 +106,19 @@ enum class NumericCastError {
 
     switch (error) {
     case kNegativeToUnsigned:
-        v1::us::utils::AbortWithStacktrace("safe integer failure: negative to unsigned");
+        ws::us::utils::AbortWithStacktrace("safe integer failure: negative to unsigned");
     case kNarrowingOverflow:
-        v1::us::utils::AbortWithStacktrace("safe integer failure: narrowing overflow");
+        ws::us::utils::AbortWithStacktrace("safe integer failure: narrowing overflow");
     case kEnumUnderlyingOverflow:
-        v1::us::utils::AbortWithStacktrace("safe integer failure: enum underlying overflow");
+        ws::us::utils::AbortWithStacktrace("safe integer failure: enum underlying overflow");
     default:
-        v1::us::utils::AbortWithStacktrace("safe integer failure");
+        ws::us::utils::AbortWithStacktrace("safe integer failure");
     }
 }
 
 template <typename To, typename From>
     requires NumericCastType<To> && NumericCastType<From>
-[[nodiscard]] constexpr v1::Expected<std::remove_cvref_t<To>, NumericCastError>
+[[nodiscard]] constexpr ws::Expected<std::remove_cvref_t<To>, NumericCastError>
 CheckedNumericCast(From value) noexcept
 {
     using ToValue = std::remove_cvref_t<To>;
@@ -128,23 +128,23 @@ CheckedNumericCast(From value) noexcept
         using ToUnderlying = std::underlying_type_t<ToValue>;
         auto underlying_value = CheckedNumericCast<ToUnderlying>(value);
         if (!underlying_value)
-            return v1::Unex(NumericCastError::kEnumUnderlyingOverflow);
+            return ws::Unex(NumericCastError::kEnumUnderlyingOverflow);
         return static_cast<ToValue>(*underlying_value);
     } else if constexpr (std::is_enum_v<FromValue>) {
         return CheckedNumericCast<ToValue>(std::to_underlying(value));
     } else {
         if constexpr (std::is_unsigned_v<ToValue> && std::is_signed_v<FromValue>) {
             if (value < 0)
-                return v1::Unex(NumericCastError::kNegativeToUnsigned);
+                return ws::Unex(NumericCastError::kNegativeToUnsigned);
         }
         if (!std::in_range<ToValue>(value))
-            return v1::Unex(NumericCastError::kNarrowingOverflow);
+            return ws::Unex(NumericCastError::kNarrowingOverflow);
         return static_cast<ToValue>(value);
     }
 }
 
 template <typename To, typename T, typename PromotionPolicy, typename ExceptionPolicy>
-[[nodiscard]] constexpr v1::Expected<std::remove_cvref_t<To>, NumericCastError> CheckedNumericCast(
+[[nodiscard]] constexpr ws::Expected<std::remove_cvref_t<To>, NumericCastError> CheckedNumericCast(
     const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value
 ) noexcept
     requires NumericCastType<To>

@@ -4,18 +4,18 @@
 #include <userver/clients/http/response.hpp>
 #include <userver/utest/utest.hpp>
 
-#include "s3/s3_sts_client.hpp"
+#include "s3/sts_client.hpp"
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace httpc = us::clients::http;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
 using namespace std::chrono_literals;
-using v1::StsCredentials;
+using ws::StsCredentials;
 using namespace text::literals;
 using text::ToBytes;
 
@@ -38,7 +38,7 @@ std::string MakeValidXml()
 
 } // namespace
 
-UTEST(S3StsClient, ParsesHappyPathXml)
+UTEST(StsClient, ParsesHappyPathXml)
 {
     const auto parsed = StsCredentials::FromXml(String::FromBytes(MakeValidXml()).Expect());
     ASSERT_TRUE(parsed);
@@ -53,24 +53,24 @@ UTEST(S3StsClient, ParsesHappyPathXml)
     EXPECT_EQ(system_clock::to_time_t(creds.expires_at), system_clock::to_time_t(expected));
 }
 
-UTEST(S3StsClient, MissingTagThrows)
+UTEST(StsClient, MissingTagThrows)
 {
     const std::string xml =
         R"(<AssumeRoleResponse><Credentials></Credentials></AssumeRoleResponse>)";
     const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
     ASSERT_FALSE(parsed);
-    EXPECT_EQ(parsed.Error(), v1::StsError::kXmlMissingTag);
+    EXPECT_EQ(parsed.Error(), ws::StsError::kXmlMissingTag);
 }
 
-UTEST(S3StsClient, MissingClosingTagThrows)
+UTEST(StsClient, MissingClosingTagThrows)
 {
     const std::string xml = R"(<AssumeRoleResponse><AssumeRoleResult><Credentials><AccessKeyId>id)";
     const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
     ASSERT_FALSE(parsed);
-    EXPECT_EQ(parsed.Error(), v1::StsError::kXmlMissingClosingTag);
+    EXPECT_EQ(parsed.Error(), ws::StsError::kXmlMissingClosingTag);
 }
 
-UTEST(S3StsClient, InvalidExpirationReturnsError)
+UTEST(StsClient, InvalidExpirationReturnsError)
 {
     const std::string xml =
         R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -86,17 +86,17 @@ UTEST(S3StsClient, InvalidExpirationReturnsError)
 </AssumeRoleResponse>)";
     const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
     ASSERT_FALSE(parsed);
-    EXPECT_EQ(parsed.Error(), v1::StsError::kInvalidExpiration);
+    EXPECT_EQ(parsed.Error(), ws::StsError::kInvalidExpiration);
 }
 
-UTEST(S3StsClient, BuildsRequestWithExecutor)
+UTEST(StsClient, BuildsRequestWithExecutor)
 {
     std::string captured_url;
     std::string captured_body;
     httpc::Headers captured_headers;
     auto captured_timeout = 0ms;
 
-    v1::detail::StsExecutor exec = [&](const String &url, const String &body,
+    ws::detail::StsExecutor exec = [&](const String &url, const String &body,
                                        const httpc::Headers &headers,
                                        std::chrono::milliseconds timeout) {
         captured_url = ToBytes(url);
@@ -107,9 +107,9 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     };
 
     const std::string endpoint = "https://sts.example.com/assume?foo=bar";
-    const auto parsed = v1::detail::FetchStsWithExecutor(
-        exec, String::FromBytes(endpoint).Expect(), v1::s3v4::AccessKeyId{"AKIA_STATIC"_t},
-        v1::s3v4::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
+    const auto parsed = ws::detail::FetchStsWithExecutor(
+        exec, String::FromBytes(endpoint).Expect(), ws::s3::AccessKeyId{"AKIA_STATIC"_t},
+        ws::s3::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
         "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t, 900s,
         1500ms
     );
@@ -139,21 +139,21 @@ UTEST(S3StsClient, BuildsRequestWithExecutor)
     EXPECT_EQ(creds.access_key_id.GetUnderlying(), "AKIA_TEST_KEY"_t);
 }
 
-UTEST(S3StsClient, InvalidEndpointReturnsError)
+UTEST(StsClient, InvalidEndpointReturnsError)
 {
-    v1::detail::StsExecutor exec =
+    ws::detail::StsExecutor exec =
         [](const String &, const String &, const httpc::Headers &,
-           std::chrono::milliseconds) -> v1::Expected<std::string, v1::StsError> {
+           std::chrono::milliseconds) -> ws::Expected<std::string, ws::StsError> {
         ADD_FAILURE() << "executor should not be called for invalid endpoint";
         return std::string{};
     };
 
-    const auto parsed = v1::detail::FetchStsWithExecutor(
-        exec, "https://["_t, v1::s3v4::AccessKeyId{"AKIA_STATIC"_t},
-        v1::s3v4::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
+    const auto parsed = ws::detail::FetchStsWithExecutor(
+        exec, "https://["_t, ws::s3::AccessKeyId{"AKIA_STATIC"_t},
+        ws::s3::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
         "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t, 900s,
         1500ms
     );
     ASSERT_FALSE(parsed);
-    EXPECT_EQ(parsed.Error(), v1::StsError::kInvalidEndpoint);
+    EXPECT_EQ(parsed.Error(), ws::StsError::kInvalidEndpoint);
 }

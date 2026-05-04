@@ -20,7 +20,7 @@
 #include <userver/engine/subprocess/process_starter.hpp>
 #include <userver/engine/task/task_processor_fwd.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 namespace us = userver;
 namespace eng = us::engine;
@@ -115,4 +115,4 @@ private:
 [[nodiscard]] std::string ResolveDelegatedCgroupRootPath(eng::TaskProcessor &fs_task_processor);
 [[nodiscard]] std::string LocalFixtureTrustDbSourcePath(std::string_view state_dir);
 
-} // namespace v1::crawler
+} // namespace ws::crawler

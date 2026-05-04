@@ -2,11 +2,11 @@
 
 #include "integers.hpp"
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 struct [[nodiscard]] CgroupLimits final {
     i64 cpu_cores;
     i64 memory_bytes;
 };
 
-} // namespace v1::crawler
+} // namespace ws::crawler

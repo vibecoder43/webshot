@@ -17,7 +17,7 @@
 #include <userver/yaml_config/schema.hpp>
 using Uuid = boost::uuids::uuid;
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace datetime = us::utils::datetime;
 enum class DenylistError;
@@ -94,4 +94,4 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };
-} // namespace v1
+} // namespace ws

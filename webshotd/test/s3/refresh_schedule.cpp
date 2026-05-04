@@ -3,20 +3,20 @@
 #include <userver/utest/utest.hpp>
 #include <userver/utils/datetime.hpp>
 
-#include "s3_refresh_utils.hpp"
+#include "s3/refresh_utils.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace datetime = us::utils::datetime;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
 using std::chrono::system_clock;
-using v1::s3refresh::ComputeRefreshDelay;
+using ws::s3refresh::ComputeRefreshDelay;
 using namespace std::chrono_literals;
 
-UTEST(S3RefreshSchedule, FutureExpirationRespectsMargin)
+UTEST(RefreshSchedule, FutureExpirationRespectsMargin)
 {
     const auto now = datetime::Now();
     const auto expires_at = now + 600s;
@@ -24,7 +24,7 @@ UTEST(S3RefreshSchedule, FutureExpirationRespectsMargin)
     EXPECT_EQ(delay, 480s);
 }
 
-UTEST(S3RefreshSchedule, PastOrNearExpirationClampsToZero)
+UTEST(RefreshSchedule, PastOrNearExpirationClampsToZero)
 {
     const auto now = datetime::Now();
     const auto expires_at = now + 30s;

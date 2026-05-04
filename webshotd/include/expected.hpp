@@ -11,7 +11,7 @@
 
 #include <userver/utils/assert.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 template <typename T, typename E> class Expected;
@@ -599,4 +599,4 @@ private:
     StdExpected inner_;
 };
 
-} // namespace v1
+} // namespace ws

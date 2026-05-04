@@ -18,7 +18,7 @@
 #include <userver/crypto/base64.hpp>
 #include <userver/formats/json.hpp>
 
-namespace v1::crud {
+namespace ws::crud {
 
 namespace us = userver;
 namespace json = us::formats::json;
@@ -53,9 +53,9 @@ enum class PageDirection {
  */
 template <typename Dto> [[nodiscard]] std::optional<Dto> DecodeToken(const String &token)
 {
-    const auto decoded = TRY(ex::crypto::Base64UrlDecode(token.View(), false));
+    const auto decoded = TRY(ws::crypto::Base64UrlDecode(token.View(), false));
     const auto decoded_text = TRY(String::FromBytes(decoded));
-    return TRY(ex::json::Parse<Dto>(decoded_text, false));
+    return TRY(ws::json::Parse<Dto>(decoded_text, false));
 }
 
 /**
@@ -74,4 +74,4 @@ template <typename Dto> [[nodiscard]] String EncodeToken(const Dto &dto)
         .Expect();
 }
 
-} // namespace v1::crud
+} // namespace ws::crud

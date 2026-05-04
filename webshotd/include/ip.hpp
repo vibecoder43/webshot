@@ -13,7 +13,7 @@
 #include <arpa/inet.h>
 #include <userver/utils/ip.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 using Ip4 = us::utils::ip::AddressV4;
@@ -176,4 +176,4 @@ CanonicalIpTextFromBytes(int family, const void *source) noexcept
     return std::visit([](const auto &typed) { return IsPublicRoutable(typed); }, addr);
 }
 
-} // namespace v1
+} // namespace ws

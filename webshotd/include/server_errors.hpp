@@ -4,7 +4,7 @@
 
 #include <optional>
 
-namespace v1::errors {
+namespace ws::errors {
 
 enum class CrudError {
     kDbFailure,
@@ -37,4 +37,4 @@ struct [[nodiscard]] CrawlFailure {
     std::optional<String> detail;
 };
 
-} // namespace v1::errors
+} // namespace ws::errors

@@ -11,7 +11,7 @@
 #include <userver/utils/statistics/labels.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 using namespace text::literals;
@@ -130,4 +130,4 @@ properties: {}
 )");
 }
 
-} // namespace v1
+} // namespace ws

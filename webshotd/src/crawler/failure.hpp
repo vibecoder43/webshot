@@ -9,7 +9,7 @@
 
 #include <userver/engine/task/task_processor_fwd.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 namespace us = userver;
 namespace eng = us::engine;
@@ -24,4 +24,4 @@ namespace eng = us::engine;
 
 [[nodiscard]] String FormatAttemptStatus(std::string_view label, const AttemptSummary &attempt);
 
-} // namespace v1::crawler
+} // namespace ws::crawler

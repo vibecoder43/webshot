@@ -4,33 +4,33 @@
 
 #include <userver/utest/utest.hpp>
 
-#include "s3/s3_url_utils.hpp"
+#include "s3/url_utils.hpp"
 #include "text.hpp"
 
-using v1::s3v4::DecodeQueryString;
-using v1::s3v4::ParseUrlWithDefaultHttpScheme;
+using ws::s3::DecodeQueryString;
+using ws::s3::ParseUrlWithDefaultHttpScheme;
 using namespace text::literals;
 
-UTEST(S3UrlUtils, ParsesUrlWithExistingScheme)
+UTEST(UrlUtils, ParsesUrlWithExistingScheme)
 {
     const auto url = ParseUrlWithDefaultHttpScheme("https://example.com/path?a=1"_t);
     ASSERT_TRUE(url);
     EXPECT_EQ(url->Href(), "https://example.com/path?a=1"_t);
 }
 
-UTEST(S3UrlUtils, DefaultsMissingSchemeToHttp)
+UTEST(UrlUtils, DefaultsMissingSchemeToHttp)
 {
     const auto url = ParseUrlWithDefaultHttpScheme("example.com/path?a=1"_t);
     ASSERT_TRUE(url);
     EXPECT_EQ(url->Href(), "http://example.com/path?a=1"_t);
 }
 
-UTEST(S3UrlUtils, RejectsInvalidUrlEvenAfterDefaultScheme)
+UTEST(UrlUtils, RejectsInvalidUrlEvenAfterDefaultScheme)
 {
     EXPECT_FALSE(ParseUrlWithDefaultHttpScheme("https://["_t));
 }
 
-UTEST(S3UrlUtils, EmptyAndQuestionOnly)
+UTEST(UrlUtils, EmptyAndQuestionOnly)
 {
     {
         const auto v = DecodeQueryString(""_t);
@@ -44,7 +44,7 @@ UTEST(S3UrlUtils, EmptyAndQuestionOnly)
     }
 }
 
-UTEST(S3UrlUtils, SinglePairAndTrailingAmp)
+UTEST(UrlUtils, SinglePairAndTrailingAmp)
 {
     auto v = DecodeQueryString("a=1"_t);
     ASSERT_TRUE(v);
@@ -61,7 +61,7 @@ UTEST(S3UrlUtils, SinglePairAndTrailingAmp)
     EXPECT_EQ(trailing_value, "1"_t);
 }
 
-UTEST(S3UrlUtils, MultipleAndRepeatedKeys)
+UTEST(UrlUtils, MultipleAndRepeatedKeys)
 {
     auto v = DecodeQueryString("a=1&b=2&a=3"_t);
     ASSERT_TRUE(v);
@@ -77,7 +77,7 @@ UTEST(S3UrlUtils, MultipleAndRepeatedKeys)
     EXPECT_EQ(value2, "3"_t);
 }
 
-UTEST(S3UrlUtils, LeadingQuestionMark)
+UTEST(UrlUtils, LeadingQuestionMark)
 {
     auto v = DecodeQueryString("?a=1&b=2"_t);
     ASSERT_TRUE(v);
@@ -90,7 +90,7 @@ UTEST(S3UrlUtils, LeadingQuestionMark)
     EXPECT_EQ(value1, "2"_t);
 }
 
-UTEST(S3UrlUtils, PercentDecodingKeyAndValue)
+UTEST(UrlUtils, PercentDecodingKeyAndValue)
 {
     auto v = DecodeQueryString("x%20y=hello%20world"_t);
     ASSERT_TRUE(v);
@@ -100,7 +100,7 @@ UTEST(S3UrlUtils, PercentDecodingKeyAndValue)
     EXPECT_EQ(value, "hello world"_t);
 }
 
-UTEST(S3UrlUtils, HandlesLeadingSegmentWithoutEquals)
+UTEST(UrlUtils, HandlesLeadingSegmentWithoutEquals)
 {
     auto v = DecodeQueryString("noeq&foo=bar"_t);
     ASSERT_TRUE(v);
@@ -110,7 +110,7 @@ UTEST(S3UrlUtils, HandlesLeadingSegmentWithoutEquals)
     EXPECT_EQ(value, "bar"_t);
 }
 
-UTEST(S3UrlUtils, AllTextNoEqualsYieldsEmpty)
+UTEST(UrlUtils, AllTextNoEqualsYieldsEmpty)
 {
     auto v = DecodeQueryString("noeq"_t);
     ASSERT_TRUE(v);

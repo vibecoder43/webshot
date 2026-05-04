@@ -11,7 +11,7 @@
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
@@ -37,4 +37,4 @@ private:
     const std::string spec_url;
 };
 
-} // namespace v1
+} // namespace ws

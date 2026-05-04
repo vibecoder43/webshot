@@ -21,7 +21,7 @@
 #include <userver/storages/postgres/component.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace pg = us::storages::postgres;
 using namespace text::literals;
@@ -192,4 +192,4 @@ Expected<void, DenylistError> Denylist::RemoveAllowlistPrefix(const String &pref
     return {};
 }
 
-} // namespace v1
+} // namespace ws

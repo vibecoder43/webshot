@@ -1,7 +1,7 @@
 #pragma once
 
 #include "expected.hpp"
-#include "s3_credentials_types.hpp"
+#include "s3/credentials_types.hpp"
 #include "text.hpp"
 #include "url.hpp"
 
@@ -15,11 +15,11 @@
 #include <userver/s3api/clients/s3api.hpp>
 #include <userver/utils/strong_typedef.hpp>
 
-namespace v1::s3v4 {
+namespace ws::s3 {
 
 namespace us = userver;
 namespace httpc = us::clients::http;
-struct SigV4Params;
+struct SigParams;
 
 namespace detail {
 struct EndpointParts {
@@ -45,36 +45,34 @@ ValidateVirtualHostBucketName(const String &bucket_name);
 } // namespace detail
 
 /**
- * @brief Connection parameters for a minimal SigV4 S3 client.
+ * @brief Connection parameters for a minimal Sig  client.
  */
-struct [[nodiscard]] S3V4Config {
+struct [[nodiscard]] Config {
     String endpoint; // e.g. http://127.0.0.1:8333 or s3.amazonaws.com
     String region;   // e.g. us-east-1, local, etc.
     std::chrono::milliseconds timeout;
-    bool virtual_hosted = false; // not used in v1; path-style addressing by default
+    bool virtual_hosted = false; // not used in ws; path-style addressing by default
 };
 
 /**
- * @brief Credentials used for signing requests with AWS Signature V4.
+ * @brief Credentials used for signing requests with AWS Signature .
  */
-struct [[nodiscard]] S3Credentials {
+struct [[nodiscard]] Credentials {
     AccessKeyId access_key_id;
     SecretAccessKey secret_access_key;
     std::optional<SessionToken> session_token; // optional
 };
 
 /**
- * @brief Minimal SigV4 S3 client implementation.
+ * @brief Minimal Sig  client implementation.
  *
  * Only the subset of methods required by this service is implemented; newly
  * added interface methods that are not used by this service are provided as
  * stubs that abort if called.
  */
-class [[nodiscard]] S3V4Client final : public us::s3api::Client {
+class [[nodiscard]] Client final : public us::s3api::Client {
 public:
-    S3V4Client(
-        httpc::Client &http_client, S3V4Config config, S3Credentials creds, String bucket_name
-    );
+    Client(httpc::Client &http_client, Config config, Credentials creds, String bucket_name);
 
     std::string PutObject(
         std::string_view path, std::string data, const std::optional<Meta> &meta,
@@ -155,8 +153,7 @@ private:
         const std::chrono::system_clock::time_point &now,
         const std::chrono::system_clock::time_point &expires_at
     );
-    [[nodiscard]] SigV4Params
-    MakeSigV4Params(const std::chrono::system_clock::time_point &now) const;
+    [[nodiscard]] SigParams MakeSigParams(const std::chrono::system_clock::time_point &now) const;
     void SignRequest(
         String method, String canonical_uri, String host, httpc::Headers &headers,
         const String &payload_hash
@@ -176,15 +173,15 @@ private:
     String BuildPresignedUrl(
         String method, const detail::BuiltUrl &built,
         const std::chrono::system_clock::time_point &now,
-        const std::chrono::system_clock::time_point &expires_at, const SigV4Params &params,
+        const std::chrono::system_clock::time_point &expires_at, const SigParams &params,
         const std::vector<std::pair<String, String>> &headers
     ) const;
 
     httpc::Client &http_client_;
-    S3V4Config config_;
-    S3Credentials creds_;
+    Config config_;
+    Credentials creds_;
     String bucket_name_;
     detail::EndpointParts endpoint_;
 };
 
-} // namespace v1::s3v4
+} // namespace ws::s3

@@ -47,7 +47,7 @@
 #include <absl/strings/match.h>
 #include <absl/strings/strip.h>
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
 namespace concurrent = us::concurrent;
@@ -67,7 +67,7 @@ constexpr std::array kLocalFixtureHosts = {
 constexpr auto kLocalHttpPort = 18080_u16;
 constexpr auto kLocalHttpsPort = 18443_u16;
 constexpr auto kTestsuiteServicePort = 8080_u16;
-constexpr auto kTestsuiteS3Port = 8333_u16;
+constexpr auto kTestsuitePort = 8333_u16;
 constexpr std::string_view kHttpScheme = "http://";
 constexpr std::string_view kSlashPath = "/";
 constexpr std::string_view kUnsupportedRequestTarget = "unsupported request target";
@@ -190,7 +190,7 @@ ParseBasicAuthUser(std::string_view header_value)
     if (value.empty())
         return {};
 
-    auto decoded = ex::crypto::Base64Decode(value, false);
+    auto decoded = ws::crypto::Base64Decode(value, false);
     if (!decoded)
         return {};
     auto pos = decoded->find(':');
@@ -395,7 +395,7 @@ RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host,
     const auto is_testsuite_loopback_host = host == "127.0.0.1" || host == "localhost" ||
                                             host == "::1";
     const auto is_testsuite_loopback_port =
-        port == kTestsuiteServicePort || port == kTestsuiteS3Port ||
+        port == kTestsuiteServicePort || port == kTestsuitePort ||
         std::ranges::contains(cfg.testsuite_loopback_ports, port);
     if (is_testsuite_loopback_host && is_testsuite_loopback_port) {
         return UpstreamTarget{
@@ -1028,4 +1028,4 @@ std::optional<String> EgressProxy::FailureReason() const noexcept
     return *lock;
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

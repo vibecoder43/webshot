@@ -1,10 +1,10 @@
-#include "s3/s3_sts_client.hpp"
+#include "s3/sts_client.hpp"
 
 #include "integers.hpp"
 #include "invariant.hpp"
-#include "s3/s3_url_utils.hpp"
+#include "s3/credentials_types.hpp"
 #include "s3/sigv4_signer.hpp"
-#include "s3_credentials_types.hpp"
+#include "s3/url_utils.hpp"
 #include "text.hpp"
 #include "try.hpp"
 #include "url.hpp"
@@ -25,7 +25,7 @@
 #include <userver/utils/datetime.hpp>
 using namespace text::literals;
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 namespace datetime = us::utils::datetime;
@@ -74,9 +74,9 @@ Expected<StsCredentials, StsError> StsCredentials::FromXml(const String &xml)
     auto expires_at = TRY(ParseExpiration(expiration));
 
     StsCredentials creds{
-        s3v4::AccessKeyId(std::move(access_key_id)),
-        s3v4::SecretAccessKey(std::move(secret_access_key)),
-        s3v4::SessionToken(std::move(session_token)),
+        s3::AccessKeyId(std::move(access_key_id)),
+        s3::SecretAccessKey(std::move(secret_access_key)),
+        s3::SessionToken(std::move(session_token)),
         expires_at,
     };
     return creds;
@@ -84,14 +84,14 @@ Expected<StsCredentials, StsError> StsCredentials::FromXml(const String &xml)
 
 Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
     const StsExecutor &exec, const String &sts_endpoint,
-    const s3v4::AccessKeyId &static_access_key_id,
-    const s3v4::SecretAccessKey &static_secret_access_key, const String &region,
+    const s3::AccessKeyId &static_access_key_id,
+    const s3::SecretAccessKey &static_secret_access_key, const String &region,
     const String &role_arn, const String &role_session_name, const String &policy_json,
     std::chrono::seconds duration, std::chrono::milliseconds timeout
 )
 {
     const auto sts_url = TRY_OK_OR(
-        s3v4::ParseUrlWithDefaultHttpScheme(sts_endpoint), StsError::kInvalidEndpoint
+        s3::ParseUrlWithDefaultHttpScheme(sts_endpoint), StsError::kInvalidEndpoint
     );
     Invariant(sts_url.IsHttps(), "STS endpoint must use https scheme"_t);
 
@@ -104,7 +104,7 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
     std::vector<std::pair<String, String>> query;
     if (sts_url.HasSearch()) {
         const auto search = sts_url.Search();
-        query = TRY_ERR_AS(s3v4::DecodeQueryString(search), StsError::kInvalidQuery);
+        query = TRY_ERR_AS(s3::DecodeQueryString(search), StsError::kInvalidQuery);
     }
     String body;
     auto append_param = [&body](const String &name, const String &value) {
@@ -112,7 +112,7 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
             body += "&"_t;
         body += name;
         body += "="_t;
-        body += s3v4::PercentEncode(value, s3v4::EncodeSlash::kYes);
+        body += s3::PercentEncode(value, s3::EncodeSlash::kYes);
     };
     append_param("Action"_t, "AssumeRole"_t);
     append_param("Version"_t, "2011-06-15"_t);
@@ -121,10 +121,10 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
     append_param("DurationSeconds"_t, text::Format("{}", duration.count()));
     append_param("Policy"_t, policy_json);
 
-    const String payload_hash = s3v4::Sha256Hex(body.View());
+    const String payload_hash = s3::Sha256Hex(body.View());
 
     const auto now = datetime::Now();
-    s3v4::SigV4Params params(
+    s3::SigParams params(
         ToBytes(region), "sts", static_access_key_id, static_secret_access_key, {}, now
     );
 
@@ -132,7 +132,7 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
     headers_to_sign.emplace_back("host"_t, host);
     const auto url_encoded = "application/x-www-form-urlencoded"_t;
     headers_to_sign.emplace_back("content-type"_t, url_encoded);
-    const auto signed_headers = s3v4::SignHeaders(
+    const auto signed_headers = s3::SignHeaders(
         params, "POST"_t, path, query, headers_to_sign, payload_hash
     );
     httpc::Headers headers;
@@ -147,8 +147,8 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
 
 Expected<StsCredentials, StsError> FetchStsCredentials(
     httpc::Client &http_client, const String &sts_endpoint,
-    const s3v4::AccessKeyId &static_access_key_id,
-    const s3v4::SecretAccessKey &static_secret_access_key, const String &region,
+    const s3::AccessKeyId &static_access_key_id,
+    const s3::SecretAccessKey &static_secret_access_key, const String &region,
     const String &role_arn, const String &role_session_name, const String &policy_json,
     std::chrono::seconds duration, std::chrono::milliseconds timeout
 )
@@ -179,4 +179,4 @@ Expected<StsCredentials, StsError> FetchStsCredentials(
     );
 }
 
-} // namespace v1
+} // namespace ws

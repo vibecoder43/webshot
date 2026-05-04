@@ -13,7 +13,7 @@
 #include <userver/utils/statistics/relaxed_counter.hpp>
 #include <userver/yaml_config/schema.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 class [[nodiscard]] Metrics final : public us::components::ComponentBase {
@@ -65,4 +65,4 @@ private:
     std::array<us::utils::statistics::RateCounter, kErrorCount> errors_;
 };
 
-} // namespace v1
+} // namespace ws

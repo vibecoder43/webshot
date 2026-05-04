@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-using namespace v1::crawler;
+using namespace ws::crawler;
 using namespace text::literals;
 
 namespace {

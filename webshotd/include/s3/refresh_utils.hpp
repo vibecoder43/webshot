@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-namespace v1::s3refresh {
+namespace ws::s3refresh {
 
 /**
  * @brief Compute delay before refreshing STS credentials.
@@ -22,4 +22,4 @@ namespace v1::s3refresh {
     return std::chrono::duration_cast<std::chrono::seconds>(delay);
 }
 
-} // namespace v1::s3refresh
+} // namespace ws::s3refresh

@@ -13,7 +13,7 @@
 
 #include <userver/utils/assert.hpp>
 
-namespace v1::crud {
+namespace ws::crud {
 
 using namespace text::literals;
 using text::ToBytes;
@@ -89,4 +89,4 @@ EncodePrefixCursor(const String &prefix, const String &link, PageDirection direc
     return bytes;
 }
 
-} // namespace v1::crud
+} // namespace ws::crud

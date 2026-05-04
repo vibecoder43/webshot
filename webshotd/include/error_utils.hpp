@@ -4,7 +4,7 @@
 
 #include <userver/formats/json/value.hpp>
 
-namespace v1::errors {
+namespace ws::errors {
 
 namespace us = userver;
 namespace json = us::formats::json;
@@ -23,4 +23,4 @@ json::Value MakeError(String message);
  */
 json::Value MakeParamError(String field_name, String message);
 
-} // namespace v1::errors
+} // namespace ws::errors

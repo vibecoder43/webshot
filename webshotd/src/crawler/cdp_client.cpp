@@ -39,19 +39,18 @@
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
-#include <userver/utils/datetime.hpp>
 #include <userver/utils/underlying_value.hpp>
 #include <userver/websocket/connection.hpp>
 namespace chrono = std::chrono;
 
-namespace v1::crawler {
+namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
 namespace json = us::formats::json;
 namespace datetime = us::utils::datetime;
 using namespace text::literals;
 using text::ToBytes;
-using v1::Expected;
+using ws::Expected;
 
 namespace {
 
@@ -200,7 +199,7 @@ CloseWebSocket(us::websocket::WebSocketConnection &connection)
     using enum CdpError;
     Invariant(error.IsObject(), "cdp error payload must be object"_t);
     const auto parsed = TRY(
-        ex::json::As<dto::CdpError, CdpFailure>(error, [](const json::Exception &e) -> CdpFailure {
+        ws::json::As<dto::CdpError, CdpFailure>(error, [](const json::Exception &e) -> CdpFailure {
             Invariant(
                 text::Format("cdp error payload does not match dto::CdpError ({})", e.what())
             );
@@ -519,7 +518,7 @@ Expected<json::Value, CdpFailure> CdpClient::SendRaw(
         request.sessionId = ToBytes(*session_id);
     TraceCommand(id, method, session_id);
     const auto request_bytes = TRY(
-        ex::json::StringifyBytes(request, CdpFailure{.code = kProtocol, .detail = {}})
+        ws::json::StringifyBytes(request, CdpFailure{.code = kProtocol, .detail = {}})
     );
     Expected<void, std::string> sent;
     {
@@ -667,7 +666,7 @@ Expected<void, CdpFailure> CdpClient::HandleMessage(const std::string &payload)
     if (!payload_text)
         return Unex(CdpFailure{.code = kJsonParseFailed, .detail = {}});
     auto value = TRY(
-        ex::json::Parse<json::Value>(
+        ws::json::Parse<json::Value>(
             *payload_text, CdpFailure{.code = kJsonParseFailed, .detail = {}}
         )
     );
@@ -739,7 +738,7 @@ Expected<void, CdpFailure> CdpClient::HandleMessage(const std::string &payload)
     }
 
     auto event_message = TRY(
-        ex::json::As<dto::CdpEventMessage>(value, CdpFailure{.code = kProtocol, .detail = {}})
+        ws::json::As<dto::CdpEventMessage>(value, CdpFailure{.code = kProtocol, .detail = {}})
     );
     const auto session_id = TRY_MAP_ERR(
         text::OptionalString(event_message.sessionId), ([](auto) {
@@ -925,7 +924,7 @@ Expected<void, CdpFailure> CdpClient::WriteTraceLine(const json::Value &value)
 {
     using enum CdpError;
     auto line = TRY(
-        ex::json::StringifyBytes(value, CdpFailure{.code = kTraceWriteFailed, .detail = {}})
+        ws::json::StringifyBytes(value, CdpFailure{.code = kTraceWriteFailed, .detail = {}})
     );
     line.push_back('\n');
     TRY(WriteTraceBytes(fs_task_processor_, trace_file_, line));
@@ -1007,4 +1006,4 @@ void CdpClient::TraceTransportError(const String &operation, const String &error
     WriteTraceLineBestEffort(entry.ExtractValue());
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

@@ -12,7 +12,7 @@
 #include <userver/server/http/http_status.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
 namespace eng = us::engine;
@@ -75,4 +75,4 @@ std::string DocsHandler::HandleRequestThrow(
     );
 }
 
-} // namespace v1
+} // namespace ws

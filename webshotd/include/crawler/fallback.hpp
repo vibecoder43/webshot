@@ -7,7 +7,7 @@
 
 #include <userver/utils/underlying_value.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 namespace us = userver;
 enum class CrawlerExitCode : int {
@@ -178,4 +178,4 @@ template <typename AttemptFn>
     return {RunOutcome::kFailed, https_attempt, http_attempt};
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

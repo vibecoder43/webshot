@@ -16,7 +16,7 @@
 
 #include <boost/uuid/uuid.hpp>
 
-namespace v1::crud {
+namespace ws::crud {
 
 using Uuid = boost::uuids::uuid;
 
@@ -68,4 +68,4 @@ EncodePrefixCursor(const String &prefix, const String &link, PageDirection direc
  */
 [[nodiscard]] std::string UpperExclusiveBound(String s);
 
-} // namespace v1::crud
+} // namespace ws::crud

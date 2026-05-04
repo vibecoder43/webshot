@@ -1,7 +1,7 @@
 #include "s3/sigv4_signer.hpp"
 /**
  * @file
- * @brief Helpers for AWS Signature V4 request canonicalization and signing.
+ * @brief Helpers for AWS Signature  request canonicalization and signing.
  */
 
 #include <algorithm>
@@ -17,7 +17,7 @@
 
 #include <absl/strings/ascii.h>
 
-namespace v1::s3v4 {
+namespace ws::s3 {
 
 namespace us = userver;
 namespace httpc = us::clients::http;
@@ -95,7 +95,7 @@ std::string CanonicalizeQueryImpl(const std::vector<std::pair<std::string, std::
 
 } // namespace
 
-SigV4Params::SigV4Params(
+SigParams::SigParams(
     std::string region, std::string service, const AccessKeyId &access_key_id,
     const SecretAccessKey &secret_access_key, std::optional<SessionToken> session_token,
     const std::chrono::system_clock::time_point &now
@@ -106,12 +106,12 @@ SigV4Params::SigV4Params(
 {
 }
 
-std::string BuildScope(const SigV4Params &params)
+std::string BuildScope(const SigParams &params)
 {
     return std::format("{}/{}/{}/aws4_request", params.date, params.region, params.service);
 }
 
-std::string ComputeSignature(const SigV4Params &params, std::string_view string_to_sign)
+std::string ComputeSignature(const SigParams &params, std::string_view string_to_sign)
 {
     using us::crypto::hash::HmacSha256;
     using us::crypto::hash::OutputEncoding;
@@ -202,7 +202,7 @@ std::string BuildSignedHeaders(
 }
 
 std::unordered_map<std::string, std::string> SignHeaders(
-    const SigV4Params &p, const String &method, const String &canonical_uri,
+    const SigParams &p, const String &method, const String &canonical_uri,
     const std::vector<std::pair<String, String>> &query,
     const std::vector<std::pair<String, String>> &headers_lower_trimmed,
     const String &payload_Sha256Hex
@@ -243,4 +243,4 @@ std::unordered_map<std::string, std::string> SignHeaders(
     return out;
 }
 
-} // namespace v1::s3v4
+} // namespace ws::s3

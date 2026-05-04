@@ -22,7 +22,7 @@
 #include <userver/utils/boost_uuid4.hpp>
 #include <userver/utils/datetime.hpp>
 #include <userver/utils/datetime/from_string_saturating.hpp>
-namespace v1::crawler {
+namespace ws::crawler {
 namespace us = userver;
 namespace json = us::formats::json;
 namespace datetime = us::utils::datetime;
@@ -604,9 +604,9 @@ Expected<std::string, ArtifactFailure> BuildWacz(
     return *zip_bytes;
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 std::string ComputeContentSha256(const CapturedExchange &exchange)
 {
@@ -692,4 +692,4 @@ std::string ComputeContentSha256(const CapturedExchange &exchange)
     return Sha256Bytes(combined);
 }
 
-} // namespace v1::crawler
+} // namespace ws::crawler

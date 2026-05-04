@@ -9,7 +9,7 @@
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/utils/assert.hpp>
 
-namespace v1::errors {
+namespace ws::errors {
 
 namespace us = userver;
 namespace json = us::formats::json;
@@ -27,4 +27,4 @@ json::Value MakeParamError(String field_name, String message)
     return MakeError(text::Format("{}: {}", field_name, message));
 }
 
-} // namespace v1::errors
+} // namespace ws::errors

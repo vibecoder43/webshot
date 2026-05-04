@@ -11,33 +11,33 @@ enum class TestError {
     kBeta,
 };
 
-[[nodiscard]] v1::Expected<int, TestError> MakeValue(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> MakeValue(bool ok)
 {
     if (!ok)
-        return v1::Unex(TestError::kAlpha);
+        return ws::Unex(TestError::kAlpha);
     return 42;
 }
 
-[[nodiscard]] v1::Expected<void, TestError> MakeVoid(bool ok)
+[[nodiscard]] ws::Expected<void, TestError> MakeVoid(bool ok)
 {
     if (!ok)
-        return v1::Unex(TestError::kBeta);
+        return ws::Unex(TestError::kBeta);
     return {};
 }
 
-[[nodiscard]] v1::Expected<void, TestError> PropagateValueError(bool ok)
+[[nodiscard]] ws::Expected<void, TestError> PropagateValueError(bool ok)
 {
     const auto value = MakeValue(ok);
     if (!value)
-        return v1::Unex(value.Error());
+        return ws::Unex(value.Error());
     return {};
 }
 
-[[nodiscard]] v1::Expected<int, TestError> PropagateVoidError(bool ok)
+[[nodiscard]] ws::Expected<int, TestError> PropagateVoidError(bool ok)
 {
     const auto result = MakeVoid(ok);
     if (!result)
-        return v1::Unex(result.Error());
+        return ws::Unex(result.Error());
     return 7;
 }
 
@@ -75,7 +75,7 @@ UTEST(Expected, TransformAndThenAndTransformErrorStillWork)
 {
     const auto transformed = MakeValue(true).Transform(
                                                 [](int value) { return value + 1; }
-    ).AndThen([](int value) -> v1::Expected<int, TestError> { return value * 2; });
+    ).AndThen([](int value) -> ws::Expected<int, TestError> { return value * 2; });
     ASSERT_TRUE(transformed);
     EXPECT_EQ(*transformed, 86);
 
@@ -88,7 +88,7 @@ UTEST(Expected, TransformAndThenAndTransformErrorStillWork)
 
 UTEST(Expected, AcceptsStdUnexpectedForCompatibility)
 {
-    const v1::Expected<int, TestError> value{std::unexpected(TestError::kBeta)};
+    const ws::Expected<int, TestError> value{std::unexpected(TestError::kBeta)};
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kBeta);
 }

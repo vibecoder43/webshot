@@ -8,7 +8,7 @@
 #include <ada.h>
 #include <ada/url_aggregator.h>
 
-namespace v1 {
+namespace ws {
 
 class [[nodiscard]] Url final {
 public:
@@ -69,4 +69,4 @@ private:
     ada::url_aggregator ada_url_;
 };
 
-} // namespace v1
+} // namespace ws

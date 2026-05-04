@@ -25,7 +25,7 @@
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/assert.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
@@ -45,7 +45,7 @@ template <typename T>
     const auto body = TRY_MAP_ERR(String::FromBytes(request.RequestBody()), [](const auto &) {
         return "invalid request body"_t;
     });
-    return ex::json::Parse<T>(body, "invalid request body"_t);
+    return ws::json::Parse<T>(body, "invalid request body"_t);
 }
 
 [[nodiscard]] inline Expected<Link, String>
@@ -124,11 +124,11 @@ public:
         return ParseLinkText(text, param_name);
     }
 
-    [[nodiscard]] Expected<uuidu::Uuid, ParamError>
+    [[nodiscard]] Expected<ws::uuid::Uuid, ParamError>
     ParseUuidPathArg(const server::http::HttpRequest &request, String param_name) const
     {
         const auto text = TRY(ParseRequiredPathText(request, param_name));
-        return TRY_OK_OR(uuidu::Parse(text.View()), InvalidParamError(param_name));
+        return TRY_OK_OR(ws::uuid::Parse(text.View()), InvalidParamError(param_name));
     }
 
     [[nodiscard]] Expected<std::optional<ClientIpCooldown>, ClientRequestError>
@@ -198,4 +198,4 @@ RespondClientRequestError(server::http::HttpResponse &response, ClientRequestErr
     }
 }
 
-} // namespace v1
+} // namespace ws

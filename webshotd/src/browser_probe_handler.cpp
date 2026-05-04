@@ -44,12 +44,12 @@ using namespace std::chrono_literals;
 using text::ToBytes;
 
 namespace chrono = std::chrono;
+namespace ujson = userver::formats::json;
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
 namespace eng = us::engine;
-namespace json = us::formats::json;
 namespace {
 
 using crawler::DescribeCdpFailure;
@@ -75,7 +75,7 @@ struct [[nodiscard]] ProbeConfig final {
 [[nodiscard]] Expected<dto::BrowserProbeRequest, String> ParseProbeRequest(const String &body)
 {
     const auto request = TRY(
-        ex::json::Parse<dto::BrowserProbeRequest>(body, "invalid request body"_t)
+        ws::json::Parse<dto::BrowserProbeRequest>(body, "invalid request body"_t)
     );
     ENSURE(
         !request.url.empty() && !request.wait_expression.empty() && request.timeout_ms > 0,
@@ -94,7 +94,7 @@ ParseTestsuiteLoopbackPorts(const us::components::ComponentConfig &config)
     return ports;
 }
 
-[[nodiscard]] Expected<json::Value, String>
+[[nodiscard]] Expected<ujson::Value, String>
 EvaluateExpression(crawler::CdpSession &cdp_session, const String &expression)
 {
     dto::RuntimeEvaluateParams params{
@@ -104,7 +104,7 @@ EvaluateExpression(crawler::CdpSession &cdp_session, const String &expression)
     };
 
     const auto result = TRY_MAP_ERR(
-        cdp_session.Send<json::Value>("Runtime.evaluate"_t, params), [](auto failure) {
+        cdp_session.Send<ujson::Value>("Runtime.evaluate"_t, params), [](auto failure) {
             return DescribeCdpFailure("Runtime.evaluate failed"_t, std::move(failure));
         }
     );
@@ -114,7 +114,7 @@ EvaluateExpression(crawler::CdpSession &cdp_session, const String &expression)
         return Unex(
             text::Format(
                 "Runtime.evaluate threw: {}",
-                TRY(ex::json::Stringify(exception, "Runtime.evaluate returned invalid exception"_t))
+                TRY(ws::json::Stringify(exception, "Runtime.evaluate returned invalid exception"_t))
             )
         );
     }
@@ -126,14 +126,14 @@ EvaluateExpression(crawler::CdpSession &cdp_session, const String &expression)
     if (!value.IsMissing())
         return value;
 
-    return ex::json::Parse<json::Value>("null"_t, "Runtime.evaluate missing value"_t);
+    return ws::json::Parse<ujson::Value>("null"_t, "Runtime.evaluate missing value"_t);
 }
 
 template <typename T>
 [[nodiscard]] Expected<T, String>
 EvaluateExpressionAs(crawler::CdpSession &cdp_session, const String &expression)
 {
-    return ex::json::As<T>(
+    return ws::json::As<T>(
         TRY(EvaluateExpression(cdp_session, expression)), "expression returned invalid shape"_t
     );
 }
@@ -150,7 +150,7 @@ EvaluateFrameExpression(crawler::CdpSession &cdp_session, const String &expressi
     return EvaluateExpression(cdp_session, expression)
         .AndThen(
             [](const auto &value) -> Expected<std::optional<dto::BrowserProbeFrameState>, String> {
-                return ex::json::Stringify(value, "expression returned invalid shape"_t)
+                return ws::json::Stringify(value, "expression returned invalid shape"_t)
                     .AndThen(
                         [&](
                             const auto &rendered
@@ -158,7 +158,7 @@ EvaluateFrameExpression(crawler::CdpSession &cdp_session, const String &expressi
                             if (rendered == "null"_t)
                                 return {};
 
-                            return ex::json::As<dto::BrowserProbeFrameState>(
+                            return ws::json::As<dto::BrowserProbeFrameState>(
                                        value, "expression returned invalid shape"_t
                             )
                                 .Transform([](auto parsed) {
@@ -208,13 +208,13 @@ void CleanupProbeSession(
         return {};
     if (event.method == "Runtime.consoleAPICalled"_t) {
         console.push_back(
-            TRY(ex::json::Stringify(event.params->extra, "invalid console payload"_t))
+            TRY(ws::json::Stringify(event.params->extra, "invalid console payload"_t))
         );
         return {};
     }
     if (event.method == "Runtime.exceptionThrown"_t) {
         page_errors.push_back(
-            TRY(ex::json::Stringify(event.params->extra, "invalid exception payload"_t))
+            TRY(ws::json::Stringify(event.params->extra, "invalid exception payload"_t))
         );
         return {};
     }
@@ -578,4 +578,4 @@ std::string BrowserProbeHandler::HandleRequestThrow(
     return httpu::RespondJson(response, kOk, *result);
 }
 
-} // namespace v1
+} // namespace ws

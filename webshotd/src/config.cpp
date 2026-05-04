@@ -13,7 +13,7 @@
 #include <userver/utils/assert.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 using namespace text::literals;
 using namespace std::chrono_literals;
@@ -47,9 +47,9 @@ Config::Config(
       s3_mode_([&config]() {
           const auto mode = config["s3_mode"].As<std::string>();
           if (mode == "local")
-              return S3Mode::kLocal;
+              return Mode::kLocal;
           if (mode == "external")
-              return S3Mode::kExternal;
+              return Mode::kExternal;
           Invariant("s3_mode must be local or external"_t);
       }()),
       s3_bucket_name_(ConfigText(config, "s3_bucket")),
@@ -99,10 +99,10 @@ properties:
   s3_mode:
     type: string
     enum: [local, external]
-    description: S3 dependency mode from config vars
+    description:  dependency mode from config vars
   s3_endpoint:
     type: string
-    description: S3 HTTP endpoint (e.g., http://127.0.0.1:8333)
+    description:  HTTP endpoint (e.g., http://127.0.0.1:8333)
   s3_region:
     type: string
     description: Optional region label
@@ -112,7 +112,7 @@ properties:
   s3_timeout_ms:
     type: integer
     minimum: 1
-    description: HTTP timeout to S3 in milliseconds
+    description: HTTP timeout to  in milliseconds
 )");
 }
-} // namespace v1
+} // namespace ws

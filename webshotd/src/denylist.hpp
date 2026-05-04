@@ -8,7 +8,7 @@
 #include <userver/components/component_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 enum class DenylistError {
@@ -76,4 +76,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace v1
+} // namespace ws

@@ -6,32 +6,32 @@
 #include <userver/utest/utest.hpp>
 #include <userver/utils/datetime.hpp>
 
-#include "s3/s3_v4_client.hpp"
+#include "s3/client.hpp"
 #include "s3/sigv4_signer.hpp"
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace datetime = us::utils::datetime;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
 using namespace std::chrono_literals;
-using v1::s3v4::AccessKeyId;
-using v1::s3v4::BuildCanonicalRequest;
-using v1::s3v4::CanonicalRequestParts;
-using v1::s3v4::EncodeSlash;
-using v1::s3v4::PercentEncode;
-using v1::s3v4::S3Credentials;
-using v1::s3v4::S3V4Client;
-using v1::s3v4::S3V4Config;
-using v1::s3v4::SecretAccessKey;
-using v1::s3v4::SignHeaders;
-using v1::s3v4::SigV4Params;
+using ws::s3::AccessKeyId;
+using ws::s3::BuildCanonicalRequest;
+using ws::s3::CanonicalRequestParts;
+using ws::s3::Client;
+using ws::s3::Config;
+using ws::s3::Credentials;
+using ws::s3::EncodeSlash;
+using ws::s3::PercentEncode;
+using ws::s3::SecretAccessKey;
+using ws::s3::SignHeaders;
+using ws::s3::SigParams;
 using namespace text::literals;
 
-UTEST(S3SigV4, PercentEncodeBasicCharacters)
+UTEST(Sig, PercentEncodeBasicCharacters)
 {
     EXPECT_EQ(PercentEncode("abcXYZ-_.~"_t, EncodeSlash::kNo), "abcXYZ-_.~"_t);
     EXPECT_EQ(PercentEncode(" "_t, EncodeSlash::kYes), "%20"_t);
@@ -40,7 +40,7 @@ UTEST(S3SigV4, PercentEncodeBasicCharacters)
     EXPECT_EQ(PercentEncode("/"_t, EncodeSlash::kNo), "/"_t);
 }
 
-UTEST(S3SigV4, BuildCanonicalRequestEncodesAndSortsQuery)
+UTEST(Sig, BuildCanonicalRequestEncodesAndSortsQuery)
 {
     std::vector<std::pair<std::string, std::string>> query;
     query.emplace_back("Param", "value value");
@@ -67,9 +67,9 @@ UTEST(S3SigV4, BuildCanonicalRequestEncodesAndSortsQuery)
     EXPECT_EQ(query_line, std::string{"Another=2&Param=value%20value&Param=value%21"});
 }
 
-UTEST(S3SigV4, SignHeadersMatchesAwsExample)
+UTEST(Sig, SignHeadersMatchesAwsExample)
 {
-    SigV4Params params;
+    SigParams params;
     params.region = "us-east-1";
     params.service = "s3";
     params.access_key_id = AccessKeyId{"AKIAIOSFODNN7EXAMPLE"_t};
@@ -144,9 +144,9 @@ std::map<std::string, std::string> ParseQuery(const std::string &url)
     return out;
 }
 
-S3V4Config MakeConfig()
+Config MakeConfig()
 {
-    S3V4Config cfg;
+    Config cfg;
     cfg.endpoint = "https://examplebucket.s3.amazonaws.com"_t;
     cfg.region = "us-east-1"_t;
     cfg.timeout = 1000ms;
@@ -154,9 +154,9 @@ S3V4Config MakeConfig()
     return cfg;
 }
 
-S3Credentials MakeCreds()
+Credentials MakeCreds()
 {
-    S3Credentials creds;
+    Credentials creds;
     creds.access_key_id = AccessKeyId{"AKIAIOSFODNN7EXAMPLE"_t};
     creds.secret_access_key = SecretAccessKey{"wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"_t};
     return creds;
@@ -164,12 +164,12 @@ S3Credentials MakeCreds()
 
 } // namespace
 
-UTEST(S3SigV4Client, PresignPathStyleClampsShortTtl)
+UTEST(SigClient, PresignPathStyleClampsShortTtl)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "examplebucket"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
     const auto expired = datetime::Now() - 1h;
     const std::string url = client->GenerateDownloadUrl(
@@ -184,12 +184,12 @@ UTEST(S3SigV4Client, PresignPathStyleClampsShortTtl)
     EXPECT_EQ(expires_value, std::string{"1"});
 }
 
-UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
+UTEST(SigClient, PresignPathStyleClampsLongTtl)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "examplebucket"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
     const auto far_future = datetime::Now() + 14 * 24h;
     const std::string url = client->GenerateDownloadUrl(
@@ -204,12 +204,12 @@ UTEST(S3SigV4Client, PresignPathStyleClampsLongTtl)
     EXPECT_EQ(expires_value, std::string{"604800"});
 }
 
-UTEST(S3SigV4Client, PresignPathStyleEncodesObjectKey)
+UTEST(SigClient, PresignPathStyleEncodesObjectKey)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "examplebucket"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
     const auto soon = datetime::Now() + 120s;
     const std::string url = client->GenerateDownloadUrl(
@@ -228,20 +228,20 @@ UTEST(S3SigV4Client, PresignPathStyleEncodesObjectKey)
     EXPECT_EQ(path, std::string{"/examplebucket/folder/file%20with%20space.txt"});
 }
 
-UTEST(S3SigV4Client, ValidateVirtualHostBucketNameRequiresBucket)
+UTEST(SigClient, ValidateVirtualHostBucketNameRequiresBucket)
 {
-    const auto result = v1::s3v4::detail::ValidateVirtualHostBucketName(String{});
+    const auto result = ws::s3::detail::ValidateVirtualHostBucketName(String{});
     ASSERT_FALSE(result);
-    EXPECT_EQ(result.Error(), v1::s3v4::detail::VirtualHostPresignError::kMissingBucket);
+    EXPECT_EQ(result.Error(), ws::s3::detail::VirtualHostPresignError::kMissingBucket);
 }
 
-UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)
+UTEST(SigClient, VirtualHostUsesBucketInHost)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     cfg.endpoint = "s3.example.com"_t;
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "bucket-name"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "bucket-name"_t);
 
     const auto expires_at = datetime::Now() + 60s;
     const std::string url = client->GenerateDownloadUrlVirtualHostAddressing(
@@ -258,25 +258,25 @@ UTEST(S3SigV4Client, VirtualHostUsesBucketInHost)
     EXPECT_EQ(host, std::string{"bucket-name.s3.example.com"});
 }
 
-UTEST(S3SigV4Client, UnsupportedOperationsThrow)
+UTEST(SigClient, UnsupportedOperationsThrow)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "bucket-name"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "bucket-name"_t);
 
     us::s3api::ConnectionCfg new_cfg{50ms};
     EXPECT_NO_THROW(client->UpdateConfig(std::move(new_cfg)));
     EXPECT_EQ(client->GetBucketName(), std::string_view{"bucket-name"});
 }
 
-UTEST(S3SigV4Client, UploadPresignIncludesContentType)
+UTEST(SigClient, UploadPresignIncludesContentType)
 {
     auto http_client = us::utest::CreateHttpClient();
     auto cfg = MakeConfig();
     cfg.endpoint = "s3.internal"_t;
     auto creds = MakeCreds();
-    auto client = std::make_shared<S3V4Client>(*http_client, cfg, creds, "bucket-name"_t);
+    auto client = std::make_shared<Client>(*http_client, cfg, creds, "bucket-name"_t);
 
     const auto expires_at = datetime::Now() + 120s;
     const std::string url = client->GenerateUploadUrlVirtualHostAddressing(

@@ -7,7 +7,7 @@
 #include <boost/uuid/string_generator.hpp>
 #include <boost/uuid/uuid.hpp>
 
-namespace v1::uuidu {
+namespace ws::uuid {
 
 using Uuid = boost::uuids::uuid;
 
@@ -21,4 +21,4 @@ using Uuid = boost::uuids::uuid;
     }
 }
 
-} // namespace v1::uuidu
+} // namespace ws::uuid

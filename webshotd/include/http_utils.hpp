@@ -17,7 +17,7 @@
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 
-namespace v1::httpu {
+namespace ws::httpu {
 
 namespace us = userver;
 namespace server = us::server;
@@ -57,7 +57,7 @@ RespondJson(server::http::HttpResponse &resp, server::http::HttpStatus status, j
 [[nodiscard]] inline std::string
 RespondError(server::http::HttpResponse &resp, server::http::HttpStatus status, String message)
 {
-    return RespondJson(resp, status, v1::errors::MakeError(message));
+    return RespondJson(resp, status, ws::errors::MakeError(message));
 }
 
 [[nodiscard]] inline std::string RespondParamError(
@@ -65,7 +65,7 @@ RespondError(server::http::HttpResponse &resp, server::http::HttpStatus status, 
     String message
 )
 {
-    return RespondJson(resp, status, v1::errors::MakeParamError(param_name, message));
+    return RespondJson(resp, status, ws::errors::MakeParamError(param_name, message));
 }
 
 [[nodiscard]] inline std::string
@@ -79,4 +79,4 @@ RespondClientIpCooldown(server::http::HttpResponse &resp, std::chrono::milliseco
         resp, server::http::HttpStatus::kTooManyRequests, "client IP in cooldown"_t
     );
 }
-} // namespace v1::httpu
+} // namespace ws::httpu

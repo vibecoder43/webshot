@@ -2,7 +2,7 @@
 
 #include <userver/utest/utest.hpp>
 
-using namespace v1::crawler;
+using namespace ws::crawler;
 using namespace text::literals;
 
 namespace {

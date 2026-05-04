@@ -19,10 +19,10 @@
 #include "pagination.hpp"
 #include "prefix_pagination.hpp"
 #include "prefix_utils.hpp"
-#include "s3/s3_sts_client.hpp"
-#include "s3/s3_v4_client.hpp"
-#include "s3_refresh_utils.hpp"
-#include "s3_secdist.hpp"
+#include "s3/client.hpp"
+#include "s3/refresh_utils.hpp"
+#include "s3/secdist.hpp"
+#include "s3/sts_client.hpp"
 #include "schema/common/common.hpp"
 #include "schema/public/webshot.hpp"
 #include "server_errors.hpp"
@@ -80,9 +80,7 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <userver/yaml_config/yaml_config.hpp>
 
-namespace chrono = std::chrono;
-namespace sql = webshot::sql;
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace eng = us::engine;
 namespace datetime = us::utils::datetime;
@@ -90,9 +88,11 @@ namespace concurrent = us::concurrent;
 namespace pg = us::storages::postgres;
 namespace httpc = us::clients::http;
 namespace rcu = us::rcu;
-} // namespace v1
+namespace chrono = std::chrono;
+namespace sql = webshot::sql;
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 using namespace text::literals;
 using namespace std::chrono_literals;
 using text::ToBytes;
@@ -204,8 +204,8 @@ MakePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
     return job;
 }
 
-[[nodiscard]] s3v4::S3Credentials MakeStaticS3Credentials(
-    const s3v4::AccessKeyId &access_key_id, const s3v4::SecretAccessKey &secret_access_key
+[[nodiscard]] s3::Credentials MakeStaticS3Credentials(
+    const s3::AccessKeyId &access_key_id, const s3::SecretAccessKey &secret_access_key
 )
 {
     return {access_key_id, secret_access_key, {}};
@@ -392,13 +392,13 @@ public:
     Denylist &denylist;
     CrawlerRunner crawler_runner;
     struct [[nodiscard]] S3ClientState {
-        s3v4::S3Credentials creds;
+        s3::Credentials creds;
         system_clock::time_point expires_at;
-        std::shared_ptr<s3v4::S3V4Client> client;
+        std::shared_ptr<s3::Client> client;
     };
     rcu::Variable<S3ClientState> s3_state;
-    s3v4::AccessKeyId static_access_key_id;
-    s3v4::SecretAccessKey static_secret_access_key;
+    s3::AccessKeyId static_access_key_id;
+    s3::SecretAccessKey static_secret_access_key;
     eng::TaskProcessor &main_task_processor;
     eng::CancellableSemaphore crawl_slots;
     eng::TaskProcessor &purge_task_processor;
@@ -536,7 +536,7 @@ public:
             "s3_credentials_duration_sec must be greater than s3_credentials_refresh_margin_sec"_t
         );
         const auto &secdist = ctx.FindComponent<us::components::Secdist>().Get();
-        const auto &creds = secdist.Get<S3CredentialsSecdist>();
+        const auto &creds = secdist.Get<CredentialsSecdist>();
         Invariant(
             creds.access_key_id && creds.secret_access_key,
             "missing required S3 secdist credentials"_t
@@ -559,12 +559,12 @@ public:
             initial_state = S3ClientState{
                 .creds = static_creds,
                 .expires_at = system_clock::time_point::max(),
-                .client = std::make_shared<s3v4::S3V4Client>(
+                .client = std::make_shared<s3::Client>(
                     http_client_,
-                    s3v4::S3V4Config(
+                    s3::Config(
                         svc_cfg.S3Endpoint(), svc_cfg.S3Region(), svc_cfg.S3Timeout(), false
                     ),
-                    static_creds, String()
+                    static_creds, String{}
                 ),
             };
         }
@@ -657,7 +657,7 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
     CrawlContext ctx(id, std::move(link), svc_cfg);
 
     LOG_INFO() << std::format(
-        "runCrawlJob starting crawler for job {} ({})", id, ctx.link.Normalized()
+        "RunCrawlJob starting crawler for job {} ({})", id, ctx.link.Normalized()
     );
     {
         auto crawler_result = RunCrawlerForContext(ctx);
@@ -666,7 +666,7 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
         TRY(std::move(crawler_result));
     }
     LOG_INFO() << std::format(
-        "runCrawlJob finished crawler for job {} ({})", id, ctx.link.Normalized()
+        "RunCrawlJob finished crawler for job {} ({})", id, ctx.link.Normalized()
     );
 
     LOG_INFO() << std::format("Persisting metadata for job {} ({})", id, ctx.link.Normalized());
@@ -803,16 +803,16 @@ Expected<Crud::Impl::S3ClientState, std::string> Crud::Impl::FetchS3ClientStateF
     if (!sts)
         return Unex(std::string{"failed to fetch STS credentials"});
 
-    const auto creds = s3v4::S3Credentials(
+    const auto creds = s3::Credentials(
         sts->access_key_id, sts->secret_access_key, sts->session_token
     );
     return S3ClientState{
         .creds = creds,
         .expires_at = sts->expires_at,
-        .client = std::make_shared<s3v4::S3V4Client>(
+        .client = std::make_shared<s3::Client>(
             http_client_,
-            s3v4::S3V4Config(svc_cfg.S3Endpoint(), svc_cfg.S3Region(), svc_cfg.S3Timeout(), false),
-            creds, String()
+            s3::Config(svc_cfg.S3Endpoint(), svc_cfg.S3Region(), svc_cfg.S3Timeout(), false), creds,
+            String()
         ),
     };
 }
@@ -1470,7 +1470,7 @@ Expected<std::optional<dto::CaptureJob>, errors::CrudError> Crud::FindCaptureJob
 Expected<dto::PagedFindCapturesByUrlResponse, errors::CapturePageError>
 Crud::FindCapturesByLinkPage(const Link &link, String page_token)
 {
-    namespace crud = v1::crud;
+    namespace crud = ws::crud;
     using enum errors::CapturePageError;
 
     struct Row {
@@ -1561,7 +1561,7 @@ Crud::FindCapturesByLinkPage(const Link &link, String page_token)
 Expected<dto::PagedFindCapturesByPrefixResponse, errors::CapturePageError>
 Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
 {
-    namespace crud = v1::crud;
+    namespace crud = ws::crud;
     using enum errors::CapturePageError;
 
     std::optional<crud::PrefixCursor> cur;

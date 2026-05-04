@@ -10,10 +10,10 @@
 
 #include <userver/clients/http/response.hpp>
 
-#include "s3_credentials_types.hpp"
+#include "s3/credentials_types.hpp"
 #include "text.hpp"
 
-namespace v1::s3v4 {
+namespace ws::s3 {
 
 namespace us = userver;
 namespace httpc = us::clients::http;
@@ -23,7 +23,7 @@ enum class EncodeSlash {
 };
 
 /**
- * @brief Canonical request and signed headers list as defined by SigV4.
+ * @brief Canonical request and signed headers list as defined by Sig.
  */
 struct CanonicalRequestParts {
     std::string canonical_request;
@@ -31,19 +31,19 @@ struct CanonicalRequestParts {
 };
 
 /**
- * @brief Parameters needed to compute AWS Signature V4 headers.
+ * @brief Parameters needed to compute AWS Signature  headers.
  */
-struct [[nodiscard]] SigV4Params {
+struct [[nodiscard]] SigParams {
     std::string region;         // e.g. us-east-1
-    std::string service = "s3"; // fixed for S3
+    std::string service = "s3"; // fixed for
     AccessKeyId access_key_id;
     SecretAccessKey secret_access_key;
     std::optional<SessionToken> session_token;
     std::string amz_date; // YYYYMMDDTHHMMSSZ
     std::string date;     // YYYYMMDD
 
-    SigV4Params() = default;
-    SigV4Params(
+    SigParams() = default;
+    SigParams(
         std::string region, std::string service, const AccessKeyId &access_key_id,
         const SecretAccessKey &secret_access_key, std::optional<SessionToken> session_token,
         const std::chrono::system_clock::time_point &now
@@ -51,9 +51,9 @@ struct [[nodiscard]] SigV4Params {
 };
 
 // Utilities
-[[nodiscard]] std::string BuildScope(const SigV4Params &params);
+[[nodiscard]] std::string BuildScope(const SigParams &params);
 [[nodiscard]] std::string
-ComputeSignature(const SigV4Params &params, std::string_view string_to_sign);
+ComputeSignature(const SigParams &params, std::string_view string_to_sign);
 /** @return AMZ date stamp for the given time point (UTC). */
 [[nodiscard]] std::string ToAmzDateUtc(std::chrono::system_clock::time_point tp);
 /** @return Date stamp (YYYYMMDD) for the given time point (UTC). */
@@ -64,7 +64,7 @@ ComputeSignature(const SigV4Params &params, std::string_view string_to_sign);
 /** RFC3986 percent-encoding for AWS canonicalization. */
 [[nodiscard]] String PercentEncode(const String &s, EncodeSlash encode_slash);
 
-/** Encode, sort, and join query parameters per SigV4 canonical rules. */
+/** Encode, sort, and join query parameters per Sig canonical rules. */
 [[nodiscard]] std::string
 CanonicalizeQuery(const std::vector<std::pair<std::string, std::string>> &decoded);
 
@@ -77,7 +77,7 @@ PrepareSignedHeaders(std::string host, const httpc::Headers &extra);
     const std::vector<std::pair<std::string, std::string>> &headers_lowercase_trimmed_sorted
 );
 
-/** Build the canonical request string used by SigV4. */
+/** Build the canonical request string used by Sig. */
 [[nodiscard]] CanonicalRequestParts BuildCanonicalRequest(
     std::string_view method, std::string_view canonical_uri,
     const std::vector<std::pair<std::string, std::string>>
@@ -92,11 +92,11 @@ PrepareSignedHeaders(std::string host, const httpc::Headers &extra);
  * Returns the `authorization` header and auxiliary `x-amz-*` headers.
  */
 [[nodiscard]] std::unordered_map<std::string, std::string> SignHeaders(
-    const SigV4Params &p, const String &method, const String &canonical_uri,
+    const SigParams &p, const String &method, const String &canonical_uri,
     const std::vector<std::pair<String, String>> &query,
     // input headers to be signed: key must be lowercase and trimmed; host must be present
     const std::vector<std::pair<String, String>> &headers_lower_trimmed,
     const String &payload_Sha256Hex
 );
 
-} // namespace v1::s3v4
+} // namespace ws::s3

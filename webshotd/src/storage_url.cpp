@@ -2,7 +2,7 @@
 
 /**
  * @file
- * @brief Helpers for externally visible direct S3 object URLs.
+ * @brief Helpers for externally visible direct  object URLs.
  */
 
 #include "invariant.hpp"
@@ -15,12 +15,12 @@
 
 using namespace text::literals;
 
-namespace v1 {
+namespace ws {
 namespace {
 
 using enum StorageUrlError;
 
-[[nodiscard]] String AppendCaptureFilename(const Url &base_url, uuidu::Uuid uuid)
+[[nodiscard]] String AppendCaptureFilename(const Url &base_url, ws::uuid::Uuid uuid)
 {
     std::string path{base_url.Pathname().View()};
     if (path.empty())
@@ -50,7 +50,7 @@ ParseRequestHostname(const std::optional<String> &request_host)
 }
 
 [[nodiscard]] Expected<Url, StorageUrlError>
-BuildConfiguredCaptureDownloadUrl(uuidu::Uuid uuid, const String &public_base_url)
+BuildConfiguredCaptureDownloadUrl(ws::uuid::Uuid uuid, const String &public_base_url)
 {
     const auto download_url_text =
         String::FromBytes(std::format("{}/{}.wacz", public_base_url, uuid)).Expect();
@@ -60,11 +60,11 @@ BuildConfiguredCaptureDownloadUrl(uuidu::Uuid uuid, const String &public_base_ur
 } // namespace
 
 Expected<Url, StorageUrlError> BuildCaptureDownloadUrl(
-    uuidu::Uuid uuid, S3Mode s3_mode, const String &public_base_url,
+    ws::uuid::Uuid uuid, Mode s3_mode, const String &public_base_url,
     const std::optional<String> &request_host
 )
 {
-    using enum S3Mode;
+    using enum Mode;
 
     if (s3_mode == kExternal)
         return BuildConfiguredCaptureDownloadUrl(uuid, public_base_url);
@@ -96,4 +96,4 @@ String StorageUrlErrorMessage(StorageUrlError error)
     }
 }
 
-} // namespace v1
+} // namespace ws

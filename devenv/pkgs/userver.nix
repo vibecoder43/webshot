@@ -47,6 +47,7 @@
         ../../patch/userver_openssl_imported_targets.patch
         ../../patch/userver_cctz_cmake_version.patch
         ../../patch/userver_stdlib_cxx17_variant.patch
+        ../../patch/userver_date_std_ws.patch
       ];
 
       nativeBuildInputs =

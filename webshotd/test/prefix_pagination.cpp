@@ -7,18 +7,18 @@
 #include "prefix_pagination.hpp"
 #include "text.hpp"
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 
-using v1::crud::Clock;
-using v1::crud::DecodePrefixCursor;
-using v1::crud::EncodePrefixCursor;
-using v1::crud::PageDirection;
-using v1::crud::TimePointToMicros;
-using v1::crud::UpperExclusiveBound;
+using ws::crud::Clock;
+using ws::crud::DecodePrefixCursor;
+using ws::crud::EncodePrefixCursor;
+using ws::crud::PageDirection;
+using ws::crud::TimePointToMicros;
+using ws::crud::UpperExclusiveBound;
 using namespace text::literals;
 
 UTEST(PrefixPagination, UpperExclusiveBoundNormal)

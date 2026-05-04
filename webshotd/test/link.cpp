@@ -9,8 +9,8 @@
 namespace {
 constexpr auto kUrlBytesMax = 4096_uz;
 
-using v1::Link;
-using v1::Url;
+using ws::Link;
+using ws::Url;
 using enum Url::StripOptions;
 using namespace text::literals;
 using text::ToBytes;
@@ -200,7 +200,7 @@ UTEST(UrlStrip, RemovesPortAndQuery)
 UTEST(PrefixKey, IgnoresPortAndQuery)
 {
     EXPECT_EQ(
-        v1::prefix::MakePrefixKey(ParseLink("https://Example.com:8081/Path?a=1")),
+        ws::prefix::MakePrefixKey(ParseLink("https://Example.com:8081/Path?a=1")),
         "com.example/Path"_t
     );
 }

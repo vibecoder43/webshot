@@ -5,7 +5,7 @@
 #include <optional>
 #include <utility>
 
-namespace v1 {
+namespace ws {
 
 template <typename T> inline T GrabValueOf(std::optional<T> &opt)
 {
@@ -26,4 +26,4 @@ template <typename T, typename E> inline T GrabValueOf(Expected<T, E> &&expected
     return std::move(*expected);
 }
 
-} // namespace v1
+} // namespace ws

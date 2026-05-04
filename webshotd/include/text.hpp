@@ -25,8 +25,8 @@
 
 namespace text {
 
-using v1::Expected;
-using v1::Unex;
+using ws::Expected;
+using ws::Unex;
 
 struct [[nodiscard]] TextError final {
     enum class Code {

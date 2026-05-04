@@ -63,20 +63,20 @@
 #include <userver/utils/datetime.hpp>
 #include <userver/utils/resources.hpp>
 namespace chrono = std::chrono;
+namespace ujson = userver::formats::json;
 using namespace std::chrono_literals;
 using namespace text::literals;
 using text::ToBytes;
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace eng = us::engine;
-namespace json = us::formats::json;
 namespace datetime = us::utils::datetime;
 namespace dns = us::clients::dns;
 namespace {
 
 using crawler::DescribeCdpFailure;
-using v1::Expected;
+using ws::Expected;
 
 constexpr auto kCdpWsPayloadSlackBytes = 2_i64 * 1024_i64 * 1024_i64;
 const auto kLocalFixtureHttpPort = "18080"_t;
@@ -196,7 +196,7 @@ template <typename T>
 {
     if (!event.params)
         return Unex(text::Format("{} missing params", event.method));
-    return ex::json::As<T>(
+    return ws::json::As<T>(
         event.params->extra, text::Format("{} has invalid params", event.method)
     );
 }
@@ -237,7 +237,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
     if (!body.base64Encoded)
         return body.body;
 
-    const auto decoded = ex::crypto::Base64Decode(body.body, false);
+    const auto decoded = ws::crypto::Base64Decode(body.body, false);
     if (!decoded)
         return {};
     return *decoded;
@@ -1145,7 +1145,7 @@ Expected<void, String> RunSiteBehavior(crawler::CdpSession &cdp_session, eng::De
     );
     params.awaitPromise = true;
     params.returnByValue = true;
-    TRY_MAP_ERR(cdp_session.Send<json::Value>("Runtime.evaluate"_t, params), [](auto failure) {
+    TRY_MAP_ERR(cdp_session.Send<ujson::Value>("Runtime.evaluate"_t, params), [](auto failure) {
         return DescribeCdpFailure("failed to run site behavior"_t, std::move(failure));
     });
     return {};
@@ -1992,4 +1992,4 @@ CrawlerRunArtifacts CrawlerRunner::Run(const String &seed_url) const
     );
 }
 
-} // namespace v1
+} // namespace ws

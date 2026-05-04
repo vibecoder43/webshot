@@ -26,7 +26,7 @@
 #include <userver/server/http/http_status.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-using namespace v1;
+using namespace ws;
 using namespace text::literals;
 using namespace std::chrono_literals;
 
@@ -65,9 +65,9 @@ namespace {
     const CaptureRecord &capture, const Config &config, const std::optional<String> &request_host
 )
 {
-    const auto download_url = TRY(
-        BuildCaptureDownloadUrl(capture.uuid, config.S3Mode(), config.PublicBaseUrl(), request_host)
-    );
+    const auto download_url = TRY(BuildCaptureDownloadUrl(
+        capture.uuid, config.S3Mode(), config.S3PublicBaseUrl(), request_host
+    ));
 
     std::string out = "/vendor/replaywebpage/index.html?source=";
     out += ada::unicode::percent_encode(
@@ -108,7 +108,7 @@ namespace {
 
 } // namespace
 
-namespace v1 {
+namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
@@ -200,4 +200,4 @@ std::string UiReplayHandler::HandleRequestThrow(
     return {};
 }
 
-} // namespace v1
+} // namespace ws

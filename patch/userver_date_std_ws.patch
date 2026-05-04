@@ -1,0 +1,49 @@
+diff --git a/third_party/date/include/date/date.h b/third_party/date/include/date/date.h
+--- a/third_party/date/include/date/date.h
++++ b/third_party/date/include/date/date.h
+@@ -6784,15 +6784,15 @@
+                         auto nm = detail::weekday_names();
+                         auto i = detail::scan_keyword(is, nm.first, nm.second) - nm.first;
+                         checked_set(wd, static_cast<int>(i % 7), not_a_weekday, is);
+-                        ws(is);
++                        std::ws(is);
+                         nm = detail::month_names();
+                         i = detail::scan_keyword(is, nm.first, nm.second) - nm.first;
+                         checked_set(m, static_cast<int>(i % 12 + 1), not_a_month, is);
+-                        ws(is);
++                        std::ws(is);
+                         int td = not_a_day;
+                         read(is, ru{td, 1, 2});
+                         checked_set(d, td, not_a_day, is);
+-                        ws(is);
++                        std::ws(is);
+                         using dfs = detail::decimal_format_seconds<Duration>;
+                         CONSTDATA auto w = Duration::period::den == 1 ? 2 : 3 + dfs::width;
+                         int tH;
+@@ -6804,7 +6804,7 @@
+                         checked_set(M, tM, not_a_minute, is);
+                         checked_set(s, round_i<Duration>(duration<long double>{S}),
+                                     not_a_second, is);
+-                        ws(is);
++                        std::ws(is);
+                         int tY = not_a_year;
+                         // No need for `rs` here, negative years can't parse
+                         // with "%c" since `width` is hardcoded to 4
+@@ -7243,7 +7243,7 @@
+                         checked_set(M, tM, not_a_minute, is);
+                         checked_set(s, round_i<Duration>(duration<long double>{S}),
+                                     not_a_second, is);
+-                        ws(is);
++                        std::ws(is);
+                         auto nm = detail::ampm_names();
+                         auto i = detail::scan_keyword(is, nm.first, nm.second) - nm.first;
+                         checked_set(p, static_cast<int>(i), not_a_ampm, is);
+@@ -7655,7 +7655,7 @@
+                     {
+                         // space matches 0 or more white space characters
+                         if (is.good())
+-                           ws(is);
++                           std::ws(is);
+                     }
+                     else
+                         read(is, *fmt);

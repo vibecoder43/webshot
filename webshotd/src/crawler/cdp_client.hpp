@@ -31,13 +31,13 @@
 #include <userver/utils/assert.hpp>
 #include <userver/websocket/connection.hpp>
 
-namespace v1::crawler {
+namespace ws::crawler {
 
 namespace us = userver;
 namespace eng = us::engine;
 namespace json = us::formats::json;
 using text::literals::operator""_t;
-using v1::Expected;
+using ws::Expected;
 
 struct [[nodiscard]] CdpEvent {
     String method;
@@ -88,7 +88,7 @@ public:
 
     template <typename T> [[nodiscard]] Expected<T, CdpFailure> Send(const String &method)
     {
-        return ex::json::As<T>(
+        return ws::json::As<T>(
             TRY(SendRaw(method, json::Value{}, {})),
             CdpFailure{.code = CdpError::kProtocol, .detail = {}}
         );
@@ -110,7 +110,7 @@ public:
     [[nodiscard]] Expected<T, CdpFailure>
     Send(const String &method, const std::optional<String> &session_id)
     {
-        return ex::json::As<T>(
+        return ws::json::As<T>(
             TRY(SendRaw(method, json::Value{}, session_id)),
             CdpFailure{.code = CdpError::kProtocol, .detail = {}}
         );
@@ -121,9 +121,9 @@ public:
     Send(const String &method, const Params &params, const std::optional<String> &session_id)
     {
         const auto params_value = TRY(
-            ex::json::ValueOf(params, CdpFailure{.code = CdpError::kProtocol, .detail = {}})
+            ws::json::ValueOf(params, CdpFailure{.code = CdpError::kProtocol, .detail = {}})
         );
-        return ex::json::As<T>(
+        return ws::json::As<T>(
             TRY(SendRaw(method, params_value, session_id)),
             CdpFailure{.code = CdpError::kProtocol, .detail = {}}
         );
@@ -261,4 +261,4 @@ private:
 
 [[nodiscard]] String DescribeCdpFailure(const String &action, const CdpFailure &failure);
 
-} // namespace v1::crawler
+} // namespace ws::crawler

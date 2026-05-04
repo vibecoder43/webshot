@@ -4,14 +4,14 @@
 
 #include <boost/uuid/string_generator.hpp>
 
-using namespace v1;
+using namespace ws;
 using namespace text::literals;
-using enum S3Mode;
+using enum Mode;
 using enum StorageUrlError;
 
 namespace {
 
-[[nodiscard]] uuidu::Uuid SampleUuid()
+[[nodiscard]] ws::uuid::Uuid SampleUuid()
 {
     return boost::uuids::string_generator{}("123e4567-e89b-12d3-a456-426614174000");
 }
@@ -30,7 +30,7 @@ UTEST(StorageUrl, ExternalModePreservesConfiguredBase)
     );
 }
 
-UTEST(StorageUrl, LocalModeUsesRequestHostnameAndConfiguredS3Port)
+UTEST(StorageUrl, LocalModeUsesRequestHostnameAndConfiguredPort)
 {
     const auto url = BuildCaptureDownloadUrl(
         SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "client.example:8080"_t

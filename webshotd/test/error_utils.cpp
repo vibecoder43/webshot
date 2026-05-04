@@ -6,8 +6,8 @@
 #include "error_utils.hpp"
 #include "text.hpp"
 
-using v1::errors::MakeError;
-using v1::errors::MakeParamError;
+using ws::errors::MakeError;
+using ws::errors::MakeParamError;
 using namespace text::literals;
 
 UTEST(ErrorUtils, WrapsMessage)

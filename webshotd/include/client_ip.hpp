@@ -14,7 +14,7 @@
 #include <userver/server/http/http_request.hpp>
 #include <userver/utils/assert.hpp>
 
-namespace v1::client::ip {
+namespace ws::client::ip {
 namespace us = userver;
 namespace server = us::server;
 using text::literals::operator""_t;
@@ -39,4 +39,4 @@ Resolve(const server::http::HttpRequest &request, const Config &config)
         return MakeClientIp(request.GetHeader(config.ClientIpHeaderName()));
     }
 }
-} // namespace v1::client::ip
+} // namespace ws::client::ip

@@ -7,7 +7,7 @@
 
 #include <userver/utils/encoding/hex.hpp>
 
-namespace v1::prefix {
+namespace ws::prefix {
 
 namespace us = userver;
 using text::ToBytes;
@@ -99,4 +99,4 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
     return out;
 }
 
-} // namespace v1::prefix
+} // namespace ws::prefix

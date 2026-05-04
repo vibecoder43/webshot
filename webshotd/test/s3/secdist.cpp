@@ -5,28 +5,25 @@
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/utest/utest.hpp>
 
-#include "s3_secdist.hpp"
+#include "s3/secdist.hpp"
 #include "text.hpp"
 
-namespace v1 {
-namespace us = userver;
-namespace json = us::formats::json;
-} // namespace v1
+namespace ujson = userver::formats::json;
 
-using namespace v1;
+using namespace ws;
 
-using v1::S3CredentialsSecdist;
+using ws::CredentialsSecdist;
 using namespace text::literals;
 
-UTEST(S3Secdist, ParsesAllFields)
+UTEST(Secdist, ParsesAllFields)
 {
-    json::ValueBuilder builder;
+    ujson::ValueBuilder builder;
     auto creds = builder["s3_credentials"];
     creds["access_key_id"] = "ACCESS";
     creds["secret_access_key"] = "SECRET";
     creds["session_token"] = "TOKEN";
 
-    const S3CredentialsSecdist parsed(builder.ExtractValue());
+    const CredentialsSecdist parsed(builder.ExtractValue());
     ASSERT_TRUE(parsed.access_key_id);
     ASSERT_TRUE(parsed.secret_access_key);
     ASSERT_TRUE(parsed.session_token);
@@ -37,22 +34,22 @@ UTEST(S3Secdist, ParsesAllFields)
     EXPECT_EQ(parsed.session_token->GetUnderlying(), "TOKEN"_t);
 }
 
-UTEST(S3Secdist, MissingObjectYieldsNullopts)
+UTEST(Secdist, MissingObjectYieldsNullopts)
 {
-    json::ValueBuilder builder; // empty root
-    const S3CredentialsSecdist parsed(builder.ExtractValue());
+    ujson::ValueBuilder builder; // empty root
+    const CredentialsSecdist parsed(builder.ExtractValue());
     EXPECT_FALSE(parsed.access_key_id);
     EXPECT_FALSE(parsed.secret_access_key);
     EXPECT_FALSE(parsed.session_token);
 }
 
-UTEST(S3Secdist, PartialCredentials)
+UTEST(Secdist, PartialCredentials)
 {
-    json::ValueBuilder builder;
+    ujson::ValueBuilder builder;
     auto creds = builder["s3_credentials"];
     creds["access_key_id"] = "ACCESS_ONLY";
 
-    const S3CredentialsSecdist parsed(builder.ExtractValue());
+    const CredentialsSecdist parsed(builder.ExtractValue());
     ASSERT_TRUE(parsed.access_key_id);
     if (!parsed.access_key_id)
         return;

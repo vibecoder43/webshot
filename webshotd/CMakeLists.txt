@@ -56,9 +56,9 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
 
 set(${PROJECT_NAME}_headers
     include/integers.hpp
-    include/s3_credentials_types.hpp
-    include/s3/s3_sts_client.hpp
-    include/s3/s3_v4_client.hpp
+    include/s3/credentials_types.hpp
+    include/s3/sts_client.hpp
+    include/s3/client.hpp
     src/text_postgres_formatter.hpp
     src/handler.hpp
     src/job_handler.hpp
@@ -419,9 +419,9 @@ add_subdirectory("${WEBSHOT_REPO_ROOT}/arkhiv"
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE arkhiv::arkhiv)
 target_sources(
   ${PROJECT_NAME}_objs
-  PRIVATE src/s3/sigv4_signer.cpp src/s3/s3_v4_client.cpp
-          src/s3/s3_sts_client.cpp src/s3/s3_url_utils.cpp
-          include/s3/sigv4_signer.hpp include/s3/s3_url_utils.hpp)
+  PRIVATE src/s3/sigv4_signer.cpp src/s3/client.cpp src/s3/sts_client.cpp
+          src/s3/url_utils.cpp include/s3/sigv4_signer.hpp
+          include/s3/url_utils.hpp)
 
 userver_add_sql_library(
   ${PROJECT_NAME}_sql

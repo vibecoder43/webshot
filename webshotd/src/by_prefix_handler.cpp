@@ -29,12 +29,12 @@
 #include <userver/server/http/http_status.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-namespace v1 {
+namespace ws {
 namespace us = userver;
 namespace server = us::server;
-} // namespace v1
+} // namespace ws
 
-using namespace v1;
+using namespace ws;
 using namespace text::literals;
 using namespace std::chrono_literals;
 
@@ -57,7 +57,7 @@ properties:
   request-timeout-ms:
     type: integer
     minimum: 1
-    description: Upper bound for /v1/capture/prefix handler in milliseconds
+    description: Upper bound for /ws/capture/prefix handler in milliseconds
 )");
 }
 

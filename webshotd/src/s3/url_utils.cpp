@@ -1,4 +1,4 @@
-#include "s3/s3_url_utils.hpp"
+#include "s3/url_utils.hpp"
 
 #include "try.hpp"
 
@@ -9,7 +9,7 @@
 
 #include <ada/unicode.h>
 
-namespace v1::s3v4 {
+namespace ws::s3 {
 
 using namespace text::literals;
 
@@ -81,4 +81,4 @@ Expected<std::vector<std::pair<String, String>>, QueryStringError> DecodeQuerySt
     return query;
 }
 
-} // namespace v1::s3v4
+} // namespace ws::s3
