@@ -16,28 +16,24 @@ namespace {
 [[nodiscard]] dto::PaginationCursor::D ToDto(PageDirection direction)
 {
     using namespace text::literals;
-
+    using enum dto::PaginationCursor::D;
     switch (direction) {
     case PageDirection::kNext:
-        return dto::PaginationCursor::D::kNext;
+        return kNext;
     case PageDirection::kPrevious:
-        return dto::PaginationCursor::D::kPrevious;
-    default:
-        Invariant("invalid page direction"_t);
+        return kPrevious;
     }
 }
 
 [[nodiscard]] PageDirection FromDto(dto::PaginationCursor::D direction)
 {
     using namespace text::literals;
-
+    using enum dto::PaginationCursor::D;
     switch (direction) {
-    case dto::PaginationCursor::D::kNext:
+    case kNext:
         return PageDirection::kNext;
-    case dto::PaginationCursor::D::kPrevious:
+    case kPrevious:
         return PageDirection::kPrevious;
-    default:
-        Invariant("invalid page direction"_t);
     }
 }
 } // namespace

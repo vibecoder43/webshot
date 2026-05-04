@@ -16,7 +16,6 @@ function(_add_cpp_test_target target)
   apply_link_defaults(${target})
   apply_sanitizer_compile_defaults(${target})
   apply_sanitizer_link_defaults(${target})
-  target_compile_options(${target} PRIVATE -Wno-switch-default)
 
   if(ARGS_REGISTER_CTEST)
     add_test(NAME ${target} COMMAND ${target})

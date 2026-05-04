@@ -40,8 +40,6 @@ String AccessDecisionMessage(AccessDecisionReason reason)
         return "link not in allowlist"_t;
     case kNonHttps:
         return "non-HTTPS fetch blocked"_t;
-    default:
-        Invariant(""_t);
     }
 }
 

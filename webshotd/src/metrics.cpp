@@ -68,8 +68,7 @@ void WriteErrorMetric(
         );
         return;
     case kCount:
-    default:
-        Invariant(""_t);
+        break;
     }
 }
 

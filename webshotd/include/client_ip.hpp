@@ -31,13 +31,12 @@ using text::literals::operator""_t;
 [[nodiscard]] inline std::optional<String>
 Resolve(const server::http::HttpRequest &request, const Config &config)
 {
+    using enum ClientIpSource;
     switch (config.ClientIpSource()) {
-    case ClientIpSource::kPeer:
+    case kPeer:
         return MakeClientIp(request.GetRemoteAddress().PrimaryAddressString());
-    case ClientIpSource::kTrustedHeader:
+    case kTrustedHeader:
         return MakeClientIp(request.GetHeader(config.ClientIpHeaderName()));
-    default:
-        Invariant("unknown client IP source"_t);
     }
 }
 } // namespace v1::client::ip

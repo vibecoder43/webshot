@@ -21,25 +21,23 @@ using text::ToBytes;
 namespace {
 [[nodiscard]] dto::PaginationPrefixCursor::D ToDto(PageDirection direction)
 {
+    using enum PageDirection;
     switch (direction) {
-    case PageDirection::kNext:
+    case kNext:
         return dto::PaginationPrefixCursor::D::kNext;
-    case PageDirection::kPrevious:
+    case kPrevious:
         return dto::PaginationPrefixCursor::D::kPrevious;
-    default:
-        Invariant("invalid page direction"_t);
     }
 }
 
 [[nodiscard]] PageDirection FromDto(dto::PaginationPrefixCursor::D direction)
 {
+    using enum dto::PaginationPrefixCursor::D;
     switch (direction) {
-    case dto::PaginationPrefixCursor::D::kNext:
+    case kNext:
         return PageDirection::kNext;
-    case dto::PaginationPrefixCursor::D::kPrevious:
+    case kPrevious:
         return PageDirection::kPrevious;
-    default:
-        Invariant("invalid page direction"_t);
     }
 }
 } // namespace
@@ -77,7 +75,6 @@ EncodePrefixCursor(const String &prefix, const String &link, PageDirection direc
 
 [[nodiscard]] std::string UpperExclusiveBound(String s)
 {
-    Invariant(!s.Empty(), "cannot be empty"_t);
     auto view = s.View();
     std::string bytes(view);
     for (i64 i = ssize(bytes) - 1_i64; i >= 0_i64; i--) {

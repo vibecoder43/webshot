@@ -172,7 +172,6 @@ function(apply_defaults target)
             -Wold-style-cast
             -Woverloaded-virtual
             -Wshadow
-            -Wswitch-default
             -Wswitch-enum
             -Wtautological-compare
             -Wunreachable-code-aggressive
