@@ -30,7 +30,7 @@ using enum StorageUrlError;
     if (path.back() != '/')
         path.push_back('/');
     path += std::format("{}.wacz", uuid);
-    return String::FromBytes(path).Expect();
+    return *String::FromBytes(path);
 }
 
 [[nodiscard]] Expected<String, StorageUrlError>
@@ -52,8 +52,9 @@ ParseRequestHostname(const std::optional<String> &request_host)
 [[nodiscard]] Expected<Url, StorageUrlError>
 BuildConfiguredCaptureDownloadUrl(ws::uuid::Uuid uuid, const String &public_base_url)
 {
-    const auto download_url_text =
-        String::FromBytes(std::format("{}/{}.wacz", public_base_url, uuid)).Expect();
+    const auto download_url_text = *String::FromBytes(
+        std::format("{}/{}.wacz", public_base_url, uuid)
+    );
     return TRY_OK_OR(Url::FromText(download_url_text), kInvalidPublicBaseUrl);
 }
 

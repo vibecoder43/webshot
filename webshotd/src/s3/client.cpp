@@ -80,7 +80,7 @@ std::string Client::PutObject(
 ) const
 {
     static_cast<void>(tags);
-    const auto path_text = String::FromBytes(path).Expect();
+    const auto path_text = *String::FromBytes(path);
     const auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
     headers[us::http::headers::kContentType] = std::string(content_type);
@@ -105,7 +105,7 @@ std::string Client::PutObject(
 
 void Client::DeleteObject(std::string_view path) const
 {
-    const auto path_text = String::FromBytes(path).Expect();
+    const auto path_text = *String::FromBytes(path);
     const auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
     const auto payload_hash = Sha256Hex("");
@@ -124,7 +124,7 @@ void Client::DeleteObject(std::string_view path) const
 std::optional<s3::Client::HeadersDataResponse>
 Client::GetObjectHead(std::string_view path, const HeaderDataRequest &request) const
 {
-    const auto path_text = String::FromBytes(path).Expect();
+    const auto path_text = *String::FromBytes(path);
     const auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
     const auto payload_hash = Sha256Hex("");
@@ -268,7 +268,7 @@ Client::GenerateDownloadUrl(std::string_view path, time_t expires_epoch, bool us
 {
     const auto expires_at = std::chrono::system_clock::from_time_t(expires_epoch);
     const auto method = "GET"_t;
-    const auto path_text = String::FromBytes(path).Expect();
+    const auto path_text = *String::FromBytes(path);
     const auto protocol_text = use_ssl ? "https"_t : "http"_t;
     const auto url_text = PresignPathStyle(method, path_text, expires_at, protocol_text);
     return std::string{url_text.View()};
@@ -280,8 +280,8 @@ std::string Client::GenerateDownloadUrlVirtualHostAddressing(
 ) const
 {
     auto method = "GET"_t;
-    auto path_text = String::FromBytes(path).Expect();
-    auto protocol_text = String::FromBytes(protocol).Expect();
+    auto path_text = *String::FromBytes(path);
+    auto protocol_text = *String::FromBytes(protocol);
     return std::string{PresignVirtualHost(method, path_text, expires_at, protocol_text, {}).View()};
 }
 
@@ -295,8 +295,8 @@ std::string Client::GenerateUploadUrlVirtualHostAddressing(
     // we use UNSIGNED-PAYLOAD for presign
     static_cast<void>(data);
     auto method = "PUT"_t;
-    auto path_text = String::FromBytes(path).Expect();
-    auto protocol_text = String::FromBytes(protocol).Expect();
+    auto path_text = *String::FromBytes(path);
+    auto protocol_text = *String::FromBytes(protocol);
     auto url_text = PresignVirtualHost(
         method, path_text, expires_at, protocol_text, std::move(hdrs)
     );
@@ -330,7 +330,7 @@ void Client::SignRequest(
     const auto now = datetime::Now();
     const auto params = MakeSigParams(now);
     auto prepared = PrepareSignedHeaders(ToBytes(host), headers);
-    const auto headers_text = text::StringPairs(prepared).Expect();
+    const auto headers_text = *text::StringPairs(prepared);
 
     auto signed_map = SignHeaders(params, method, canonical_uri, {}, headers_text, payload_hash);
     for (const auto &[name, value] : signed_map)
@@ -361,7 +361,7 @@ String Client::BuildRawPath(String path, IncludeBucket include_bucket) const
     if (raw.empty() || raw.front() != '/')
         raw.insert(raw.begin(), '/');
 
-    return String::FromBytes(raw).Expect();
+    return *String::FromBytes(raw);
 }
 
 detail::BuiltUrl
@@ -407,7 +407,7 @@ String Client::PresignVirtualHost(
 
     httpc::Headers extra = extra_headers.value_or(httpc::Headers{});
     auto prepared = PrepareSignedHeaders(ToBytes(built.host), extra);
-    const auto headers_text = text::StringPairs(prepared).Expect();
+    const auto headers_text = *text::StringPairs(prepared);
 
     return BuildPresignedUrl(method, built, now, expires_at, params, headers_text);
 }
@@ -421,7 +421,7 @@ String Client::PresignPathStyle(
     auto built = MakePathStyleUrl(std::move(path), std::move(protocol));
     SigParams params = MakeSigParams(now);
     auto prepared = PrepareSignedHeaders(ToBytes(built.host), httpc::Headers{});
-    const auto headers_text = text::StringPairs(prepared).Expect();
+    const auto headers_text = *text::StringPairs(prepared);
 
     return BuildPresignedUrl(method, built, now, expires_at, params, headers_text);
 }
@@ -459,7 +459,7 @@ String Client::BuildPresignedUrl(
     auto url = ToBytes(built.href);
     url.push_back('?');
     url.append(CanonicalizeQuery(query));
-    return String::FromBytes(url).Expect();
+    return *String::FromBytes(url);
 }
 
 } // namespace ws::s3

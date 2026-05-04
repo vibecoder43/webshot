@@ -23,7 +23,7 @@ namespace {
 [[nodiscard]] String
 ConfigText(const us::components::ComponentConfig &config, std::string_view field_name)
 {
-    return String::FromBytes(config[std::string{field_name}].As<std::string>()).Expect();
+    return *String::FromBytes(config[std::string{field_name}].As<std::string>());
 }
 
 } // namespace

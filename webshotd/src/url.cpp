@@ -34,15 +34,15 @@ std::optional<Url> Url::FromText(const String &text)
 
 Url Url::FromParsed(ada::url_aggregator url) { return Url(std::move(url)); }
 
-String Url::Host() const { return String::FromBytes(ada_url_.get_host()).Expect(); }
+String Url::Host() const { return *String::FromBytes(ada_url_.get_host()); }
 
-String Url::Hostname() const { return String::FromBytes(ada_url_.get_hostname()).Expect(); }
+String Url::Hostname() const { return *String::FromBytes(ada_url_.get_hostname()); }
 
-String Url::Port() const { return String::FromBytes(ada_url_.get_port()).Expect(); }
+String Url::Port() const { return *String::FromBytes(ada_url_.get_port()); }
 
-String Url::Pathname() const { return String::FromBytes(ada_url_.get_pathname()).Expect(); }
+String Url::Pathname() const { return *String::FromBytes(ada_url_.get_pathname()); }
 
-String Url::Search() const { return String::FromBytes(ada_url_.get_search()).Expect(); }
+String Url::Search() const { return *String::FromBytes(ada_url_.get_search()); }
 
 String Url::PathWithSearch() const
 {
@@ -50,10 +50,10 @@ String Url::PathWithSearch() const
     if (path.empty())
         path = "/";
     path += std::string(ada_url_.get_search());
-    return String::FromBytes(path).Expect();
+    return *String::FromBytes(path);
 }
 
-String Url::Href() const { return String::FromBytes(ada_url_.get_href()).Expect(); }
+String Url::Href() const { return *String::FromBytes(ada_url_.get_href()); }
 
 String Url::Origin() const
 {
@@ -92,7 +92,7 @@ String Url::Surt() const
     if (HasNonDefaultPort())
         surt_host += ":" + port_text;
 
-    return String::FromBytes(surt_host + ")" + ToBytes(PathWithSearch())).Expect();
+    return *String::FromBytes(surt_host + ")" + ToBytes(PathWithSearch()));
 }
 
 bool Url::HasHostname() const
@@ -111,7 +111,7 @@ bool Url::HasNonDefaultPort() const
     if (default_port == 0)
         return true;
 
-    return Port() != String::FromBytes(std::to_string(default_port)).Expect();
+    return Port() != *String::FromBytes(std::to_string(default_port));
 }
 
 bool Url::HasSearch() const { return ada_url_.has_search(); }

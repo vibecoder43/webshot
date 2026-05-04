@@ -176,8 +176,7 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
 
 [[nodiscard]] String CurrentTimestamp()
 {
-    return String::FromBytes(datetime::UtcTimestring(datetime::Now(), datetime::kRfc3339Format))
-        .Expect();
+    return *String::FromBytes(datetime::UtcTimestring(datetime::Now(), datetime::kRfc3339Format));
 }
 
 [[nodiscard]] Expected<void, String> CopyFileContents(
@@ -1065,7 +1064,7 @@ Expected<void, String> BrowserPageSession::CreateBrowserContext()
     const auto browser_context = TRY(
         SendCdp<dto::TargetCreateBrowserContextResult>(cdp_client_, "Target.createBrowserContext"_t)
     );
-    browser_context_id_ = String::FromBytes(browser_context.browserContextId).Expect();
+    browser_context_id_ = *String::FromBytes(browser_context.browserContextId);
     Invariant(
         lifecycle_.MarkBrowserContextCreated(),
         "invalid browser page lifecycle transition after creating browser context"_t
@@ -1084,7 +1083,7 @@ Expected<void, String> BrowserPageSession::CreateBlankTarget()
     const auto target = TRY(
         SendCdp<dto::TargetCreateTargetResult>(cdp_client_, "Target.createTarget"_t, target_params)
     );
-    target_id_ = String::FromBytes(target.targetId).Expect();
+    target_id_ = *String::FromBytes(target.targetId);
     Invariant(
         lifecycle_.MarkTargetCreated(),
         "invalid browser page lifecycle transition after creating target"_t
@@ -1105,7 +1104,7 @@ Expected<void, String> BrowserPageSession::AttachToTarget()
             cdp_client_, "Target.attachToTarget"_t, attach_params
         )
     );
-    auto session_id = String::FromBytes(attached.sessionId).Expect();
+    auto session_id = *String::FromBytes(attached.sessionId);
     auto cdp_session = cdp_client_.CreateSession(session_id, *target_id_);
     if (!cdp_session)
         return Unex(

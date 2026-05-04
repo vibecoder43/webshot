@@ -94,8 +94,7 @@ constexpr std::array kLocalFixtureHosts = {
 
 [[nodiscard]] String CurrentTimestamp()
 {
-    return String::FromBytes(datetime::UtcTimestring(datetime::Now(), datetime::kRfc3339Format))
-        .Expect();
+    return *String::FromBytes(datetime::UtcTimestring(datetime::Now(), datetime::kRfc3339Format));
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::string>
@@ -844,9 +843,9 @@ private:
         if (request_will_be_sent.request.url.starts_with("data:"))
             return;
 
-        const auto request_id_text = String::FromBytes(request_will_be_sent.requestId).Expect();
-        const auto raw_request_url = String::FromBytes(request_will_be_sent.request.url).Expect();
-        const auto request_method = String::FromBytes(request_will_be_sent.request.method).Expect();
+        const auto request_id_text = *String::FromBytes(request_will_be_sent.requestId);
+        const auto raw_request_url = *String::FromBytes(request_will_be_sent.request.url);
+        const auto request_method = *String::FromBytes(request_will_be_sent.request.method);
 
         state.inflight.insert(request_id_text);
         state.last_network_at = datetime::SteadyNow();
@@ -918,7 +917,7 @@ private:
     static void
     HandleResponseReceived(Data &state, dto::NetworkResponseReceivedEvent response_received)
     {
-        const auto request_id_text = String::FromBytes(response_received.requestId).Expect();
+        const auto request_id_text = *String::FromBytes(response_received.requestId);
         const auto request_it = state.active_requests.find(request_id_text);
         if (request_it == std::end(state.active_requests)) {
             if (state.main_request_id && *state.main_request_id == request_id_text) {
@@ -934,8 +933,9 @@ private:
         request.status_code = response_received.response.status
                                   ? i64(*response_received.response.status)
                                   : 0_i64;
-        request.status_message =
-            String::FromBytes(response_received.response.statusText.value_or("")).Expect();
+        request.status_message = *String::FromBytes(
+            response_received.response.statusText.value_or("")
+        );
         request.headers = NormalizeHeadersForCapture(
             response_received.response.headers, request.request_url
         );
@@ -953,7 +953,7 @@ private:
     static void
     HandleLoadingFinished(Data &state, dto::NetworkLoadingFinishedEvent loading_finished)
     {
-        const auto request_id_text = String::FromBytes(loading_finished.requestId).Expect();
+        const auto request_id_text = *String::FromBytes(loading_finished.requestId);
         state.inflight.erase(request_id_text);
         state.last_network_at = datetime::SteadyNow();
         if (const auto it = state.active_requests.find(request_id_text);
@@ -972,7 +972,7 @@ private:
 
     static void HandleLoadingFailed(Data &state, dto::NetworkLoadingFailedEvent loading_failed)
     {
-        const auto request_id_text = String::FromBytes(loading_failed.requestId).Expect();
+        const auto request_id_text = *String::FromBytes(loading_failed.requestId);
         state.inflight.erase(request_id_text);
         state.last_network_at = datetime::SteadyNow();
 
@@ -993,9 +993,9 @@ private:
         if (HasResponse(request))
             return;
 
-        state.main_request_failure =
-            String::FromBytes(loading_failed.errorText.value_or("main document request failed"))
-                .Expect();
+        state.main_request_failure = *String::FromBytes(
+            loading_failed.errorText.value_or("main document request failed")
+        );
     }
 
     static void FinalizeRedirectRequest(
@@ -1020,8 +1020,7 @@ private:
         state.active_requests.erase(request_it);
 
         request.status_code = i64(*redirect_response->status);
-        request.status_message =
-            String::FromBytes(redirect_response->statusText.value_or("")).Expect();
+        request.status_message = *String::FromBytes(redirect_response->statusText.value_or(""));
         request.headers = NormalizeHeadersForCapture(
             redirect_response->headers, request.request_url
         );
@@ -1425,7 +1424,7 @@ private:
                 return DescribeCdpFailure("Page.getFrameTree failed"_t, std::move(failure));
             }
         );
-        GetPageTracker().SetMainFrameId(String::FromBytes(frame_tree.frameTree.frame.id).Expect());
+        GetPageTracker().SetMainFrameId(*String::FromBytes(frame_tree.frameTree.frame.id));
 
         browser_.MarkPhase("navigate");
         dto::PageNavigateParams navigate_params;
@@ -1437,7 +1436,7 @@ private:
                 return DescribeCdpFailure("Page.navigate failed"_t, std::move(failure));
             }
         );
-        ENSURE(!navigate_result.errorText, String::FromBytes(*navigate_result.errorText).Expect());
+        ENSURE(!navigate_result.errorText, *String::FromBytes(*navigate_result.errorText));
         GetPageTracker().SetExpectedMainLoaderId(StringOrNull(navigate_result.loaderId));
 
         browser_.MarkPhase("wait_for_load");
@@ -1841,7 +1840,7 @@ private:
                 run, exchange, 0_i64, crawler::ReusedBrowser::kNo
             );
             if (!log)
-                Invariant(String::FromBytes(log.Error().detail).Expect());
+                Invariant(*String::FromBytes(log.Error().detail));
             out.stdout_log = GrabValueOf(log);
         }
         out.stderr_log.clear();

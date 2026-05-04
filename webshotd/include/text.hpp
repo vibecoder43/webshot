@@ -240,13 +240,13 @@ template <std::ranges::input_range Range>
 
 template <typename... Ts> String Format(std::format_string<Ts...> format_str, Ts &&...args)
 {
-    return String::FromBytes(std::format(format_str, std::forward<Ts>(args)...)).Expect();
+    return *String::FromBytes(std::format(format_str, std::forward<Ts>(args)...));
 }
 
 namespace literals {
 [[nodiscard]] constexpr String operator""_t(const char *bytes, size_t n)
 {
-    return String::FromBytes(std::string_view{bytes, n}).Expect();
+    return *String::FromBytes(std::string_view{bytes, n});
 }
 } // namespace literals
 

@@ -97,8 +97,8 @@ UTEST(TextString, FromBytesNormalizesEquivalents)
     std::string precomposed("\xC3\xA9", 2);
     std::string decomposed("e\xCC\x81", 3);
 
-    const auto s1 = String::FromBytes(precomposed).Expect();
-    const auto s2 = String::FromBytes(decomposed).Expect();
+    const auto s1 = *String::FromBytes(precomposed);
+    const auto s2 = *String::FromBytes(decomposed);
     EXPECT_EQ(s1, s2);
     EXPECT_TRUE(IsUtf8(s1.View()));
     EXPECT_TRUE(IsStreamSafe(s1.View()));
@@ -153,12 +153,12 @@ UTEST(TextString, PlusNormalizesCrossBoundary)
 {
     auto lhs = "e"_t;
     std::string combining("\xCC\x81", 2);
-    auto rhs = String::FromBytes(combining).Expect();
+    auto rhs = *String::FromBytes(combining);
 
     auto combined = lhs + rhs;
 
     std::string precomposed("\xC3\xA9", 2);
-    const auto expected = String::FromBytes(precomposed).Expect();
+    const auto expected = *String::FromBytes(precomposed);
 
     EXPECT_EQ(combined, expected);
 }
@@ -172,7 +172,7 @@ UTEST(TextString, PlusEqualsEmptyRhsNoChange)
     String empty;
     value += empty;
 
-    EXPECT_EQ(value, String::FromBytes(original).Expect());
+    EXPECT_EQ(value, *String::FromBytes(original));
 }
 
 UTEST(TextString, EqualityAndOrdering)
@@ -193,7 +193,7 @@ UTEST(TextString, ReversedIsUtf8AndNormalized)
     input.push_back('\xCC');
     input.push_back('\x81');
     input.append("abc");
-    auto value = String::FromBytes(input).Expect();
+    auto value = *String::FromBytes(input);
 
     auto rev = value.Reversed();
     EXPECT_TRUE(IsUtf8(rev.View()));
@@ -209,7 +209,7 @@ UTEST(TextString, HandlesLongCombiningSequenceStreamSafe)
         input.push_back('\x81');
     }
 
-    auto value = String::FromBytes(input).Expect();
+    auto value = *String::FromBytes(input);
 
     EXPECT_TRUE(IsUtf8(value.View()));
     constexpr size_t non_starters = 1000UL;
@@ -220,9 +220,9 @@ UTEST(TextString, HandlesLongCombiningSequenceStreamSafe)
 UTEST(TextString, Idempotence)
 {
     std::string raw = "e\xCC\x81"; // e + combining acute
-    const auto value = String::FromBytes(raw).Expect();
+    const auto value = *String::FromBytes(raw);
 
-    const auto value2 = String::FromBytes(std::string{value.View()}).Expect();
+    const auto value2 = *String::FromBytes(std::string{value.View()});
     EXPECT_EQ(value, value2);
 }
 
@@ -245,10 +245,10 @@ UTEST(TextString, HandlesNonBmpCharacters)
 {
     std::string emoji("\xF0\x9F\x98\x80\xF0\x9F\x92\xA9", 8); // U+1F600 U+1F4A9
 
-    const auto value = String::FromBytes(emoji).Expect();
+    const auto value = *String::FromBytes(emoji);
     EXPECT_TRUE(IsUtf8(value.View()));
     EXPECT_TRUE(IsStreamSafe(value.View()));
-    EXPECT_EQ(value, String::FromBytes(emoji).Expect());
+    EXPECT_EQ(value, *String::FromBytes(emoji));
 
     const auto prefix = "prefix-"_t;
     const auto suffix = "-suffix"_t;

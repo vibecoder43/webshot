@@ -15,11 +15,11 @@ using enum Url::StripOptions;
 using namespace text::literals;
 using text::ToBytes;
 
-[[nodiscard]] String ToText(std::string_view input) { return String::FromBytes(input).Expect(); }
+[[nodiscard]] String ToText(std::string_view input) { return *String::FromBytes(input); }
 
 [[nodiscard]] Link ParseLink(std::string_view input)
 {
-    return Link::FromText(ToText(input), kUrlBytesMax).Expect();
+    return *Link::FromText(ToText(input), kUrlBytesMax);
 }
 
 [[nodiscard]] Url ParseUrl(std::string_view input) { return Url::FromText(ToText(input)).value(); }
@@ -36,8 +36,8 @@ using text::ToBytes;
 
 [[nodiscard]] std::string NormalizeKeyFromBytes(const std::vector<char> &bytes)
 {
-    const auto text = String::FromBytes(std::string_view(bytes.data(), bytes.size())).Expect();
-    return ToBytes(Link::FromText(text, kUrlBytesMax).Expect().Normalized());
+    const auto text = *String::FromBytes(std::string_view(bytes.data(), bytes.size()));
+    return ToBytes(Link::FromText(text, kUrlBytesMax)->Normalized());
 }
 } // namespace
 

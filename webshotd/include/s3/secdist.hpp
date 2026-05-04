@@ -22,7 +22,7 @@ CredentialTextField(const userver::formats::json::Value &creds, std::string_view
     const auto value = creds[std::string{field_name}];
     if (value.IsMissing())
         return {};
-    return Credential(String::FromBytes(value.As<std::string>()).Expect());
+    return Credential(*String::FromBytes(value.As<std::string>()));
 }
 
 } // namespace detail

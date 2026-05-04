@@ -64,7 +64,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
         path.pop_back();
     auto key = host_rev;
     key.append(std::begin(path), std::end(path));
-    return String::FromBytes(key).Expect();
+    return *String::FromBytes(key);
 }
 
 [[nodiscard]] std::string MakePrefixTree(const String &prefix_key)

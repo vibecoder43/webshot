@@ -408,11 +408,11 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
                 return DescribeCdpFailure("Page.navigate failed"_t, std::move(failure));
             }
         );
-        ENSURE(!navigate_result.errorText, String::FromBytes(*navigate_result.errorText).Expect());
+        ENSURE(!navigate_result.errorText, *String::FromBytes(*navigate_result.errorText));
         TRY(DrainProbeEvents(cdp_session, console, page_errors));
 
         browser.MarkPhase("wait_expression");
-        const auto wait_expression = String::FromBytes(request.wait_expression).Expect();
+        const auto wait_expression = *String::FromBytes(request.wait_expression);
         TRY(WaitForExpression(
             cdp_session, wait_expression, deadline, config.devtools_poll_interval, console,
             page_errors
@@ -435,7 +435,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         probe_result.text = state.text;
 
         if (request.frame_expression) {
-            const auto frame_expression = String::FromBytes(*request.frame_expression).Expect();
+            const auto frame_expression = *String::FromBytes(*request.frame_expression);
             probe_result.frame = TRY_MAP_ERR(
                 WaitForFrameExpression(
                     cdp_session, frame_expression, deadline, config.devtools_poll_interval, console,

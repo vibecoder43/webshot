@@ -87,12 +87,9 @@ template <typename T> [[nodiscard]] std::string ToJsonBytes(const T &value)
 
 [[nodiscard]] String ToCdxTimestamp(const String &iso)
 {
-    return String::FromBytes(
-               datetime::UtcTimestring(
-                   datetime::FromRfc3339StringSaturating(ToBytes(iso)), "%Y%m%d%H%M%S"
-               )
-    )
-        .Expect();
+    return *String::FromBytes(
+        datetime::UtcTimestring(datetime::FromRfc3339StringSaturating(ToBytes(iso)), "%Y%m%d%H%M%S")
+    );
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::string>
@@ -230,12 +227,11 @@ SerializeRecordPair(const SerializableResponse &response)
     }
     const auto status_message =
         response.status_message.Empty()
-            ? String::FromBytes(
+            ? *String::FromBytes(
                   std::string(
                       http::StatusCodeString(NumericCast<http::StatusCode>(response.status_code))
                   )
               )
-                  .Expect()
             : response.status_message;
 
     std::string http_response_head = std::format(
@@ -360,12 +356,12 @@ SerializeRecordPair(const SerializableResponse &response)
 
 [[nodiscard]] String CdxPayloadDigest(std::string_view payload)
 {
-    return String::FromBytes(Sha256PrefixedHex(payload, "sha-256:")).Expect();
+    return *String::FromBytes(Sha256PrefixedHex(payload, "sha-256:"));
 }
 
 [[nodiscard]] String CdxRecordDigest(std::string_view record_bytes)
 {
-    return String::FromBytes(Sha256PrefixedHex(record_bytes, "sha256:")).Expect();
+    return *String::FromBytes(Sha256PrefixedHex(record_bytes, "sha256:"));
 }
 
 [[nodiscard]] String ToSurtKey(const String &url_text)

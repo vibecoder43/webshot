@@ -27,10 +27,9 @@ namespace {
 
 [[nodiscard]] String EncodeRawToken(std::string_view bytes)
 {
-    return String::FromBytes(
-               us::crypto::base64::Base64UrlEncode(bytes, us::crypto::base64::Pad::kWithout)
-    )
-        .Expect();
+    return *String::FromBytes(
+        us::crypto::base64::Base64UrlEncode(bytes, us::crypto::base64::Pad::kWithout)
+    );
 }
 
 } // namespace

@@ -41,7 +41,7 @@ CanonicalIpTextFromBytes(int family, const void *source) noexcept
     if (inet_ntop(family, source, text.data(), text.size()) == nullptr)
         return {};
 
-    return String::FromBytes(text.data()).Expect();
+    return *String::FromBytes(text.data());
 }
 
 } // namespace ip::detail

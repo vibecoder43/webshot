@@ -88,8 +88,7 @@ UTEST(Sig, SignHeadersMatchesAwsExample)
     headers_text.emplace_back("range"_t, "bytes=0-9"_t);
 
     const auto signed_headers = SignHeaders(
-        params, "GET"_t, "/test.txt"_t, /*query*/ {}, headers_text,
-        String::FromBytes(payload_hash).Expect()
+        params, "GET"_t, "/test.txt"_t, /*query*/ {}, headers_text, *String::FromBytes(payload_hash)
     );
 
     auto it_date = signed_headers.find("x-amz-date");

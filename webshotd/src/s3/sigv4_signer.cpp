@@ -135,13 +135,14 @@ std::string ToDateStampUtc(std::chrono::system_clock::time_point tp)
 
 String Sha256Hex(std::string_view data)
 {
-    return String::FromBytes(us::crypto::hash::Sha256(data, us::crypto::hash::OutputEncoding::kHex))
-        .Expect();
+    return *String::FromBytes(
+        us::crypto::hash::Sha256(data, us::crypto::hash::OutputEncoding::kHex)
+    );
 }
 
 String PercentEncode(const String &s, EncodeSlash encode_slash)
 {
-    return String::FromBytes(PercentEncodeBytes(s.View(), encode_slash)).Expect();
+    return *String::FromBytes(PercentEncodeBytes(s.View(), encode_slash));
 }
 
 CanonicalRequestParts BuildCanonicalRequest(

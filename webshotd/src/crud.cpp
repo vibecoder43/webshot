@@ -473,7 +473,7 @@ public:
           crawl_job_cleanup_interval(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>() * 1s),
           s3_use_sts(cfg["s3_use_sts"].As<bool>()),
           s3_credentials_endpoint(
-              String::FromBytes(cfg["s3_credentials_endpoint"].As<std::string>()).Expect()
+              *String::FromBytes(cfg["s3_credentials_endpoint"].As<std::string>())
           ),
           s3_credentials_duration(cfg["s3_credentials_duration_sec"].As<int64_t>() * 1s),
           s3_credentials_refresh_margin(
@@ -1753,7 +1753,7 @@ Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
             const auto &first = items.front();
             previous = ToBytes(
                 crud::EncodePrefixCursor(
-                    normalized_prefix, String::FromBytes(first.link).Expect(),
+                    normalized_prefix, *String::FromBytes(first.link),
                     first.created_at.GetTimePoint(), first.uuid, crud::PageDirection::kPrevious
                 )
             );
@@ -1761,7 +1761,7 @@ Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
         if ((cur && cur->direction == crud::PageDirection::kPrevious) || has_next_within_link ||
             has_more_next_links) {
             const auto &last = items.back();
-            const auto last_link = String::FromBytes(last.link).Expect();
+            const auto last_link = *String::FromBytes(last.link);
             if (has_next_within_link) {
                 next = ToBytes(
                     crud::EncodePrefixCursor(

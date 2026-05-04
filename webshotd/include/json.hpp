@@ -181,7 +181,7 @@ template <typename E, typename G>
 [[nodiscard]] Expected<String, E> Stringify(ujson::Value value, G &&map_error)
 {
     auto json_bytes = TRY(StringifyBytes<E>(std::move(value), std::forward<G>(map_error)));
-    return String::FromBytes(json_bytes).Expect();
+    return *String::FromBytes(json_bytes);
 }
 
 template <typename E>
@@ -189,7 +189,7 @@ template <typename E>
 [[nodiscard]] Expected<String, E> Stringify(ujson::Value value, E error)
 {
     auto json_bytes = TRY(StringifyBytes<E>(std::move(value), std::move(error)));
-    return String::FromBytes(json_bytes).Expect();
+    return *String::FromBytes(json_bytes);
 }
 
 template <typename T, typename E, typename G>

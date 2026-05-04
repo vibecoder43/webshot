@@ -94,14 +94,14 @@ String Link::HttpUrl() const
 {
     auto copy = url.CopyParsed();
     copy.set_protocol("http");
-    return String::FromBytes(SerializeHref(copy)).Expect();
+    return *String::FromBytes(SerializeHref(copy));
 }
 
 String Link::HttpsUrl() const
 {
     auto copy = url.CopyParsed();
     copy.set_protocol("https");
-    return String::FromBytes(SerializeHref(copy)).Expect();
+    return *String::FromBytes(SerializeHref(copy));
 }
 
 String Link::Normalized() const
@@ -109,7 +109,7 @@ String Link::Normalized() const
     auto copy = url.CopyParsed();
     copy.set_protocol("http");
     constexpr std::string_view http_prefix = "http://";
-    return String::FromBytes(SerializeHref(copy).substr(http_prefix.size())).Expect();
+    return *String::FromBytes(SerializeHref(copy).substr(http_prefix.size()));
 }
 
 } // namespace ws

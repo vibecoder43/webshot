@@ -65,13 +65,12 @@ template <typename Dto> [[nodiscard]] std::optional<Dto> DecodeToken(const Strin
  */
 template <typename Dto> [[nodiscard]] String EncodeToken(const Dto &dto)
 {
-    return String::FromBytes(
-               us::crypto::base64::Base64UrlEncode(
-                   json::ToString(json::ValueBuilder(dto).ExtractValue()),
-                   us::crypto::base64::Pad::kWithout
-               )
-    )
-        .Expect();
+    return *String::FromBytes(
+        us::crypto::base64::Base64UrlEncode(
+            json::ToString(json::ValueBuilder(dto).ExtractValue()),
+            us::crypto::base64::Pad::kWithout
+        )
+    );
 }
 
 } // namespace ws::crud

@@ -367,7 +367,7 @@ namespace {
 
 [[nodiscard]] String ParsePrintableText(std::string_view value)
 {
-    return String::FromBytes(value).Expect();
+    return *String::FromBytes(value);
 }
 
 [[nodiscard]] CdpFailure MakeTimeoutFailure(const String &timeout_message)
@@ -390,7 +390,7 @@ namespace {
 ExtractRoutingSessionId(const dto::CdpEventMessage &event_message)
 {
     if (event_message.sessionId)
-        return text::OptionalString(event_message.sessionId).Expect();
+        return *text::OptionalString(event_message.sessionId);
     if (!event_message.params)
         return {};
     const auto session_id_value = event_message.params->extra["sessionId"];

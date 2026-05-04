@@ -25,7 +25,7 @@ constexpr size_t kProcessOutputCharsMax = 240UL;
             escaped.push_back('\\');
         escaped.push_back(ch);
     }
-    return String::FromBytes(escaped).Expect();
+    return *String::FromBytes(escaped);
 }
 
 [[nodiscard]] std::optional<String>

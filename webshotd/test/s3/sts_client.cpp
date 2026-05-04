@@ -40,7 +40,7 @@ std::string MakeValidXml()
 
 UTEST(StsClient, ParsesHappyPathXml)
 {
-    const auto parsed = StsCredentials::FromXml(String::FromBytes(MakeValidXml()).Expect());
+    const auto parsed = StsCredentials::FromXml(*String::FromBytes(MakeValidXml()));
     ASSERT_TRUE(parsed);
     const auto &creds = *parsed;
 
@@ -57,7 +57,7 @@ UTEST(StsClient, MissingTagThrows)
 {
     const std::string xml =
         R"(<AssumeRoleResponse><Credentials></Credentials></AssumeRoleResponse>)";
-    const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
+    const auto parsed = StsCredentials::FromXml(*String::FromBytes(xml));
     ASSERT_FALSE(parsed);
     EXPECT_EQ(parsed.Error(), ws::StsError::kXmlMissingTag);
 }
@@ -65,7 +65,7 @@ UTEST(StsClient, MissingTagThrows)
 UTEST(StsClient, MissingClosingTagThrows)
 {
     const std::string xml = R"(<AssumeRoleResponse><AssumeRoleResult><Credentials><AccessKeyId>id)";
-    const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
+    const auto parsed = StsCredentials::FromXml(*String::FromBytes(xml));
     ASSERT_FALSE(parsed);
     EXPECT_EQ(parsed.Error(), ws::StsError::kXmlMissingClosingTag);
 }
@@ -84,7 +84,7 @@ UTEST(StsClient, InvalidExpirationReturnsError)
     </Credentials>
   </AssumeRoleResult>
 </AssumeRoleResponse>)";
-    const auto parsed = StsCredentials::FromXml(String::FromBytes(xml).Expect());
+    const auto parsed = StsCredentials::FromXml(*String::FromBytes(xml));
     ASSERT_FALSE(parsed);
     EXPECT_EQ(parsed.Error(), ws::StsError::kInvalidExpiration);
 }
@@ -108,7 +108,7 @@ UTEST(StsClient, BuildsRequestWithExecutor)
 
     const std::string endpoint = "https://sts.example.com/assume?foo=bar";
     const auto parsed = ws::detail::FetchStsWithExecutor(
-        exec, String::FromBytes(endpoint).Expect(), ws::s3::AccessKeyId{"AKIA_STATIC"_t},
+        exec, *String::FromBytes(endpoint), ws::s3::AccessKeyId{"AKIA_STATIC"_t},
         ws::s3::SecretAccessKey{"SECRET"_t}, "us-east-1"_t,
         "arn:aws:iam::123456789012:role/TestRole"_t, "session-name"_t, R"({"allow":true})"_t, 900s,
         1500ms
