@@ -179,20 +179,19 @@ UTEST(LinkMembers, PreservesQueryAndStripsPort)
 
 UTEST(UrlStrip, RemovesPortOnly)
 {
-    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kStripPort);
+    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort);
     EXPECT_EQ(stripped.Href(), "https://example.com/path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesQueryOnly)
 {
-    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kStripQuery);
+    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com:8081/path"_t);
 }
 
 UTEST(UrlStrip, RemovesPortAndQuery)
 {
-    const auto stripped =
-        ParseUrl("https://example.com:8081/path?a=1").Stripped(kStripPort | kStripQuery);
+    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort | kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com/path"_t);
 }
 

@@ -3,14 +3,11 @@
  * @file
  * @brief Handler that creates captures and lists them by exact link.
  */
-#include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
 #include "denylist.hpp"
 #include "handler_request_support.hpp"
 #include "http_utils.hpp"
-#include "integers.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
 #include "schema/public/webshot.hpp"

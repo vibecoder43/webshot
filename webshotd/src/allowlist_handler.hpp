@@ -16,6 +16,7 @@ namespace server = us::server;
 class Config;
 class Denylist;
 class Metrics;
+class Crud;
 
 class [[nodiscard]] AllowlistCheckHandler final : public server::handlers::HttpHandlerBase {
 public:
@@ -37,6 +38,7 @@ private:
     const Config &config_;
     Denylist &denylist_;
     Metrics &metrics_;
+    Crud &crud_;
     const std::chrono::milliseconds request_timeout;
 };
 
@@ -60,6 +62,7 @@ private:
     const Config &config_;
     Denylist &denylist_;
     Metrics &metrics_;
+    Crud &crud_;
     const std::chrono::milliseconds request_timeout;
 };
 
@@ -83,6 +86,7 @@ private:
     const Config &config_;
     Denylist &denylist_;
     Metrics &metrics_;
+    Crud &crud_;
     const std::chrono::milliseconds request_timeout;
 };
 

@@ -128,7 +128,7 @@ NormalizeHeaders(const dto::CdpHeaders &headers)
     if (!matches_fixture_port)
         return url_text;
 
-    return maybe_url->Stripped(Url::StripOptions::kStripPort).Href();
+    return maybe_url->Stripped(Url::StripOptions::kPort).Href();
 }
 
 [[nodiscard]] std::string

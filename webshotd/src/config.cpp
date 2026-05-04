@@ -5,7 +5,6 @@
  * @brief Component that provides typed read-only configuration.
  */
 
-#include <chrono>
 #include <string>
 #include <string_view>
 

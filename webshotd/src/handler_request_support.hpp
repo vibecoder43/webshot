@@ -5,7 +5,6 @@
 #include "crud.hpp"
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
-#include "invariant.hpp"
 #include "json.hpp"
 #include "link.hpp"
 #include "schema/common/common.hpp"
@@ -192,8 +191,6 @@ RespondClientRequestError(server::http::HttpResponse &response, ClientRequestErr
         return httpu::RespondError(response, kBadRequest, "invalid client ip"_t);
     case kCrudFailure:
         return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
-    default:
-        Invariant(""_t);
     }
 }
 

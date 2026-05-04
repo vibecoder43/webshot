@@ -6,7 +6,6 @@
 #include <webshot/sql_queries.hpp>
 
 #include "database.hpp"
-#include "invariant.hpp"
 #include "prefix_utils.hpp"
 #include "text_postgres_formatter.hpp"
 #include "try.hpp"

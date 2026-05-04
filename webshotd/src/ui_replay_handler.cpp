@@ -80,7 +80,7 @@ namespace {
     return out;
 }
 
-[[nodiscard]] std::string RenderErrorPage(std::string_view message)
+[[nodiscard]] std::string RenderErrorPage(String message)
 {
     std::string out = R"(<!doctype html>
 <html lang="en">
@@ -98,7 +98,7 @@ namespace {
   </head>
   <body>
     <pre>)";
-    out += EscapeHtml(message);
+    out += EscapeHtml(message.View());
     out += R"(</pre>
   </body>
 </html>
@@ -149,20 +149,18 @@ std::string UiReplayHandler::HandleRequestThrow(
     const auto uuid = request_support.ParseUuidPathArg(request, "uuid"_t);
     if (!uuid) {
         response.SetStatus(kBadRequest);
-        return RenderErrorPage(
-            std::format("{}: {}", uuid.Error().name.View(), uuid.Error().message.View())
-        );
+        return RenderErrorPage(text::Format("{}: {}", uuid.Error().name, uuid.Error().message));
     }
 
     const auto cooldown = request_support.CheckClientIpCooldown(request);
     if (!cooldown) {
         if (cooldown.Error() == ClientRequestError::kInvalidClientIp) {
             response.SetStatus(kBadRequest);
-            return RenderErrorPage("invalid client ip");
+            return RenderErrorPage("invalid client ip"_t);
         }
 
         response.SetStatus(kInternalServerError);
-        return RenderErrorPage("internal server error");
+        return RenderErrorPage("internal server error"_t);
     }
     if (*cooldown) {
         const auto retry_after_seconds = std::chrono::ceil<std::chrono::seconds>(
@@ -172,17 +170,17 @@ std::string UiReplayHandler::HandleRequestThrow(
         response.SetHeader(
             us::http::headers::kRetryAfter, std::to_string(retry_after_seconds.count())
         );
-        return RenderErrorPage("client IP in cooldown");
+        return RenderErrorPage("client IP in cooldown"_t);
     }
 
     auto capture = crud_.FindCapture(*uuid);
     if (!capture) {
         response.SetStatus(kInternalServerError);
-        return RenderErrorPage("internal server error");
+        return RenderErrorPage("internal server error"_t);
     }
     if (!*capture) {
         response.SetStatus(kNotFound);
-        return RenderErrorPage("capture not found");
+        return RenderErrorPage("capture not found"_t);
     }
     response.SetStatus(kFound);
     auto replay_location = RenderReplayLocation(
@@ -194,7 +192,7 @@ std::string UiReplayHandler::HandleRequestThrow(
             StorageUrlErrorMessage(replay_location.Error())
         );
         response.SetStatus(kInternalServerError);
-        return RenderErrorPage("internal server error");
+        return RenderErrorPage("internal server error"_t);
     }
     response.SetHeader(us::http::headers::kLocation, *replay_location);
     return {};

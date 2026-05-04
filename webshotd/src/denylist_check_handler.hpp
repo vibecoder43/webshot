@@ -1,7 +1,5 @@
 #pragma once
 
-#include "integers.hpp"
-
 #include <chrono>
 #include <string>
 #include <string_view>
@@ -18,6 +16,7 @@ namespace server = us::server;
 class Config;
 class Denylist;
 class Metrics;
+class Crud;
 
 class [[nodiscard]] DenylistCheckHandler : public server::handlers::HttpHandlerBase {
 public:
@@ -39,6 +38,7 @@ private:
     const Config &config_;
     Denylist &denylist_;
     Metrics &metrics_;
+    Crud &crud_;
     const std::chrono::milliseconds request_timeout;
 };
 

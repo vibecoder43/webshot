@@ -33,7 +33,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
 [[nodiscard]] String MakePrefixKey(const Link &link)
 {
     const auto normalized_url = link.url.Stripped(
-        Url::StripOptions::kStripPort | Url::StripOptions::kStripQuery
+        Url::StripOptions::kPort | Url::StripOptions::kQuery
     );
 
     auto host = normalized_url.Hostname();

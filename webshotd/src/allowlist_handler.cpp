@@ -4,6 +4,7 @@
  * @brief Internal endpoints for checking and editing the allowlist.
  */
 #include "config.hpp"
+#include "crud.hpp"
 #include "denylist.hpp"
 #include "handler_request_support.hpp"
 #include "http_utils.hpp"
@@ -35,6 +36,7 @@ AllowlistCheckHandler::AllowlistCheckHandler(
 )
     : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
       denylist_(context.FindComponent<Denylist>()), metrics_(context.FindComponent<Metrics>()),
+      crud_(context.FindComponent<Crud>()),
       request_timeout(config["request-timeout-ms"].As<int64_t>() * 1ms)
 {
 }
@@ -87,6 +89,7 @@ AllowlistAddHandler::AllowlistAddHandler(
 )
     : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
       denylist_(context.FindComponent<Denylist>()), metrics_(context.FindComponent<Metrics>()),
+      crud_(context.FindComponent<Crud>()),
       request_timeout(config["request-timeout-ms"].As<int64_t>() * 1ms)
 {
 }
@@ -136,6 +139,7 @@ AllowlistRemoveHandler::AllowlistRemoveHandler(
 )
     : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
       denylist_(context.FindComponent<Denylist>()), metrics_(context.FindComponent<Metrics>()),
+      crud_(context.FindComponent<Crud>()),
       request_timeout(config["request-timeout-ms"].As<int64_t>() * 1ms)
 {
 }
@@ -161,8 +165,6 @@ std::string AllowlistRemoveHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto final_deadline = ComputeHandlerDeadline(request, request_timeout);
-    eng::current_task::SetDeadline(final_deadline);
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());

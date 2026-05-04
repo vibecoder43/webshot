@@ -4,18 +4,13 @@
  * @brief Internal endpoint for checking whether a URL is denylisted.
  */
 #include "config.hpp"
-#include "deadline_utils.hpp"
 #include "denylist.hpp"
 #include "handler_request_support.hpp"
 #include "http_utils.hpp"
-#include "integers.hpp"
-#include "link.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
 
 #include <chrono>
-#include <format>
-#include <optional>
 #include <string>
 
 #include <userver/components/component.hpp>
@@ -32,7 +27,6 @@
 namespace ws {
 namespace us = userver;
 namespace server = us::server;
-namespace eng = us::engine;
 using namespace std::chrono_literals;
 
 DenylistCheckHandler::DenylistCheckHandler(
@@ -40,6 +34,7 @@ DenylistCheckHandler::DenylistCheckHandler(
 )
     : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
       denylist_(context.FindComponent<Denylist>()), metrics_(context.FindComponent<Metrics>()),
+      crud_(context.FindComponent<Crud>()),
       request_timeout(config["request-timeout-ms"].As<int64_t>() * 1ms)
 {
 }
@@ -65,10 +60,8 @@ std::string DenylistCheckHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-
-    auto final_deadline = ComputeHandlerDeadline(request, request_timeout);
-    eng::current_task::SetDeadline(final_deadline);
-
+    HandlerRequestSupport request_support{crud_, config_};
+    request_support.ApplyRequestDeadline(request, request_timeout);
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
@@ -84,7 +77,6 @@ std::string DenylistCheckHandler::HandleRequestThrow(
         response.SetStatus(kForbidden);
         return {};
     }
-
     response.SetStatus(kNoContent);
     return {};
 }
