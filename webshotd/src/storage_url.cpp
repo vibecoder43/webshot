@@ -5,13 +5,13 @@
  * @brief Helpers for externally visible direct  object URLs.
  */
 
-#include "invariant.hpp"
 #include "text.hpp"
 #include "try.hpp"
-#include "uuid_format.hpp"
 
 #include <format>
 #include <string>
+
+#include <userver/utils/boost_uuid4.hpp>
 
 using namespace text::literals;
 
@@ -29,8 +29,7 @@ using enum StorageUrlError;
         path.pop_back();
     if (path.back() != '/')
         path.push_back('/');
-    path += std::format("{}.wacz", uuid);
-    return *String::FromBytes(path);
+    return text::Format("{}{}.wacz", path, us::utils::ToString(uuid));
 }
 
 [[nodiscard]] Expected<String, StorageUrlError>
@@ -52,8 +51,8 @@ ParseRequestHostname(const std::optional<String> &request_host)
 [[nodiscard]] Expected<Url, StorageUrlError>
 BuildConfiguredCaptureDownloadUrl(ws::uuid::Uuid uuid, const String &public_base_url)
 {
-    const auto download_url_text = *String::FromBytes(
-        std::format("{}/{}.wacz", public_base_url, uuid)
+    const auto download_url_text = text::Format(
+        "{}/{}.wacz", public_base_url, us::utils::ToString(uuid)
     );
     return TRY_OK_OR(Url::FromText(download_url_text), kInvalidPublicBaseUrl);
 }
@@ -92,8 +91,6 @@ String StorageUrlErrorMessage(StorageUrlError error)
         return "missing request Host header"_t;
     case kInvalidRequestHost:
         return "invalid request Host header"_t;
-    default:
-        Invariant(""_t);
     }
 }
 

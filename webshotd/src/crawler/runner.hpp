@@ -18,6 +18,7 @@ namespace us = userver;
 namespace eng = us::engine;
 class Denylist;
 class Config;
+class Metrics;
 namespace crawler {
 
 struct [[nodiscard]] CaptureTimings {
@@ -40,7 +41,7 @@ struct [[nodiscard]] CrawlerTunables {
 } // namespace crawler
 
 struct [[nodiscard]] CrawlerRunArtifacts {
-    crawler::AttemptSummary attempt;
+    std::optional<crawler::CrawlerError> error;
     std::string stdout_log;
     std::string stderr_log;
     std::optional<std::string> wacz;
@@ -57,7 +58,7 @@ public:
         eng::TaskProcessor &fs_task_processor, std::string state_dir,
         std::optional<crawler::CgroupLimits> limits, i64 max_archive_bytes,
         crawler::CaptureTimings timings, crawler::CrawlerTunables tunables,
-        i64 network_down_bytes_ratio_max
+        i64 network_down_bytes_ratio_max, Metrics &metrics
     );
 
     [[nodiscard]] CrawlerRunArtifacts Run(const String &seed_url) const;
@@ -76,6 +77,7 @@ private:
     crawler::CaptureTimings timings_;
     crawler::CrawlerTunables tunables_;
     i64 network_down_bytes_ratio_max_;
+    Metrics &metrics_;
 };
 
 } // namespace ws

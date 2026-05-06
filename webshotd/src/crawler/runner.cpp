@@ -4,8 +4,6 @@
 #include "crawler/artifacts.hpp"
 #include "crawler/browser_session.hpp"
 #include "crawler/cdp_client.hpp"
-#include "crawler/egress_proxy.hpp"
-#include "crawler/failure.hpp"
 #include "crawler/launch_policy.hpp"
 #include "crawler/limits.hpp"
 #include "crypto.hpp"
@@ -21,7 +19,6 @@
 #include "text.hpp"
 #include "try.hpp"
 #include "url.hpp"
-#include "uuid_format.hpp"
 
 #include <generated/browser_sandbox.sh.hpp>
 
@@ -29,14 +26,12 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <csignal>
 #include <exception>
 #include <format>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -101,7 +96,7 @@ NormalizeHeaders(const dto::CdpHeaders &headers)
 {
     std::unordered_map<std::string, std::string> out;
     for (const auto &[name, value] : headers.extra)
-        out.emplace(absl::AsciiStrToLower(std::string_view{name}), value);
+        out.emplace(absl::AsciiStrToLower(name), value);
     return out;
 }
 
@@ -186,7 +181,7 @@ NormalizeHeadersOrEmpty(const std::optional<dto::CdpHeaders> &headers)
 
 struct [[nodiscard]] CaptureFailure final {
     String detail;
-    std::optional<crawler::SeedPageProbe> seed_probe;
+    std::optional<crawler::SeedProbe> seed_probe;
 };
 
 template <typename T>
@@ -551,20 +546,20 @@ public:
         return state->last_network_at + idle;
     }
 
-    [[nodiscard]] std::optional<crawler::SeedPageProbe> CurrentSeedProbe() const
+    [[nodiscard]] std::optional<crawler::SeedProbe> CurrentSeedProbe() const
     {
         const auto state = data_.Lock();
         if (const auto *request = ResolvedMainRequest(*state);
             request != nullptr && request->status_code) {
             const i64 load_state{request->loaded && !state->main_request_failure ? 2_i64 : 0_i64};
-            return crawler::SeedPageProbe{
+            return crawler::SeedProbe{
                 .status = Raw(*request->status_code),
                 .load_state = Raw(load_state),
             };
         }
 
         if (state->main_request_id || state->main_request_failure || state->loaded)
-            return crawler::SeedPageProbe{.status = Raw(0_i64), .load_state = Raw(0_i64)};
+            return crawler::SeedProbe{.status = Raw(0_i64), .load_state = Raw(0_i64)};
 
         return {};
     }
@@ -1159,7 +1154,7 @@ public:
         eng::TaskProcessor &fs_task_processor, std::string browser_runs_root_in,
         std::string cgroup_root_path_in, std::optional<crawler::CgroupLimits> cgroup_limits_in,
         crawler::CaptureTimings timings, crawler::CrawlerTunables tunables_in,
-        i64 max_archive_bytes_in, eng::Deadline deadline, crawler::RunRequest run
+        i64 max_archive_bytes_in, eng::Deadline deadline, crawler::RunRequest run, Metrics &metrics
     )
         : denylist_(denylist), config_(config), timings_(std::move(timings)), run_(std::move(run)),
           deadline_(deadline), max_archive_bytes_(max_archive_bytes_in),
@@ -1184,6 +1179,7 @@ public:
                   .enable_local_fixture_rewrite = tunables_in.enable_local_fixture_rewrite,
                   .testsuite_loopback_ports = {},
                   .cgroup_name_prefix = "webshotd_crawler",
+                  .metrics = &metrics,
               }
           )
     {
@@ -1199,32 +1195,30 @@ public:
     {
         auto launched = Launch();
         if (!launched) {
-            auto failure_detail = browser_.BuildFailureDetail(launched.Error());
+            auto error_detail = browser_.BuildFailureDetail(launched.Error());
             CloseCdpForFailure();
             browser_.Close();
-            return Unex(CaptureFailure{std::move(failure_detail), {}});
+            return Unex(CaptureFailure{std::move(error_detail), {}});
         }
 
         auto captured = CaptureAttachedTarget();
         if (!captured) {
-            auto failure_detail = browser_.BuildFailureDetail(captured.Error());
+            auto error_detail = browser_.BuildFailureDetail(captured.Error());
             if (tracker_) {
                 const auto tracker_failure = tracker_->FailureReason();
                 if (tracker_failure)
-                    failure_detail = text::Format(
-                        "{}, tracker_failure={}", failure_detail, *tracker_failure
+                    error_detail = text::Format(
+                        "{}, tracker_error={}", error_detail, *tracker_failure
                     );
             }
             if (const auto proxy_failure = browser_.ProxyFailureReason())
-                failure_detail = text::Format(
-                    "{}, proxy_failure={}", failure_detail, *proxy_failure
-                );
+                error_detail = text::Format("{}, proxy_error={}", error_detail, *proxy_failure);
             auto seed_probe = CurrentSeedProbe();
             CloseCdpForFailure();
             browser_.Close();
             return Unex(
                 CaptureFailure{
-                    std::move(failure_detail),
+                    std::move(error_detail),
                     std::move(seed_probe),
                 }
             );
@@ -1562,7 +1556,7 @@ private:
         cdp_.reset();
     }
 
-    [[nodiscard]] std::optional<crawler::SeedPageProbe> CurrentSeedProbe() const
+    [[nodiscard]] std::optional<crawler::SeedProbe> CurrentSeedProbe() const
     {
         if (!tracker_)
             return {};
@@ -1729,14 +1723,14 @@ private:
     eng::TaskProcessor &fs_task_processor, const std::string &browser_runs_root,
     const std::string &cgroup_root_path, std::optional<crawler::CgroupLimits> cgroup_limits,
     crawler::CaptureTimings timings, const crawler::CrawlerTunables &tunables,
-    i64 max_archive_bytes, eng::Deadline deadline, const crawler::RunRequest &run
+    i64 max_archive_bytes, eng::Deadline deadline, const crawler::RunRequest &run, Metrics &metrics
 )
 {
     auto session = CaptureSession(
         denylist, config, dns_resolver, url_bytes_max, proxy_down_bytes_max, process_starter,
         fs_task_processor, std::string(browser_runs_root), std::string(cgroup_root_path),
         std::move(cgroup_limits), std::move(timings), tunables, max_archive_bytes, deadline,
-        crawler::RunRequest{.seed_url = run.seed_url}
+        crawler::RunRequest{.seed_url = run.seed_url}, metrics
     );
     return session.Capture();
 }
@@ -1747,25 +1741,26 @@ private:
     const std::string &browser_runs_root, const std::string &cgroup_root_path,
     std::optional<crawler::CgroupLimits> cgroup_limits, const crawler::CaptureTimings &timings,
     const crawler::CrawlerTunables &tunables, i64 max_archive_bytes,
-    i64 network_down_bytes_ratio_max, eng::Deadline deadline, const crawler::RunRequest &run
+    i64 network_down_bytes_ratio_max, eng::Deadline deadline, const crawler::RunRequest &run,
+    Metrics &metrics
 )
 {
     CrawlerRunArtifacts out;
-    out.attempt.exited = true;
     try {
         LOG_INFO() << std::format("crawler executeRun starting for {}", run.seed_url);
 
         const auto fail_artifact =
             [&out](const crawler::ArtifactFailure &failure) -> CrawlerRunArtifacts {
-            auto failure_detail_opt = String::FromBytes(failure.detail)
-                                          .Transform([](String s) -> std::optional<String> {
-                                              return {std::move(s)};
-                                          })
-                                          .ValueOr(std::nullopt);
-            out.attempt.exit_code = 9;
-            out.attempt.wacz_exists = false;
-            out.attempt.seed_probe.reset();
-            out.attempt.failure_detail = std::move(failure_detail_opt);
+            std::optional<String> detail;
+            if (auto parsed = String::FromBytes(failure.detail))
+                detail = GrabValueOf(parsed);
+            out.error = crawler::CrawlerError{
+                .kind = crawler::CrawlerErrorKind::kArchiveBuild,
+                .detail = std::move(detail),
+                .seed_probe = {},
+                .cgroup_stats = {},
+                .process_status = {},
+            };
             out.stdout_log.clear();
             out.stderr_log = failure.detail + "\n";
             out.wacz.reset();
@@ -1786,38 +1781,31 @@ private:
         auto captured = CaptureViaProxy(
             denylist, config, dns_resolver, config.UrlBytesMax(), max_down_bytes, process_starter,
             fs_task_processor, browser_runs_root, cgroup_root_path, std::move(cgroup_limits),
-            timings, tunables, max_archive_bytes, deadline, run
+            timings, tunables, max_archive_bytes, deadline, run, metrics
         );
         if (!captured) {
             constexpr std::string_view size_limit_prefix = "size_limit:";
             constexpr std::string_view net_limit_prefix = "net_limit:";
+            crawler::CrawlerErrorKind kind{crawler::CrawlerErrorKind::kNavigation};
+            auto detail = captured.Error().detail;
             if (captured.Error().detail.StartsWith(size_limit_prefix)) {
                 auto detail_text = captured.Error().detail.View();
                 detail_text.remove_prefix(size_limit_prefix.size());
                 if (!detail_text.empty() && detail_text.front() == ' ')
                     detail_text.remove_prefix(1);
-                auto parsed = String::FromBytes(std::string(detail_text));
-                out.attempt.exit_code = us::utils::UnderlyingValue(
-                    crawler::CrawlerExitCode::kSizeLimit
-                );
-                out.attempt.wacz_exists = false;
-                out.attempt.seed_probe = captured.Error().seed_probe;
-                out.attempt.failure_detail.reset();
-                if (parsed)
-                    out.attempt.failure_detail = GrabValueOf(parsed);
+                if (auto parsed = String::FromBytes(std::string(detail_text)))
+                    detail = GrabValueOf(parsed);
+                kind = crawler::CrawlerErrorKind::kArchiveSizeLimit;
             } else if (captured.Error().detail.StartsWith(net_limit_prefix)) {
-                out.attempt.exit_code = us::utils::UnderlyingValue(
-                    crawler::CrawlerExitCode::kFailedLimit
-                );
-                out.attempt.wacz_exists = false;
-                out.attempt.seed_probe = captured.Error().seed_probe;
-                out.attempt.failure_detail = captured.Error().detail;
-            } else {
-                out.attempt.exit_code = 9;
-                out.attempt.wacz_exists = false;
-                out.attempt.seed_probe = captured.Error().seed_probe;
-                out.attempt.failure_detail = captured.Error().detail;
+                kind = crawler::CrawlerErrorKind::kProxy;
             }
+            out.error = crawler::CrawlerError{
+                .kind = kind,
+                .detail = detail,
+                .seed_probe = captured.Error().seed_probe,
+                .cgroup_stats = {},
+                .process_status = {},
+            };
             out.stdout_log.clear();
             out.stderr_log = captured.Error().detail.ToBytes() + "\n";
             out.wacz.reset();
@@ -1859,21 +1847,23 @@ private:
             wacz->size(), pages.size()
         );
 
-        const auto wacz_bytes = ssize(wacz);
+        const auto wacz_bytes = ssize(*wacz);
         if (wacz_bytes > max_archive_bytes) {
             const auto max_archive_mi_b = max_archive_bytes / (1024_i64 * 1024_i64);
             const auto detail = text::Format(
                 "archive bytes {} exceeded size limit {} MiB", wacz_bytes, max_archive_mi_b
             );
-            out.attempt.exit_code = us::utils::UnderlyingValue(
-                crawler::CrawlerExitCode::kSizeLimit
-            );
-            out.attempt.wacz_exists = false;
-            out.attempt.seed_probe = crawler::SeedPageProbe{
-                .status = Raw(exchange.status_code),
-                .load_state = 0,
+            out.error = crawler::CrawlerError{
+                .kind = crawler::CrawlerErrorKind::kArchiveSizeLimit,
+                .detail = detail,
+                .seed_probe =
+                    crawler::SeedProbe{
+                        .status = Raw(exchange.status_code),
+                        .load_state = 0,
+                    },
+                .cgroup_stats = {},
+                .process_status = {},
             };
-            out.attempt.failure_detail = detail;
             out.wacz.reset();
             out.pages_jsonl.reset();
             out.content_sha256.reset();
@@ -1896,15 +1886,17 @@ private:
                 "net_limit: proxy downstream bytes {} exceeded post-run limit {}", proxy_down_bytes,
                 max_down_by_final
             );
-            out.attempt.exit_code = us::utils::UnderlyingValue(
-                crawler::CrawlerExitCode::kFailedLimit
-            );
-            out.attempt.wacz_exists = false;
-            out.attempt.seed_probe = crawler::SeedPageProbe{
-                .status = Raw(exchange.status_code),
-                .load_state = 0,
+            out.error = crawler::CrawlerError{
+                .kind = crawler::CrawlerErrorKind::kProxy,
+                .detail = detail,
+                .seed_probe =
+                    crawler::SeedProbe{
+                        .status = Raw(exchange.status_code),
+                        .load_state = 0,
+                    },
+                .cgroup_stats = {},
+                .process_status = {},
             };
-            out.attempt.failure_detail = detail;
             out.wacz.reset();
             out.pages_jsonl.reset();
             out.content_sha256.reset();
@@ -1913,25 +1905,26 @@ private:
             return out;
         }
 
-        const i64 exit_code{exchange.status_code >= 400_i64 ? 9_i64 : 0_i64};
-        const i64 load_state{exit_code != 0_i64 || exchange.status_code >= 400_i64 ? 0_i64 : 2_i64};
+        const i64 load_state{exchange.status_code >= 400_i64 ? 0_i64 : 2_i64};
         if (exchange.status_code >= 400_i64) {
-            out.attempt.failure_detail = text::Format(
-                "seed returned HTTP {}", exchange.status_code
-            );
+            out.error = crawler::CrawlerError{
+                .kind = crawler::CrawlerErrorKind::kNavigation,
+                .detail = text::Format("seed returned HTTP {}", exchange.status_code),
+                .seed_probe =
+                    crawler::SeedProbe{
+                        .status = Raw(exchange.status_code),
+                        .load_state = Raw(load_state),
+                    },
+                .cgroup_stats = {},
+                .process_status = {},
+            };
         }
 
         LOG_INFO() << std::format(
-            "crawler executeRun finished for {} (exit_code={}, wacz_exists=true)", run.seed_url,
-            exit_code
+            "crawler executeRun finished for {} (error={}, wacz_exists=true)", run.seed_url,
+            out.error ? "true" : "false"
         );
 
-        out.attempt.exit_code = NumericCast<int>(exit_code);
-        out.attempt.wacz_exists = true;
-        out.attempt.seed_probe = crawler::SeedPageProbe{
-            .status = Raw(exchange.status_code),
-            .load_state = Raw(load_state),
-        };
         out.wacz = GrabValueOf(wacz);
         out.pages_jsonl = std::move(pages);
         out.replay_url = exchange.final_url;
@@ -1939,16 +1932,16 @@ private:
     } catch (const std::exception &e) {
         if (eng::current_task::IsCancelRequested())
             throw;
-        out.attempt.exit_code = 9;
-        out.attempt.wacz_exists = false;
-        out.attempt.seed_probe.reset();
-        {
-            auto parsed = String::FromBytes(e.what());
-            if (parsed)
-                out.attempt.failure_detail = GrabValueOf(parsed);
-            else
-                out.attempt.failure_detail.reset();
-        }
+        std::optional<String> detail;
+        if (auto parsed = String::FromBytes(e.what()))
+            detail = GrabValueOf(parsed);
+        out.error = crawler::CrawlerError{
+            .kind = crawler::CrawlerErrorKind::kInternal,
+            .detail = std::move(detail),
+            .seed_probe = {},
+            .cgroup_stats = {},
+            .process_status = {},
+        };
         out.stdout_log.clear();
         out.stderr_log = std::string(e.what()) + "\n";
         out.wacz.reset();
@@ -1967,7 +1960,7 @@ CrawlerRunner::CrawlerRunner(
     eng::TaskProcessor &fs_task_processor, std::string state_dir,
     std::optional<crawler::CgroupLimits> limits, i64 max_archive_bytes,
     crawler::CaptureTimings timings, crawler::CrawlerTunables tunables,
-    i64 network_down_bytes_ratio_max
+    i64 network_down_bytes_ratio_max, Metrics &metrics
 )
     : denylist_(denylist), config_(config), dns_resolver_(dns_resolver),
       process_starter_(process_starter), fs_task_processor_(fs_task_processor),
@@ -1978,7 +1971,7 @@ CrawlerRunner::CrawlerRunner(
       ),
       cgroup_limits_(std::move(limits)), max_archive_bytes_(max_archive_bytes),
       timings_(std::move(timings)), tunables_(std::move(tunables)),
-      network_down_bytes_ratio_max_(network_down_bytes_ratio_max)
+      network_down_bytes_ratio_max_(network_down_bytes_ratio_max), metrics_(metrics)
 {
 }
 
@@ -1988,7 +1981,7 @@ CrawlerRunArtifacts CrawlerRunner::Run(const String &seed_url) const
     return ExecuteRun(
         denylist_, config_, dns_resolver_, process_starter_, fs_task_processor_, browser_runs_root_,
         cgroup_root_path_, cgroup_limits_, timings_, tunables_, max_archive_bytes_,
-        network_down_bytes_ratio_max_, deadline, crawler::RunRequest{.seed_url = seed_url}
+        network_down_bytes_ratio_max_, deadline, crawler::RunRequest{.seed_url = seed_url}, metrics_
     );
 }
 

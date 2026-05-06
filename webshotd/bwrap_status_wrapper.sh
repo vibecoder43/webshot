@@ -2,17 +2,31 @@
 set -euo pipefail
 
 status_path=$1
-cgroup_root=$2
-cgroup_name=$3
-cpu_cores=$4
-memory_bytes=$5
-seccomp_bpf_path=$6
-shift 6
+cgroup_stats_path=$2
+cgroup_root=$3
+cgroup_name=$4
+cpu_cores=$5
+memory_bytes=$6
+seccomp_bpf_path=$7
+shift 7
 exec 3>"$status_path"
 exec 4<"$seccomp_bpf_path"
 
 bwrap_pid=''
 browser_cgroup_dir=''
+
+# shellcheck disable=SC2329  # Invoked via trap below.
+snapshot_cgroup_stats() {
+  [[ -n $browser_cgroup_dir ]] || return 0
+  [[ -d $browser_cgroup_dir ]] || return 0
+  : >"$cgroup_stats_path" || return 0
+  for file in cpu.stat memory.current memory.events io.stat; do
+    if [[ -f $browser_cgroup_dir/$file ]]; then
+      printf '[%s]\n' "$file" >>"$cgroup_stats_path" 2>/dev/null || true
+      cat "$browser_cgroup_dir/$file" >>"$cgroup_stats_path" 2>/dev/null || true
+    fi
+  done
+}
 
 # shellcheck disable=SC2329  # Invoked via trap below.
 cleanup() {
@@ -22,6 +36,7 @@ cleanup() {
     wait "$bwrap_pid" 2>/dev/null || true
   fi
   if [[ -n $browser_cgroup_dir ]]; then
+    snapshot_cgroup_stats
     printf '%s\n' "$$" >"$cgroup_root/cgroup.procs" 2>/dev/null || true
     for _ in {1..50}; do
       if rmdir "$browser_cgroup_dir" 2>/dev/null; then

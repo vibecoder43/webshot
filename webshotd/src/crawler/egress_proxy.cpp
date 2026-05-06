@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -42,16 +41,14 @@
 #include <userver/engine/task/task_with_result.hpp>
 #include <userver/engine/wait_all_checked.hpp>
 #include <userver/utils/assert.hpp>
-
-#include <absl/strings/ascii.h>
-#include <absl/strings/match.h>
-#include <absl/strings/strip.h>
+#include <userver/utils/text_light.hpp>
 
 namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
 namespace concurrent = us::concurrent;
 namespace dns = us::clients::dns;
+namespace utext = us::utils::text;
 using namespace text::literals;
 namespace {
 
@@ -84,17 +81,21 @@ constexpr std::string_view kProxyAuthRequiredResponse =
     "\r\n"
     "Proxy authentication required\n";
 
+[[nodiscard]] bool ICaseEqual(std::string_view lhs, std::string_view rhs) noexcept
+{
+    return lhs.size() == rhs.size() && utext::ICaseStartsWith(lhs, rhs);
+}
+
 struct [[nodiscard]] HeaderLine final {
-    std::string name_lower;
     std::string_view name;
     std::string_view value;
 };
 
 [[nodiscard]] std::optional<std::string_view>
-FindHeaderValue(const std::vector<HeaderLine> &headers, std::string_view name_lower) noexcept
+FindHeaderValue(const std::vector<HeaderLine> &headers, std::string_view name) noexcept
 {
     for (const auto &h : headers) {
-        if (h.name_lower == name_lower)
+        if (ICaseEqual(h.name, name))
             return h.value;
     }
     return {};
@@ -159,14 +160,11 @@ struct [[nodiscard]] ParsedRequest final {
             continue;
         const auto name = line->substr(0, colon);
         auto value = line->substr(colon + 1);
-        value = absl::StripAsciiWhitespace(value);
+        value = utext::TrimView(value);
         if (name.empty())
             continue;
 
-        auto lower_name = std::string(name);
-        absl::AsciiStrToLower(&lower_name);
         HeaderLine h{
-            .name_lower = std::move(lower_name),
             .name = name,
             .value = value,
         };
@@ -183,10 +181,10 @@ ParseBasicAuthUser(std::string_view header_value)
     if (sp == std::string_view::npos)
         return {};
     const auto scheme = value.substr(0, sp);
-    if (!absl::EqualsIgnoreCase(scheme, "basic"))
+    if (!ICaseEqual(scheme, "basic"))
         return {};
     value.remove_prefix(sp + 1);
-    value = absl::StripLeadingAsciiWhitespace(value);
+    value = utext::TrimView(value);
     if (value.empty())
         return {};
 
@@ -206,15 +204,10 @@ ParseBasicAuthUser(std::string_view header_value)
     if (port_text.empty())
         return {};
 
-    unsigned int port = 0;
-    const auto *const begin = port_text.data();
-    const auto *const end = begin + port_text.size();
-    const auto result = std::from_chars(begin, end, port);
-    if (result.ec != std::errc{} || result.ptr != end)
+    const auto port = integers::Parse<u16>(port_text);
+    if (!port || *port == 0_u16)
         return {};
-    if (port == 0 || port > 65535)
-        return {};
-    return u16(port);
+    return port;
 }
 
 enum class PortMode : bool { kOptional, kRequired };
@@ -233,7 +226,7 @@ struct [[nodiscard]] ResolvedTcpAddress final {
 [[nodiscard]] std::optional<Authority>
 ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode) noexcept
 {
-    authority = absl::StripAsciiWhitespace(authority);
+    authority = utext::TrimView(authority);
     if (authority.empty())
         return {};
 
@@ -454,10 +447,10 @@ RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host,
     return MakeErrorResponse("HTTP/1.1 502 Bad Gateway", message);
 }
 
-[[nodiscard]] bool ShouldForwardHeader(std::string_view name_lower) noexcept
+[[nodiscard]] bool ShouldForwardHeader(std::string_view name) noexcept
 {
-    return name_lower != "proxy-authorization" && name_lower != "proxy-connection" &&
-           name_lower != "connection";
+    return !ICaseEqual(name, "proxy-authorization") && !ICaseEqual(name, "proxy-connection") &&
+           !ICaseEqual(name, "connection");
 }
 
 void AppendHeaderLine(std::string &out, std::string_view name, std::string_view value)
@@ -491,10 +484,8 @@ ParseHttpRequestTarget(const ParsedRequest &req)
             .path = slash == std::string_view::npos ? kSlashPath : rest.substr(slash),
         };
     }
-
     if (!req.target.starts_with('/'))
         return Unex(kUnsupportedRequestTarget);
-
     const auto host_header = FindHeaderValue(req.headers, "host");
     if (!host_header)
         return Unex(kMissingHostHeader);
@@ -512,20 +503,17 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 
 [[nodiscard]] Expected<i64, String> ParseContentLength(std::string_view header_value)
 {
-    const auto digits = absl::StripAsciiWhitespace(header_value);
+    const auto digits = utext::TrimView(header_value);
     if (digits.empty())
         return Unex("invalid Content-Length"_t);
 
-    int64_t content_length = 0;
-    const auto *const begin = digits.data();
-    const auto *const end = begin + digits.size();
-    const auto result = std::from_chars(begin, end, content_length);
-    if (result.ec != std::errc{} || result.ptr != end)
+    const auto content_length = integers::Parse<int64_t>(digits);
+    if (!content_length)
         return Unex("invalid Content-Length"_t);
-    if (content_length < 0 || content_length > Raw(kMaxContentLengthBytes))
+    if (*content_length < 0 || *content_length > Raw(kMaxContentLengthBytes))
         return Unex("invalid Content-Length"_t);
 
-    return i64(content_length);
+    return i64{*content_length};
 }
 
 [[nodiscard]] std::string BuildForwardRequest(const ParsedRequest &req, std::string_view path)
@@ -540,7 +528,7 @@ ParseHttpRequestTarget(const ParsedRequest &req)
     out.append("\r\n");
 
     for (const auto &header : req.headers) {
-        if (!ShouldForwardHeader(header.name_lower))
+        if (!ShouldForwardHeader(header.name))
             continue;
         AppendHeaderLine(out, header.name, header.value);
     }
@@ -933,7 +921,7 @@ struct EgressProxy::Impl final {
             }
         }
 
-        if (absl::EqualsIgnoreCase(parsed->method, "CONNECT")) {
+        if (ICaseEqual(parsed->method, "CONNECT")) {
             HandleConnect(resolver, client, *parsed, deadline);
             return;
         }

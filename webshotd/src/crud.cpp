@@ -29,7 +29,6 @@
 #include "text.hpp"
 #include "text_postgres_formatter.hpp"
 #include "try.hpp"
-#include "uuid_format.hpp"
 
 #include <webshot/sql_queries.hpp>
 
@@ -114,6 +113,21 @@ struct [[nodiscard]] CaptureJobRow final {
     std::optional<Uuid> result_capture_id;
 };
 
+enum class JobStatus {
+    kPending,
+    kRunning,
+    kSucceeded,
+    kFailed,
+};
+
+enum class JobErrorKind {
+    kSizeLimit,
+    kCrawler,
+    kS3Upload,
+    kDbInsert,
+    kInternalServer,
+};
+
 struct [[nodiscard]] CreateCaptureJobResult final {
     dto::CaptureJob job;
     bool created;
@@ -122,6 +136,12 @@ struct [[nodiscard]] CreateCaptureJobResult final {
 struct [[nodiscard]] ClientIpCooldownRow final {
     pg::TimePointTz expires_at;
 };
+
+[[nodiscard]] String MakeCaptureObjectKey(const String &bucket, Uuid id)
+{
+    LOG_DEBUG() << text::Format("{}/{}", bucket, us::utils::ToString(id));
+    return text::Format("{}/{}.wacz", bucket, us::utils::ToString(id));
+}
 
 [[nodiscard]] std::optional<crawler::CgroupLimits>
 ComputeCrawlerLimits(i64 cpu_cores, i64 memory_gib)
@@ -157,18 +177,76 @@ MakePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
     };
 }
 
+[[nodiscard]] JobStatus ParseJobStatus(const std::string &status)
+{
+    if (status == "pending")
+        return JobStatus::kPending;
+    if (status == "running")
+        return JobStatus::kRunning;
+    if (status == "succeeded")
+        return JobStatus::kSucceeded;
+    if (status == "failed")
+        return JobStatus::kFailed;
+    Invariant(text::Format("unexpected crawl_job.status '{}'", status));
+}
+
+[[nodiscard]] std::optional<JobErrorKind>
+ParseJobErrorKind(const std::optional<std::string> &error_category)
+{
+    if (!error_category)
+        return {};
+    if (*error_category == "size_limit")
+        return JobErrorKind::kSizeLimit;
+    if (*error_category == "crawler_failed")
+        return JobErrorKind::kCrawler;
+    if (*error_category == "s3_upload_failed")
+        return JobErrorKind::kS3Upload;
+    if (*error_category == "db_insert_failed")
+        return JobErrorKind::kDbInsert;
+    if (*error_category == "internal_server_error")
+        return JobErrorKind::kInternalServer;
+    Invariant(text::Format("unexpected crawl_job.error_category '{}'", *error_category));
+}
+
+[[nodiscard]] dto::CaptureJob::Status ToDtoJobStatus(JobStatus status)
+{
+    switch (status) {
+    case JobStatus::kPending:
+        return dto::CaptureJob::Status::kPending;
+    case JobStatus::kRunning:
+        return dto::CaptureJob::Status::kRunning;
+    case JobStatus::kSucceeded:
+        return dto::CaptureJob::Status::kSucceeded;
+    case JobStatus::kFailed:
+        return dto::CaptureJob::Status::kFailed;
+    }
+}
+
+[[nodiscard]] std::string PublicJobErrorMessage(std::optional<JobErrorKind> error)
+{
+    if (!error)
+        return "internal server error";
+
+    using enum JobErrorKind;
+    switch (*error) {
+    case kSizeLimit:
+        return "capture exceeded archive size limit";
+    case kCrawler:
+        return "capture failed";
+    case kS3Upload:
+    case kDbInsert:
+    case kInternalServer:
+        return "internal server error";
+    }
+}
+
 [[nodiscard]] dto::CaptureJob MakeCaptureJob(CaptureJobRow row)
 {
-    using enum dto::CaptureJob::Status;
-
-    const auto status = row.status == "pending"     ? kPending
-                        : row.status == "running"   ? kRunning
-                        : row.status == "succeeded" ? kSucceeded
-                                                    : kFailed;
+    const auto status = ParseJobStatus(row.status);
     dto::CaptureJob job{
         .uuid = row.uuid,
         .link = row.link.ToBytes(),
-        .status = status,
+        .status = ToDtoJobStatus(status),
         .created_at = datetime::TimePointTz(row.created_at.GetUnderlying()),
     };
     if (row.started_at)
@@ -178,22 +256,12 @@ MakePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz
     if (row.result_created_at) {
         job.result_created_at = datetime::TimePointTz(row.result_created_at->GetUnderlying());
     }
-    if (job.status == kFailed) {
+    if (status == JobStatus::kFailed) {
         // Never expose internal diagnostics (crawler details, exception text, etc) to API clients.
-        std::string message = "internal server error";
-        if (row.error_category) {
-            if (*row.error_category == "size_limit") {
-                message = "capture exceeded archive size limit";
-            } else if (*row.error_category == "crawler_failed") {
-                message = "capture failed";
-            } else if (*row.error_category == "internal_server_error") {
-                message = "internal server error";
-            }
-        }
-        dto::ErrorEnvelope::Error err{std::move(message)};
+        dto::ErrorEnvelope::Error err{PublicJobErrorMessage(ParseJobErrorKind(row.error_category))};
         job.error = dto::ErrorEnvelope{err};
     }
-    if (job.status == kSucceeded && job.result_created_at) {
+    if (status == JobStatus::kSucceeded && job.result_created_at) {
         Invariant(row.result_capture_id, "succeeded job must have result_capture_id"_t);
         job.result = dto::UuidWithTimeLink(
             *row.result_capture_id, *job.result_created_at, job.link
@@ -407,7 +475,7 @@ public:
     concurrent::BackgroundTaskStorage purge_background;
     concurrent::BackgroundTaskStorage crawl_background;
 
-    [[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CrawlFailure>
+    [[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CaptureError>
     RunCrawlJob(Uuid id, Link link);
     [[nodiscard]] Expected<datetime::TimePointTz, PgError> InsertJob(Uuid id, String link);
     [[nodiscard]] Expected<std::optional<ClientIpCooldown>, PgError>
@@ -422,14 +490,14 @@ public:
     [[nodiscard]] Expected<chrono::milliseconds, PgError>
     MarkJobFailed(Uuid id, const String &error_category, const String &error_message);
     [[nodiscard]] Expected<std::optional<dto::CaptureJob>, PgError> LoadJob(Uuid id);
-    [[nodiscard]] Expected<void, errors::CrawlFailure> RunCrawlerForContext(CrawlContext &ctx);
+    [[nodiscard]] Expected<void, errors::CaptureError> RunCrawlerForContext(CrawlContext &ctx);
     [[nodiscard]] CrawlerRunArtifacts RunCrawlerAttempt(const String &seed_url);
     [[nodiscard]] std::optional<StoredCapture> PersistMetadataForContext(CrawlContext &ctx);
     [[nodiscard]] Expected<void, errors::CrudError> PurgePrefix(const String &prefix_key);
     [[nodiscard]] Expected<S3ClientState, std::string> FetchS3ClientStateFromSts();
     [[nodiscard]] Expected<void, std::string>
-    PutCaptureObject(std::string_view key, const std::string &bytes);
-    [[nodiscard]] Expected<void, std::string> DeleteCaptureObject(std::string_view key);
+    PutCaptureObject(String key, const std::string &bytes);
+    [[nodiscard]] Expected<void, std::string> DeleteCaptureObject(String key);
     void StartS3RefreshTask();
     void RefreshS3CredentialsTask();
     void StartCrawlJobCleanupTask();
@@ -510,7 +578,7 @@ public:
                   crawler_proxy_stop_timeout,
                   crawler_local_fixture_rewrite,
               },
-              crawler_network_down_bytes_ratio_max
+              crawler_network_down_bytes_ratio_max, metrics
           ),
           main_task_processor(ctx.GetTaskProcessor("main-task-processor")),
           crawl_slots(eng::GetWorkerCount(main_task_processor)),
@@ -622,16 +690,14 @@ Crud::~Crud() = default;
 struct [[nodiscard]] CrawlContext {
     Link link;
     Uuid id;
-    String key_only;
     String s3_key;
     std::optional<std::string> wacz_bytes;
     std::optional<std::string> content_sha256;
     std::optional<Url> replay_url;
-    std::optional<String> failure_message;
+    std::optional<String> error_message;
 
     CrawlContext(Uuid id, Link link, const Config &cfg)
-        : link(std::move(link)), id(id), key_only(text::Format("{}.wacz", id)),
-          s3_key(text::Format("{}/{}", cfg.S3Bucket(), key_only))
+        : link(std::move(link)), id(id), s3_key(MakeCaptureObjectKey(cfg.S3Bucket(), id))
     {
     }
 };
@@ -641,10 +707,10 @@ struct [[nodiscard]] StoredCapture {
     datetime::TimePointTz created_at;
 };
 
-[[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CrawlFailure>
+[[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CaptureError>
 Crud::Impl::RunCrawlJob(Uuid id, Link link)
 {
-    using enum errors::CrawlError;
+    using enum errors::CaptureErrorKind;
 
     const auto total_crawl_time_limit = crawler_job_overhead_timeout +
                                         crawler_run_timeout * kCrawlerSeedAttemptsMax;
@@ -654,8 +720,9 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
 
     CrawlContext ctx(id, std::move(link), svc_cfg);
 
+    auto id_str = us::utils::ToString(id);
     LOG_INFO() << std::format(
-        "RunCrawlJob starting crawler for job {} ({})", id, ctx.link.Normalized()
+        "RunCrawlJob starting crawler for job {} ({})", id_str, ctx.link.Normalized()
     );
     {
         auto crawler_result = RunCrawlerForContext(ctx);
@@ -664,14 +731,14 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
         TRY(std::move(crawler_result));
     }
     LOG_INFO() << std::format(
-        "RunCrawlJob finished crawler for job {} ({})", id, ctx.link.Normalized()
+        "RunCrawlJob finished crawler for job {} ({})", id_str, ctx.link.Normalized()
     );
 
-    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id, ctx.link.Normalized());
+    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id_str, ctx.link.Normalized());
     auto stored = PersistMetadataForContext(ctx);
     if (!stored)
-        return Unex(errors::CrawlFailure{.code = kPersistMetadataFailed, .detail = {}});
-    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id, ctx.link.Normalized());
+        return Unex(errors::CaptureError{.kind = kPersistMetadataFailed, .detail = {}});
+    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id_str, ctx.link.Normalized());
     return dto::UuidWithTimeLink{stored->id, stored->created_at, ctx.link.Normalized().ToBytes()};
 }
 
@@ -815,20 +882,19 @@ Expected<Crud::Impl::S3ClientState, std::string> Crud::Impl::FetchS3ClientStateF
     };
 }
 
-Expected<void, std::string>
-Crud::Impl::PutCaptureObject(std::string_view key, const std::string &bytes)
+Expected<void, std::string> Crud::Impl::PutCaptureObject(String key, const std::string &bytes)
 {
     return RunS3Operation([&] {
         auto snapshot = s3_state.Read();
-        snapshot->client->PutObject(key, bytes, {}, "application/wacz", {}, {});
+        snapshot->client->PutObject(key.View(), bytes, {}, "application/wacz", {}, {});
     });
 }
 
-Expected<void, std::string> Crud::Impl::DeleteCaptureObject(std::string_view key)
+Expected<void, std::string> Crud::Impl::DeleteCaptureObject(String key)
 {
     return RunS3Operation([&] {
         auto snapshot = s3_state.Read();
-        snapshot->client->DeleteObject(key);
+        snapshot->client->DeleteObject(key.View());
     });
 }
 
@@ -975,70 +1041,48 @@ void Crud::Impl::CleanupOldJobs()
 CrawlerRunArtifacts Crud::Impl::RunCrawlerAttempt(const String &seed_url)
 {
     LOG_INFO() << std::format(
-        "Submitting crawl for {} to embedded crawler with timeout={}s", seed_url,
-        crawler_run_timeout.count()
+        "Submitting crawl for {} to crawler with timeout={}s", seed_url, crawler_run_timeout.count()
     );
 
     const auto run = crawler_runner.Run(seed_url);
     LOG_INFO() << std::format(
-        "Embedded crawler returned for {} (exit_code={}, wacz_exists={})", seed_url,
-        run.attempt.exit_code, run.attempt.wacz_exists ? "true" : "false"
+        "Crawler returned for {} (error={}, wacz_exists={})", seed_url,
+        run.error ? "true" : "false", run.wacz ? "true" : "false"
     );
-    if (!run.attempt.wacz_exists) {
-        const auto attempt_context = crawler::FormatAttemptContext(run.attempt);
+    if (run.error) {
         LOG_INFO() << std::format(
-            "Crawler attempt failed for {}{}", seed_url,
-            attempt_context.Empty() ? std::string() : std::format(" ({})", attempt_context)
+            "Crawler error for {} ({})", seed_url, crawler::FormatCrawlerError(*run.error)
         );
-        return run;
     }
     return run;
 }
 
-[[nodiscard]] String
-FormatHttpsFallbackDiagnostic(const String &seed_url, const crawler::AttemptSummary &attempt)
+[[nodiscard]] errors::CaptureError MakeCaptureError(const crawler::CrawlerError &error)
 {
-    const auto seed_probe = attempt.seed_probe ? text::Format(
-                                                     "status={} loadState={}",
-                                                     attempt.seed_probe->status.value_or(0),
-                                                     attempt.seed_probe->load_state.value_or(-1)
-                                                 )
-                                               : "none"_t;
-    const auto failure_detail = attempt.failure_detail ? *attempt.failure_detail : "none"_t;
-    return text::Format(
-        "HTTPS fallback diagnostic: seed_url={}, exit_code={}, wacz_exists={}, seed_probe={}, "
-        "failure_detail={}",
-        seed_url, attempt.exit_code, attempt.wacz_exists ? "true" : "false", seed_probe,
-        failure_detail
-    );
+    using enum crawler::CrawlerErrorKind;
+    using enum errors::CaptureErrorKind;
+
+    return errors::CaptureError{
+        .kind = error.kind == kArchiveSizeLimit ? kSizeLimit : kCrawler,
+        .detail = crawler::FormatCrawlerError(error),
+    };
 }
 
-[[nodiscard]] String FormatAttemptContextSuffix(const String &attempt_context)
+Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlContext &ctx)
 {
-    if (attempt_context.Empty())
-        return ""_t;
-    return text::Format(" ({})", attempt_context);
-}
-
-Expected<void, errors::CrawlFailure> Crud::Impl::RunCrawlerForContext(CrawlContext &ctx)
-{
-    using enum errors::CrawlError;
-    using us::utils::UnderlyingValue;
-
     const auto https_seed_url = ctx.link.HttpsUrl();
     const auto http_seed_url = ctx.link.HttpUrl();
 
     const auto try_store_success = [&ctx](const CrawlerRunArtifacts &run) -> bool {
-        if (!crawler::IsAttemptSuccess(run.attempt))
+        if (run.error)
             return false;
-        Invariant(run.wacz, "crawler reported wacz_exists=true but did not provide WACZ bytes"_t);
+        Invariant(run.wacz, "crawler succeeded but did not provide WACZ bytes"_t);
         Invariant(
             run.content_sha256, "crawler did not provide content hash for a successful capture"_t
         );
         Invariant(ssize(*run.content_sha256) == 32_i64, "content hash must be 32 bytes"_t);
-        Invariant(run.replay_url, "crawler did not provide replayUrl for a successful capture"_t);
+        Invariant(run.replay_url, "crawler did not provide replay_url for a successful capture"_t);
         const auto replay_url = Url::FromText(*run.replay_url);
-        Invariant(replay_url, "replayUrl must parse for a successful capture"_t);
         ctx.wacz_bytes = *run.wacz;
         ctx.content_sha256 = *run.content_sha256;
         ctx.replay_url = *replay_url;
@@ -1048,95 +1092,35 @@ Expected<void, errors::CrawlFailure> Crud::Impl::RunCrawlerForContext(CrawlConte
     const auto https_run = RunCrawlerAttempt(https_seed_url);
     if (try_store_success(https_run))
         return {};
-    if (!https_run.attempt.exited) {
-        const auto attempt_context = crawler::FormatAttemptContext(https_run.attempt);
-        ctx.failure_message = text::Format(
-            "Failed to crawl {}, child process did not exit cleanly{}", https_seed_url,
-            FormatAttemptContextSuffix(attempt_context)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
-    }
-    if (https_run.attempt.exit_code == UnderlyingValue(crawler::CrawlerExitCode::kSizeLimit)) {
-        ctx.failure_message = text::Format(
-            "Failed to crawl {} ({})", https_seed_url,
-            crawler::FormatAttemptStatus("https", https_run.attempt)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kSizeLimit, .detail = {}});
-    }
-    if (https_run.attempt.exit_code == UnderlyingValue(crawler::CrawlerExitCode::kSuccess) &&
-        !https_run.attempt.wacz_exists) {
-        const auto attempt_context = crawler::FormatAttemptContext(https_run.attempt);
-        ctx.failure_message = text::Format(
-            "Failed to crawl {}, no WACZ{}", https_seed_url,
-            FormatAttemptContextSuffix(attempt_context)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
-    }
+    Invariant(https_run.error, "unsuccessful crawler run must include error"_t);
     if (svc_cfg.HttpsOnly()) {
-        ctx.failure_message = text::Format(
-            "Failed to crawl {} ({})", ctx.link.Normalized(),
-            crawler::FormatAttemptStatus("https", https_run.attempt)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        LOG_INFO() << ctx.error_message;
+        return Unex(MakeCaptureError(*https_run.error));
     }
-    if (!crawler::ShouldAttemptHttpFallback(https_run.attempt)) {
-        ctx.failure_message = text::Format(
-            "Failed to crawl {} ({})", ctx.link.Normalized(),
-            crawler::FormatAttemptStatus("https", https_run.attempt)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
+    if (!crawler::ShouldRetryWithHttp(*https_run.error)) {
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        LOG_INFO() << ctx.error_message;
+        return Unex(MakeCaptureError(*https_run.error));
     }
 
-    LOG_INFO() << FormatHttpsFallbackDiagnostic(https_seed_url, https_run.attempt).View();
+    LOG_INFO() << std::format(
+        "Trying HTTP fallback for {} after HTTPS error ({})", http_seed_url,
+        crawler::FormatCrawlerError(*https_run.error)
+    );
 
     const auto http_run = RunCrawlerAttempt(http_seed_url);
     if (try_store_success(http_run)) {
         LOG_INFO() << std::format(
-            "HTTP fallback succeeded for {} after {}", http_seed_url,
-            FormatHttpsFallbackDiagnostic(https_seed_url, https_run.attempt)
+            "HTTP fallback succeeded for {} after HTTPS error ({})", http_seed_url,
+            crawler::FormatCrawlerError(*https_run.error)
         );
         return {};
     }
-    if (!http_run.attempt.exited) {
-        const auto attempt_context = crawler::FormatAttemptContext(http_run.attempt);
-        ctx.failure_message = text::Format(
-            "Failed to crawl {}, child process did not exit cleanly{}", http_seed_url,
-            FormatAttemptContextSuffix(attempt_context)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
-    }
-    if (http_run.attempt.exit_code == UnderlyingValue(crawler::CrawlerExitCode::kSizeLimit)) {
-        ctx.failure_message = text::Format(
-            "Failed to crawl {} ({})", http_seed_url,
-            crawler::FormatAttemptStatus("http", http_run.attempt)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kSizeLimit, .detail = {}});
-    }
-    if (http_run.attempt.exit_code == UnderlyingValue(crawler::CrawlerExitCode::kSuccess) &&
-        !http_run.attempt.wacz_exists) {
-        const auto attempt_context = crawler::FormatAttemptContext(http_run.attempt);
-        ctx.failure_message = text::Format(
-            "Failed to crawl {}, no WACZ{}", http_seed_url,
-            FormatAttemptContextSuffix(attempt_context)
-        );
-        LOG_INFO() << ctx.failure_message->View();
-        return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
-    }
-
-    ctx.failure_message = text::Format(
-        "Failed to crawl {} ({}, {})", ctx.link.Normalized(),
-        crawler::FormatAttemptStatus("https", https_run.attempt),
-        crawler::FormatAttemptStatus("http", http_run.attempt)
-    );
-    LOG_INFO() << ctx.failure_message->View();
-    return Unex(errors::CrawlFailure{.code = kFailed, .detail = ctx.failure_message});
+    Invariant(http_run.error, "unsuccessful HTTP fallback must include error"_t);
+    ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+    LOG_INFO() << ctx.error_message;
+    return Unex(MakeCaptureError(*http_run.error));
 }
 
 std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext &ctx)
@@ -1185,7 +1169,7 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
         };
     }
 
-    const auto uploaded = PutCaptureObject(ctx.s3_key.View(), *ctx.wacz_bytes);
+    const auto uploaded = PutCaptureObject(ctx.s3_key, *ctx.wacz_bytes);
     if (!uploaded) {
         metrics.AccountError(Metrics::Error::kS3PutObject);
         LOG_ERROR() << std::format("S3 upload failed for {}: {}", ctx.s3_key, uploaded.Error());
@@ -1202,7 +1186,7 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
         pg::Bytea(std::string_view{*ctx.content_sha256}), ctx.replay_url->Href()
     );
     if (!row) {
-        const auto deleted = DeleteCaptureObject(ctx.s3_key.View());
+        const auto deleted = DeleteCaptureObject(ctx.s3_key);
         if (!deleted) {
             metrics.AccountError(Metrics::Error::kS3DeleteObject);
             LOG_ERROR() << std::format("error deleting {}", ctx.s3_key);
@@ -1244,7 +1228,7 @@ Expected<void, errors::CrudError> Crud::Impl::PurgePrefix(const String &prefix_k
         std::vector<Uuid> single;
         single.reserve(1);
         for (auto &&id : *ids) {
-            const auto key = std::format("{}/{}", svc_cfg.S3Bucket(), id);
+            const auto key = MakeCaptureObjectKey(svc_cfg.S3Bucket(), id);
             const auto s3_deleted = DeleteCaptureObject(key);
             if (!s3_deleted) {
                 metrics.AccountError(Metrics::Error::kS3DeleteObject);
@@ -1269,7 +1253,7 @@ Expected<void, errors::CrudError> Crud::Impl::PurgePrefix(const String &prefix_k
     return {};
 }
 
-Expected<dto::UuidWithTimeLink, errors::CrawlFailure> Crud::CreateCapture(Link link)
+Expected<dto::UuidWithTimeLink, errors::CaptureError> Crud::CreateCapture(Link link)
 {
     auto *impl_ptr = impl_.get();
     auto id = us::utils::generators::GenerateBoostUuid();
@@ -1323,7 +1307,7 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::CreateCaptureJob(Link li
             const eng::TaskCancellationBlocker blocker;
             return impl_ptr->MarkJobSucceeded(id, result_capture_id, created_at_value);
         };
-        const auto account_marked_failure =
+        const auto account_marked_error =
             [&](const Expected<chrono::milliseconds, PgError> &marked) {
                 if (!marked) {
                     LOG_ERROR() << std::format(
@@ -1334,14 +1318,12 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::CreateCaptureJob(Link li
                 }
             };
         auto mark_internal_error = [&](std::string_view what) {
-            LOG_ERROR() << std::format("Unexpected crawl job failure for {}: {}", id, what);
-            account_marked_failure(
-                mark_failed("internal_server_error"_t, "internal server error"_t)
-            );
+            LOG_ERROR() << std::format("Unexpected crawl job error for {}: {}", id, what);
+            account_marked_error(mark_failed("internal_server_error"_t, "internal server error"_t));
         };
-        auto mark_crawler_failure = [&](const String &detail) {
-            LOG_WARNING() << std::format("Crawl job failed for {}: {}", id, detail);
-            account_marked_failure(mark_failed("crawler_failed"_t, detail));
+        auto mark_crawler_error = [&](const String &detail) {
+            LOG_WARNING() << std::format("Crawl job error for {}: {}", id, detail);
+            account_marked_error(mark_failed("crawler_failed"_t, detail));
         };
 
         try {
@@ -1355,18 +1337,18 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::CreateCaptureJob(Link li
 
             auto result = impl_ptr->RunCrawlJob(id, link);
             if (!result) {
-                using enum errors::CrawlError;
+                using enum errors::CaptureErrorKind;
                 Expected<chrono::milliseconds, PgError> marked;
-                if (result.Error().code == kSizeLimit) {
+                if (result.Error().kind == kSizeLimit) {
                     marked = mark_failed("size_limit"_t, "capture exceeded archive size limit"_t);
-                } else if (result.Error().code == kPersistMetadataFailed) {
+                } else if (result.Error().kind == kPersistMetadataFailed) {
                     marked = mark_failed("internal_server_error"_t, "internal server error"_t);
                 } else if (result.Error().detail) {
                     marked = mark_failed("crawler_failed"_t, *result.Error().detail);
                 } else {
-                    marked = mark_failed("crawler_failed"_t, "crawler failed"_t);
+                    marked = mark_failed("crawler_failed"_t, "crawler error"_t);
                 }
-                account_marked_failure(marked);
+                account_marked_error(marked);
                 return;
             }
 
@@ -1380,7 +1362,7 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::CreateCaptureJob(Link li
             }
         } catch (const std::exception &e) {
             if (eng::current_task::IsCancelRequested()) {
-                mark_crawler_failure(
+                mark_crawler_error(
                     text::Format(
                         "crawl job cancelled: {}",
                         eng::ToString(eng::current_task::CancellationReason())

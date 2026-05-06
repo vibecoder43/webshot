@@ -2,7 +2,7 @@ function(_add_cpp_test_target target)
   cmake_parse_arguments(ARGS "WITH_UTEST;REGISTER_CTEST;ENABLE_COVERAGE" ""
                         "SOURCES;LIBS;INCLUDE_DIRS" ${ARGN})
 
-  set(link_libs ada::ada uni-algo::uni-algo absl::strings ${ARGS_LIBS})
+  set(link_libs ada::ada uni-algo::uni-algo absl::strings fmt::fmt ${ARGS_LIBS})
   if(ARGS_WITH_UTEST)
     list(PREPEND link_libs userver::utest)
   endif()
@@ -125,6 +125,10 @@ add_cpp_test(try_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/try.cpp)
 
 add_cpp_test(crawler_fallback_test SOURCES
              ${CMAKE_CURRENT_SOURCE_DIR}/crawler_fallback.cpp)
+
+add_cpp_test(
+  cgroup_stats_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cgroup_stats.cpp
+  ${CMAKE_SOURCE_DIR}/src/crawler/cgroup_stats.cpp LIBS userver::core)
 
 add_cpp_test(cdp_request_tracker_test SOURCES
              ${CMAKE_CURRENT_SOURCE_DIR}/cdp_request_tracker.cpp)

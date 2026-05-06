@@ -1,13 +1,14 @@
 #include "crawler/browser_session.hpp"
 
 #include "crawler/cdp_client.hpp"
+#include "crawler/cgroup_stats.hpp"
 #include "crawler/egress_proxy.hpp"
 #include "crawler/failure.hpp"
 #include "crawler/launch_policy.hpp"
 #include "grab_value.hpp"
 #include "invariant.hpp"
+#include "metrics.hpp"
 #include "try.hpp"
-#include "uuid_format.hpp"
 
 #include <generated/browser_sandbox.sh.hpp>
 #include <generated/browser_sandbox_closure_paths.hpp>
@@ -46,8 +47,6 @@ namespace chrono = std::chrono;
 using namespace std::chrono_literals;
 
 using namespace text::literals;
-using ws::uuid::ToBytes;
-
 namespace ws::crawler {
 namespace us = userver;
 namespace eng = us::engine;
@@ -97,7 +96,6 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
 
 [[nodiscard]] std::string BrowserSandboxPath(std::string_view relative_path)
 {
-    Invariant(!relative_path.empty(), "browser sandbox path must not be empty"_t);
     Invariant(relative_path.front() != '/', "browser sandbox path must be relative"_t);
     return std::format("{}/{}", kBrowserSandboxRoot, relative_path);
 }
@@ -309,6 +307,7 @@ struct [[nodiscard]] BrowserPaths final {
     std::string stderr_log_path;
     std::string chromium_stderr_log_path;
     std::string bwrap_status_file_path;
+    std::string cgroup_stats_path;
     std::string seccomp_bpf_path;
     std::string phase_file_path;
     std::string dev_null_path;
@@ -326,7 +325,7 @@ CreateBrowserPaths(eng::TaskProcessor &fs_task_processor, std::string_view brows
     auto temp_root = NormalizeDirPath(std::string(browser_runs_root));
     us::fs::CreateDirectories(fs_task_processor, temp_root);
 
-    const auto run_id = ToBytes(us::utils::generators::GenerateBoostUuid());
+    const auto run_id = us::utils::ToString(us::utils::generators::GenerateBoostUuid());
     const auto root_dir = std::format("{}/browser_{}", temp_root, run_id);
     BrowserPaths paths{
         .root_dir = root_dir,
@@ -345,6 +344,7 @@ CreateBrowserPaths(eng::TaskProcessor &fs_task_processor, std::string_view brows
         .stderr_log_path = root_dir + "/stderr.log",
         .chromium_stderr_log_path = root_dir + "/chromium_stderr.log",
         .bwrap_status_file_path = root_dir + "/bwrap_status.jsonl",
+        .cgroup_stats_path = root_dir + "/cgroup_stats.txt",
         .seccomp_bpf_path = root_dir + "/seccomp.bpf",
         .phase_file_path = root_dir + "/phase.txt",
         .dev_null_path = root_dir + "/devnull",
@@ -411,7 +411,6 @@ OpenBrowserRunDir(eng::TaskProcessor &fs_task_processor, const BrowserPaths &pat
 [[nodiscard]] std::string
 BrowserRunFdPath(const us::fs::blocking::FileDescriptor &dir_fd, std::string_view file_name)
 {
-    Invariant(!file_name.empty(), "browser run fd path file name must not be empty"_t);
     Invariant(file_name.front() != '/', "browser run fd path file name must be relative"_t);
     return std::format("/proc/self/fd/{}/{}", dir_fd.GetNative(), file_name);
 }
@@ -466,8 +465,7 @@ void TruncateLogBuffer(std::string &value)
 {
     if (ssize(value) <= kMaxLogBytes)
         return;
-    const auto drop_bytes = ssize(value) - kMaxLogBytes;
-    value.erase(0, NumericCast<size_t>(drop_bytes));
+    value = RetainLogHeadAndTail(std::move(value), kMaxLogBytes);
 }
 
 [[nodiscard]] std::string
@@ -527,8 +525,8 @@ ReadBrowserFileIfExists(eng::TaskProcessor &fs_task_processor, const std::string
     }
 }
 
-[[nodiscard]] std::optional<std::string>
-RemoveBrowserRunDirectory(eng::TaskProcessor &fs_task_processor, const std::string &path) noexcept
+[[nodiscard]] Expected<void, String>
+RemoveBrowserRunDir(eng::TaskProcessor &fs_task_processor, const std::string &path) noexcept
 {
     try {
         eng::AsyncNoSpan(fs_task_processor, [&path] {
@@ -537,28 +535,20 @@ RemoveBrowserRunDirectory(eng::TaskProcessor &fs_task_processor, const std::stri
         }).Get();
         return {};
     } catch (const std::runtime_error &e) {
-        return std::string(e.what());
+        return Unex{*String::FromBytes(std::string(e.what()))};
     }
 }
 
 [[nodiscard]] std::optional<String>
-ReadSanitizedLogTail(eng::TaskProcessor &fs_task_processor, const std::string &path)
+ReadRetainedLogText(eng::TaskProcessor &fs_task_processor, const std::string &path)
 {
     const auto bytes = ReadBrowserFileIfExists(fs_task_processor, path);
     if (!bytes)
         return {};
-    const auto sanitized = SanitizeProcessOutputTail(*bytes);
-    if (!sanitized.Empty())
-        return sanitized;
+    const auto text = RetainProcessOutputText(*bytes);
+    if (!text.Empty())
+        return text;
     return {};
-}
-
-void RemoveBrowserRunDir(eng::TaskProcessor &fs_task_processor, const std::string &path) noexcept
-{
-    if (path.empty())
-        return;
-    if (const auto error = RemoveBrowserRunDirectory(fs_task_processor, path))
-        LOG_WARNING() << std::format("Failed to remove browser dir {}: {}", path, *error);
 }
 
 [[nodiscard]] std::optional<String>
@@ -682,6 +672,9 @@ ReadWebsocketPathFile(eng::TaskProcessor &fs_task_processor, const std::string &
                                   "--setenv",
                                   "BREAKPAD_DUMP_LOCATION",
                                   BrowserSandboxPath("crashpad"),
+                                  "--setenv",
+                                  "DBUS_SESSION_BUS_ADDRESS",
+                                  "=disabled:",
                                   "--chdir",
                                   std::string(kBrowserSandboxRoot),
                                   "setpriv",
@@ -703,6 +696,7 @@ ReadWebsocketPathFile(eng::TaskProcessor &fs_task_processor, const std::string &
     std::vector<std::string> args{
         std::string(kBwrapStatusWrapperPath),
         paths.bwrap_status_file_path,
+        paths.cgroup_stats_path,
         std::string(cgroup_root_path),
         cgroup_name,
         std::format("{}", cpu_cores),
@@ -712,6 +706,14 @@ ReadWebsocketPathFile(eng::TaskProcessor &fs_task_processor, const std::string &
     args.insert(std::end(args), std::begin(bwrap_args), std::end(bwrap_args));
     return SpawnProcess(
         process_starter, "bash", args, paths.stdout_log_path, paths.stderr_log_path
+    );
+}
+
+[[nodiscard]] std::string
+BrowserCgroupPath(const BrowserPaths &paths, const BrowserSessionConfig &config)
+{
+    return std::format(
+        "{}/{}_{}", config.cgroup_root_path_, config.cgroup_name_prefix, paths.run_id
     );
 }
 
@@ -799,6 +801,10 @@ struct BrowserSession::Impl final {
             process_starter_, paths, config.cgroup_root_path_, config.cgroup_limits_,
             config.cgroup_name_prefix, config.enable_local_fixture_rewrite
         ));
+        if (config.cgroup_limits_ && config.metrics) {
+            registered_cgroup_path = BrowserCgroupPath(paths, config);
+            config.metrics->RegisterBrowserCgroup(*registered_cgroup_path);
+        }
         websocket_path = TRY_MAP_ERR(WaitForDevtoolsPath(devtools_deadline), [this](auto detail) {
             return BuildFailureDetail(std::move(detail));
         });
@@ -846,8 +852,6 @@ struct BrowserSession::Impl final {
 
     void MarkPhase(std::string_view phase) const
     {
-        if (paths.phase_file_path.empty())
-            return;
         WritePhaseMarker(fs_task_processor, paths.phase_file_path, phase);
     }
 
@@ -862,22 +866,33 @@ struct BrowserSession::Impl final {
     {
         String diagnostics{};
 
-        if (const auto browser_logs = SummarizeProcessOutputs(
+        if (const auto browser_logs = FormatProcessOutputDiagnostics(
                 fs_task_processor, paths.stdout_log_path, paths.stderr_log_path
             )) {
             AppendDiagnosticField(diagnostics, "browser_logs"_t, *browser_logs);
         }
         if (const auto chromium_stderr =
-                ReadSanitizedLogTail(fs_task_processor, paths.chromium_stderr_log_path))
+                ReadRetainedLogText(fs_task_processor, paths.chromium_stderr_log_path))
             AppendDiagnosticField(diagnostics, "chromium_stderr"_t, *chromium_stderr);
         if (const auto bwrap_status =
-                ReadSanitizedLogTail(fs_task_processor, paths.bwrap_status_file_path))
+                ReadRetainedLogText(fs_task_processor, paths.bwrap_status_file_path))
             AppendDiagnosticField(diagnostics, "bwrap_status"_t, *bwrap_status);
-        if (const auto phase_marker =
-                ReadSanitizedLogTail(fs_task_processor, paths.phase_file_path))
+        if (const auto phase_marker = ReadRetainedLogText(fs_task_processor, paths.phase_file_path))
             AppendDiagnosticField(diagnostics, "phase"_t, *phase_marker);
-        if (const auto cdp_trace = ReadSanitizedLogTail(fs_task_processor, paths.cdp_trace_path))
+        if (const auto cdp_trace = ReadRetainedLogText(fs_task_processor, paths.cdp_trace_path))
             AppendDiagnosticField(diagnostics, "cdp_trace_tail"_t, *cdp_trace);
+        if (const auto raw_cgroup_stats =
+                ReadBrowserFileIfExists(fs_task_processor, paths.cgroup_stats_path)) {
+            const auto parsed = ParseCgroupStatsSnapshot(*raw_cgroup_stats);
+            if (parsed) {
+                AppendDiagnosticField(diagnostics, "cgroup"_t, FormatCgroupStats(*parsed));
+                if (HasBrowserOomKill(*parsed))
+                    AppendDiagnosticField(diagnostics, "browser_resource_error"_t, "oom_kill"_t);
+            } else if (const auto cgroup_stats =
+                           ReadRetainedLogText(fs_task_processor, paths.cgroup_stats_path)) {
+                AppendDiagnosticField(diagnostics, "cgroup_raw"_t, *cgroup_stats);
+            }
+        }
         if (const auto websocket_pathfrom_file =
                 ReadWebsocketPathFile(fs_task_processor, paths.websocket_pathfile_path))
             AppendDiagnosticField(diagnostics, "websocket_path"_t, *websocket_pathfrom_file);
@@ -917,11 +932,16 @@ struct BrowserSession::Impl final {
             return;
         closed = true;
 
+        if (registered_cgroup_path && config.metrics)
+            config.metrics->UnregisterBrowserCgroup(*registered_cgroup_path);
         StopProcess(process, config.browser_stop_timeout);
         if (proxy)
             proxy->Close();
-        if (!paths.root_dir.empty())
-            RemoveBrowserRunDir(fs_task_processor, paths.root_dir);
+        if (auto ret = RemoveBrowserRunDir(fs_task_processor, paths.root_dir); !ret) {
+            LOG_WARNING() << std::format(
+                "Failed to remove browser dir {}: {}", paths.root_dir, ret.Error()
+            );
+        }
     }
 
     [[nodiscard]] i64 ProxyDownBytes() const noexcept { return proxy ? proxy->DownBytes() : 0_i64; }
@@ -984,6 +1004,7 @@ struct BrowserSession::Impl final {
     std::unique_ptr<EgressProxy> proxy;
     std::optional<eng::subprocess::ChildProcess> process;
     String websocket_path;
+    std::optional<std::string> registered_cgroup_path;
     bool closed{false};
 };
 
@@ -1238,7 +1259,6 @@ const String &BrowserPageSession::SessionId() const
 std::string BuildBrowserRunsRoot(std::string state_dir)
 {
     auto root = NormalizeDirPath(std::move(state_dir));
-    Invariant(!root.empty(), "state_dir must not be empty"_t);
     if (root == "/")
         return "/browser_runs";
     return std::format("{}/browser_runs", root);

@@ -12,16 +12,17 @@
 #include <userver/utils/assert.hpp>
 
 #include <array>
+#include <charconv>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
-#include <functional>
 #include <limits>
-#include <string>
+#include <optional>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <utility>
 
@@ -198,7 +199,9 @@ Raw(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy> &value
 }
 
 struct SSizeFn {
-    template <typename C> [[nodiscard]] constexpr i64 operator()(const C &c) const noexcept
+    template <typename C>
+        requires requires(const C &c) { c.size(); }
+    [[nodiscard]] constexpr i64 operator()(const C &c) const noexcept
     {
         return i64{c.size()};
     }
@@ -217,6 +220,30 @@ struct USizeFn {
 inline constexpr SSizeFn ssize{};
 // NOLINTNEXTLINE(readability-identifier-naming)
 inline constexpr USizeFn unsize{};
+
+namespace detail {
+
+template <typename T, typename = void> struct ParseStorage final {
+    using Type = T;
+};
+
+template <typename T>
+struct ParseStorage<T, std::void_t<typename boost::safe_numerics::base_type<T>::type>> final {
+    using Type = typename boost::safe_numerics::base_type<T>::type;
+};
+
+} // namespace detail
+
+template <typename T> [[nodiscard]] std::optional<T> Parse(std::string_view bytes)
+{
+    typename detail::ParseStorage<T>::Type parsed{};
+    const auto *begin = bytes.data();
+    const auto *end = begin + bytes.size();
+    const auto result = std::from_chars(begin, end, parsed);
+    if (result.ec != std::errc{} || result.ptr != end)
+        return {};
+    return T{parsed};
+}
 
 } // namespace integers
 

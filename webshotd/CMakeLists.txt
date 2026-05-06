@@ -75,6 +75,7 @@ set(${PROJECT_NAME}_headers
     include/storage_url.hpp
     src/crawler/runner.hpp
     include/crawler/artifacts.hpp
+    include/crawler/cgroup_stats.hpp
     src/crawler/browser_session.hpp
     include/crawler/browser_page_lifecycle.hpp
     include/crawler/limits.hpp
@@ -114,6 +115,7 @@ add_library(
   src/url.cpp
   src/crawler/runner.cpp
   src/crawler/artifacts.cpp
+  src/crawler/cgroup_stats.cpp
   src/crawler/browser_session.cpp
   src/crawler/browser_page_lifecycle.cpp
   src/crawler/cdp_client.cpp
@@ -372,6 +374,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::LibSeccomp)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE sml::sml)
 target_compile_definitions(${PROJECT_NAME}_objs
                            PRIVATE BOOST_SML_CFG_DISABLE_MIN_SIZE)
+find_package(fmt CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME}_objs PRIVATE fmt::fmt)
 find_package(ada CONFIG REQUIRED COMPONENTS ada)
 target_link_libraries(${PROJECT_NAME}_objs PRIVATE ada::ada)
 find_package(uni-algo CONFIG REQUIRED)
@@ -470,6 +474,7 @@ target_link_libraries(
   ${PROJECT_NAME}
   PRIVATE ${PROJECT_NAME}-chgen
           arkhiv::arkhiv
+          fmt::fmt
           ada::ada
           userver::core
           userver::postgresql

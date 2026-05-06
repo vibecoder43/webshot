@@ -24,6 +24,14 @@ namespace ws::crawler {
 
 namespace us = userver;
 namespace eng = us::engine;
+} // namespace ws::crawler
+
+namespace ws {
+class Metrics;
+} // namespace ws
+
+namespace ws::crawler {
+
 class CdpClient;
 class CdpSession;
 
@@ -44,6 +52,7 @@ struct [[nodiscard]] BrowserSessionConfig final {
     bool enable_local_fixture_rewrite;
     std::vector<u16> testsuite_loopback_ports;
     std::string cgroup_name_prefix;
+    Metrics *metrics;
 };
 
 class [[nodiscard]] BrowserSession final {

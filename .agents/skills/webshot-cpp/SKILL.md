@@ -31,6 +31,7 @@ description: C++ coding rules for the webshot service. Use when changing C++ cod
 - Direct syscalls and C stdlib calls require rare case-by-case justification.
 - Non-userver I/O is forbidden.
 - Never call `std::chrono::system_clock::now()`; use `userver::utils::datetime::Now()` instead.
+- Standard library concurrency primitives are forbidden, except for lock_guard-style types, atomic.
 
 ## [[nodiscard]] usage
 - Favor annotating; compilers will surface accidental value drops.

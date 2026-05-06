@@ -169,6 +169,7 @@ template <typename T, typename F>
 #error "ENSURE is already defined"
 #endif
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 #define TRY(...)                                                                                   \
     WS_TRY_DIAGNOSTIC_PUSH WS_TRY_DIAGNOSTIC_IGNORE({                                              \
         auto &&_temporaryTryResult = (__VA_ARGS__);                                                \

@@ -25,14 +25,14 @@ enum class CreateJobError {
     kDbFailure,
 };
 
-enum class CrawlError {
-    kFailed,
+enum class CaptureErrorKind {
+    kCrawler,
     kSizeLimit,
     kPersistMetadataFailed,
 };
 
-struct [[nodiscard]] CrawlFailure {
-    CrawlError code;
+struct [[nodiscard]] CaptureError {
+    CaptureErrorKind kind;
     std::optional<String> detail;
 };
 

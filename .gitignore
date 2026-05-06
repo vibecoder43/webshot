@@ -3,7 +3,7 @@ security.md
 .python-version
 design.md
 .clangd
-.devenv
+\.devenv
 .devenv.flake.nix
 .envrc
 .cache

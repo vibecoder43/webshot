@@ -14,8 +14,6 @@
 #include <string_view>
 #include <utility>
 
-#include "uuid_format.hpp"
-
 #include <userver/crypto/hash.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/http/status_code.hpp>

@@ -25,7 +25,6 @@
 #include <format>
 
 #include <absl/strings/ascii.h>
-#include <absl/strings/match.h>
 
 #include <userver/crypto/base64.hpp>
 #include <userver/crypto/hash.hpp>
@@ -39,6 +38,7 @@
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/utils/assert.hpp>
+#include <userver/utils/text_light.hpp>
 #include <userver/utils/underlying_value.hpp>
 #include <userver/websocket/connection.hpp>
 namespace chrono = std::chrono;
@@ -48,6 +48,7 @@ namespace us = userver;
 namespace eng = us::engine;
 namespace json = us::formats::json;
 namespace datetime = us::utils::datetime;
+namespace utext = us::utils::text;
 using namespace text::literals;
 using ws::Expected;
 
@@ -55,6 +56,11 @@ namespace {
 
 constexpr auto kMaxHandshakeResponseBytes = 16_i64 * 1024_i64;
 constexpr std::string_view kWebsocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+[[nodiscard]] bool ICaseEqual(std::string_view lhs, std::string_view rhs) noexcept
+{
+    return lhs.size() == rhs.size() && utext::ICaseStartsWith(lhs, rhs);
+}
 
 [[nodiscard]] bool IsCancelRequested() { return eng::current_task::IsCancelRequested(); }
 
@@ -217,8 +223,8 @@ CloseWebSocket(us::websocket::WebSocketConnection &connection)
         const auto comma_pos = remaining.find(',');
         const auto part = comma_pos == std::string_view::npos ? remaining
                                                               : remaining.substr(0, comma_pos);
-        const auto trimmed_part = absl::StripAsciiWhitespace(part);
-        if (absl::EqualsIgnoreCase(trimmed_part, token))
+        const auto trimmed_part = utext::TrimView(part);
+        if (ICaseEqual(trimmed_part, token))
             return true;
         if (comma_pos == std::string_view::npos)
             break;
@@ -262,7 +268,7 @@ ParseHandshakeHeaders(std::string_view headers_block)
             break;
         const auto colon_pos = line.find(':');
         if (colon_pos != std::string::npos) {
-            const auto trimmed = absl::StripAsciiWhitespace(line.substr(colon_pos + 1));
+            const auto trimmed = utext::TrimView(line.substr(colon_pos + 1));
             headers.emplace(absl::AsciiStrToLower(line.substr(0, colon_pos)), std::string(trimmed));
         }
 
@@ -298,14 +304,14 @@ ParseHandshakeResponse(std::string_view response)
 Expected<void, CdpFailure>
 ValidateHandshakeResponse(const HandshakeResponse &response, std::string_view sec_websocket_key)
 {
-    if (!response.status_line.starts_with("HTTP/1.1 101 ") &&
+    if (!utext::StartsWith(response.status_line, "HTTP/1.1 101 ") &&
         response.status_line != "HTTP/1.1 101") {
         return Unex(CdpFailure{.code = CdpError::kHandshakeRejected, .detail = {}});
     }
 
     const auto upgrade_it = response.headers.find("upgrade");
     if (upgrade_it == std::end(response.headers) ||
-        !absl::EqualsIgnoreCase(std::string_view{upgrade_it->second}, "websocket")) {
+        !ICaseEqual(std::string_view{upgrade_it->second}, "websocket")) {
         return Unex(CdpFailure{.code = CdpError::kHandshakeMissingHeader, .detail = {}});
     }
 

@@ -20,6 +20,8 @@
 #include <uni_algo/conv.h>
 #include <uni_algo/norm.h>
 
+#include <fmt/format.h>
+
 #include "expected.hpp"
 #include "try.hpp"
 
@@ -258,6 +260,14 @@ template <> struct std::formatter<text::String, char> : std::formatter<std::stri
     auto format(const text::String &text, std::format_context &ctx) const
     {
         return std::formatter<std::string_view, char>::format(text.View(), ctx);
+    }
+};
+
+// userver is still using fmtlib
+template <> struct fmt::formatter<text::String, char> : fmt::formatter<std::string_view, char> {
+    auto format(const text::String &text, fmt::format_context &ctx) const
+    {
+        return fmt::formatter<std::string_view, char>::format(text.View(), ctx);
     }
 };
 

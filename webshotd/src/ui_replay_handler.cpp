@@ -9,7 +9,6 @@
 #include "storage_url.hpp"
 #include "text.hpp"
 #include "try.hpp"
-#include "uuid_format.hpp"
 #include "uuid_utils.hpp"
 
 #include <chrono>

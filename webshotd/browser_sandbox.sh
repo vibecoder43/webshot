@@ -37,11 +37,11 @@ for arg in "$@"; do
   fi
 done
 
-browserAlive() {
+browser_alive() {
   kill -0 "$browser_pid" 2>/dev/null
 }
 
-devtoolsWebsocketPath() {
+devtools_websocket_path() {
   if [[ -n $devtools_active_port_file && -f $devtools_active_port_file ]]; then
     local recorded_port=''
     local websocket_path=''
@@ -89,12 +89,12 @@ proxy_pid=$!
 browser_pid=$!
 
 for ((i = 0; i < 300; i++)); do
-  if ! browserAlive; then
+  if ! browser_alive; then
     echo "chromium exited before advertising devtools on 127.0.0.1:${devtools_port}" >&2
     exit 1
   fi
 
-  websocket_path=$(devtoolsWebsocketPath)
+  websocket_path=$(devtools_websocket_path)
   if [[ -n $websocket_path ]]; then
     socat \
       UNIX-LISTEN:"$cdp_socket",unlink-early \

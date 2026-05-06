@@ -16,11 +16,11 @@ managed_root_dir=
 service_dir=
 cleanup_cgroup_layout=0
 
-cgroupHasControlFiles() {
+cgroup_has_control_files() {
   [[ -f $1/cgroup.controllers && -f $1/cgroup.subtree_control ]]
 }
 
-currentCgroupForMessage() {
+current_cgroup_for_message() {
   local detected=
 
   if [[ -n ${current_cgroup:-} ]]; then
@@ -35,23 +35,23 @@ currentCgroupForMessage() {
   printf '%s\n' "$detected"
 }
 
-cgroupRequiredFailure() {
+cgroup_required_failure() {
   local message=$1
 
   echo "webshotd: $message" >&2
-  echo "webshotd: current cgroup: $(currentCgroupForMessage)" >&2
+  echo "webshotd: current cgroup: $(current_cgroup_for_message)" >&2
   echo "webshotd: webshot requires cgroups: writable delegated cgroup v2 with cpu and memory controllers" >&2
   exit 1
 }
 
-writeCgroupValue() {
+write_cgroup_value() {
   local path=$1
   local value=$2
 
   { printf '%s\n' "$value" >"$path"; } 2>/dev/null
 }
 
-cgroupNeedsControllersEnabled() {
+cgroup_needs_controllers_enabled() {
   local cgroup_dir=$1
   local enabled=
 
@@ -64,13 +64,13 @@ cgroupNeedsControllersEnabled() {
   return 1
 }
 
-drainCgroupProcessesToLeaf() {
+drain_cgroup_processes_to_leaf() {
   local cgroup_dir=$1
   local leaf_dir=$cgroup_dir/$parent_procs_cgroup
   local procs=()
 
   if ! mkdir -p "$leaf_dir" 2>/dev/null; then
-    cgroupRequiredFailure "failed to create cgroup process leaf: $leaf_dir"
+    cgroup_required_failure "failed to create cgroup process leaf: $leaf_dir"
   fi
   for _ in {1..20}; do
     mapfile -t procs <"$cgroup_dir/cgroup.procs"
@@ -80,9 +80,9 @@ drainCgroupProcessesToLeaf() {
 
     for pid in "${procs[@]}"; do
       [[ -n $pid ]] || continue
-      if ! writeCgroupValue "$leaf_dir/cgroup.procs" "$pid"; then
+      if ! write_cgroup_value "$leaf_dir/cgroup.procs" "$pid"; then
         if [[ -d /proc/$pid ]]; then
-          cgroupRequiredFailure "failed to move process $pid into cgroup process leaf: $leaf_dir"
+          cgroup_required_failure "failed to move process $pid into cgroup process leaf: $leaf_dir"
         fi
       fi
     done
@@ -95,21 +95,21 @@ drainCgroupProcessesToLeaf() {
   fi
 }
 
-enableCgroupControllers() {
+enable_cgroup_controllers() {
   local cgroup_dir=$1
   local label=$2
   local controllers=
   local enabled=
   local enable_args=()
 
-  if ! cgroupHasControlFiles "$cgroup_dir"; then
-    cgroupRequiredFailure "${label} is not writable: $cgroup_dir"
+  if ! cgroup_has_control_files "$cgroup_dir"; then
+    cgroup_required_failure "${label} is not writable: $cgroup_dir"
   fi
 
   controllers=$(cat "$cgroup_dir/cgroup.controllers")
   for controller in "${delegated_controllers[@]}"; do
     if [[ " $controllers " != *" $controller "* ]]; then
-      cgroupRequiredFailure "${label} is missing controller '$controller': $cgroup_dir"
+      cgroup_required_failure "${label} is missing controller '$controller': $cgroup_dir"
     fi
   done
 
@@ -120,8 +120,8 @@ enableCgroupControllers() {
     fi
   done
   if (( ${#enable_args[@]} > 0 )); then
-    if ! writeCgroupValue "$cgroup_dir/cgroup.subtree_control" "${enable_args[*]}"; then
-      cgroupRequiredFailure "failed to enable ${label} subtree controllers: $cgroup_dir"
+    if ! write_cgroup_value "$cgroup_dir/cgroup.subtree_control" "${enable_args[*]}"; then
+      cgroup_required_failure "failed to enable ${label} subtree controllers: $cgroup_dir"
     fi
   fi
 }
@@ -130,7 +130,7 @@ cleanup() {
   local rc=$?
   if (( cleanup_cgroup_layout != 0 )); then
     if [[ -n $cleanup_parent_dir ]]; then
-      writeCgroupValue "$cleanup_parent_dir/cgroup.procs" "$$" || true
+      write_cgroup_value "$cleanup_parent_dir/cgroup.procs" "$$" || true
     fi
     if [[ -n $service_dir ]]; then
       rmdir "$service_dir" 2>/dev/null || true
@@ -162,62 +162,62 @@ case "$current_cgroup" in
     ;;
   */${parent_procs_cgroup})
     cleanup_parent_dir=$(dirname "$current_cgroup_dir")
-    if ! cgroupHasControlFiles "$cleanup_parent_dir"; then
-      cgroupRequiredFailure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
+    if ! cgroup_has_control_files "$cleanup_parent_dir"; then
+      cgroup_required_failure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
     fi
-    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    enable_cgroup_controllers "$cleanup_parent_dir" "managed cgroup parent"
     managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
     service_dir=$managed_root_dir/$managed_cgroup_subgroup
     if ! mkdir -p "$service_dir" 2>/dev/null; then
-      cgroupRequiredFailure "failed to create managed cgroup subgroup: $service_dir"
+      cgroup_required_failure "failed to create managed cgroup subgroup: $service_dir"
     fi
     cleanup_cgroup_layout=1
     ;;
   "${base_user_slice}"*)
-    if [[ $current_cgroup == "$app_slice_cgroup" || $current_cgroup == "$app_slice_cgroup"/* ]] && cgroupHasControlFiles "$app_slice_dir"; then
+    if [[ $current_cgroup == "$app_slice_cgroup" || $current_cgroup == "$app_slice_cgroup"/* ]] && cgroup_has_control_files "$app_slice_dir"; then
       cleanup_parent_dir=$app_slice_dir
-    elif cgroupHasControlFiles "$current_cgroup_dir"; then
+    elif cgroup_has_control_files "$current_cgroup_dir"; then
       cleanup_parent_dir=$current_cgroup_dir
     else
-      cgroupRequiredFailure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
+      cgroup_required_failure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
     fi
-    if [[ $cleanup_parent_dir == "$current_cgroup_dir" ]] && cgroupNeedsControllersEnabled "$cleanup_parent_dir"; then
-      drainCgroupProcessesToLeaf "$cleanup_parent_dir"
+    if [[ $cleanup_parent_dir == "$current_cgroup_dir" ]] && cgroup_needs_controllers_enabled "$cleanup_parent_dir"; then
+      drain_cgroup_processes_to_leaf "$cleanup_parent_dir"
     fi
-    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    enable_cgroup_controllers "$cleanup_parent_dir" "managed cgroup parent"
     managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
     service_dir=$managed_root_dir/$managed_cgroup_subgroup
     if ! mkdir -p "$service_dir" 2>/dev/null; then
-      cgroupRequiredFailure "failed to create managed cgroup subgroup: $service_dir"
+      cgroup_required_failure "failed to create managed cgroup subgroup: $service_dir"
     fi
     cleanup_cgroup_layout=1
     ;;
   /)
-    cgroupRequiredFailure "must run inside a delegated cgroup; current cgroup is /"
+    cgroup_required_failure "must run inside a delegated cgroup; current cgroup is /"
     ;;
   *)
-    if ! cgroupHasControlFiles "$current_cgroup_dir"; then
-      cgroupRequiredFailure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
+    if ! cgroup_has_control_files "$current_cgroup_dir"; then
+      cgroup_required_failure "managed cgroup parent is not available from current cgroup: $current_cgroup_dir"
     fi
     cleanup_parent_dir=$current_cgroup_dir
-    if cgroupNeedsControllersEnabled "$cleanup_parent_dir"; then
-      drainCgroupProcessesToLeaf "$cleanup_parent_dir"
+    if cgroup_needs_controllers_enabled "$cleanup_parent_dir"; then
+      drain_cgroup_processes_to_leaf "$cleanup_parent_dir"
     fi
-    enableCgroupControllers "$cleanup_parent_dir" "managed cgroup parent"
+    enable_cgroup_controllers "$cleanup_parent_dir" "managed cgroup parent"
     managed_root_dir=$cleanup_parent_dir/${managed_cgroup_prefix}-$$.scope
     service_dir=$managed_root_dir/$managed_cgroup_subgroup
     if ! mkdir -p "$service_dir" 2>/dev/null; then
-      cgroupRequiredFailure "failed to create managed cgroup subgroup: $service_dir"
+      cgroup_required_failure "failed to create managed cgroup subgroup: $service_dir"
     fi
     cleanup_cgroup_layout=1
     ;;
 esac
 
-enableCgroupControllers "$managed_root_dir" "managed cgroup root"
+enable_cgroup_controllers "$managed_root_dir" "managed cgroup root"
 
 if (( cleanup_cgroup_layout != 0 )); then
-  if ! writeCgroupValue "$service_dir/cgroup.procs" "$$"; then
-    cgroupRequiredFailure "failed to move startup process into managed cgroup subgroup: $service_dir"
+  if ! write_cgroup_value "$service_dir/cgroup.procs" "$$"; then
+    cgroup_required_failure "failed to move startup process into managed cgroup subgroup: $service_dir"
   fi
 fi
 

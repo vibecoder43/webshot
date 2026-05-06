@@ -9,6 +9,7 @@
 #include "deadline_utils.hpp"
 #include "http_utils.hpp"
 #include "json.hpp"
+#include "metrics.hpp"
 #include "schema/browser_probe.hpp"
 #include "schema/cdp.hpp"
 #include "text.hpp"
@@ -56,6 +57,7 @@ constexpr chrono::milliseconds kMinProbeSettleWindow = 250ms;
 
 struct [[nodiscard]] ProbeConfig final {
     const Config &svc_config;
+    Metrics &metrics;
     us::clients::dns::Resolver &dns_resolver_;
     eng::subprocess::ProcessStarter &process_starter_;
     eng::TaskProcessor &fs_task_processor_;
@@ -373,6 +375,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
             .enable_local_fixture_rewrite = config.local_fixture_rewrite,
             .testsuite_loopback_ports = config.testsuite_loopback_ports,
             .cgroup_name_prefix = "webshotd_browser_probe",
+            .metrics = &config.metrics,
         }
     };
     std::unique_ptr<crawler::CdpClient> cdp;
@@ -473,6 +476,7 @@ BrowserProbeHandler::BrowserProbeHandler(
           std::make_unique<Impl>(Impl{
               .probe_config = ProbeConfig{
                   .svc_config = context.FindComponent<Config>(),
+                  .metrics = context.FindComponent<Metrics>(),
                   .dns_resolver_ =
                       context.FindComponent<us::clients::dns::Component>().GetResolver(),
                   .process_starter_ = context.FindComponent<us::components::ProcessStarter>().Get(),

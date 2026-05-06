@@ -56,7 +56,7 @@ public:
      * On success returns a single capture descriptor including UUID, creation
      * time and normalized link.
      */
-    [[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CrawlFailure> CreateCapture(Link link);
+    [[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CaptureError> CreateCapture(Link link);
 
     /**
      * @brief Enqueue a crawl job for the given link and return its job descriptor.
