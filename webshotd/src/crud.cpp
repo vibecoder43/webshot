@@ -61,6 +61,7 @@
 #include <userver/logging/log.hpp>
 #include <userver/rcu/rcu.hpp>
 #include <userver/storages/postgres/cluster.hpp>
+#include <userver/storages/postgres/component.hpp>
 #include <userver/storages/postgres/io/bytea.hpp>
 #include <userver/storages/postgres/io/chrono.hpp>
 #include <userver/storages/postgres/io/row_types.hpp>
