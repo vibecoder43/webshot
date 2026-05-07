@@ -346,8 +346,8 @@ in {
           webshot-local-s3.service \
           "webshot stack (local S3)" \
           webshot.service \
-          "AssertPathExists=/etc/webshot/seaweedfs_s3_config.json" \
-          " --seaweedfs-s3-config /etc/webshot/seaweedfs_s3_config.json"
+          "" \
+          " --seaweedfs-s3-config /run/credentials/webshot-local-s3.service/seaweedfs_s3_config.json"
       '';
     };
 }

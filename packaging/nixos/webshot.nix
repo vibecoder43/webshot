@@ -19,7 +19,9 @@
     // optionalValue "s3_mode" cfg.s3Mode
     // optionalValue "s3_bucket" cfg.s3Bucket
     // optionalValue "public_base_url" cfg.publicBaseUrl
-    // optionalValue "secdist_path" cfg.secdistPath
+    // lib.optionalAttrs (cfg.secdistPath != null) {
+      secdist_path = "/run/credentials/${serviceUnit}/secdist.json";
+    }
     // optionalValue "allowlist_only" cfg.allowlistOnly
     // optionalValue "https_only" cfg.httpsOnly
     // optionalValue "client_ip_source" cfg.clientIpSource
@@ -114,6 +116,12 @@ in {
       description = "Path to the webshotd secdist JSON file.";
     };
 
+    seaweedfsS3ConfigPath = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Path to the SeaweedFS S3 config JSON file (required when s3Mode is local).";
+    };
+
     allowlistOnly = lib.mkOption {
       type = lib.types.nullOr lib.types.bool;
       default = null;
@@ -146,5 +154,10 @@ in {
       configVarsFormat.generate "webshot-config-vars.yaml" configVars;
 
     systemd.targets.multi-user.wants = lib.optional (cfg.package != null) serviceUnit;
+
+    systemd.services.${serviceUnit}.serviceConfig.LoadCredential = lib.mkIf (cfg.package != null) (
+      lib.optional (cfg.secdistPath != null) "secdist.json:${cfg.secdistPath}"
+      ++ lib.optional (cfg.s3Mode == "local" && cfg.seaweedfsS3ConfigPath != null) "seaweedfs_s3_config.json:${cfg.seaweedfsS3ConfigPath}"
+    );
   };
 }
