@@ -543,14 +543,14 @@ struct EgressProxy::Impl final {
     explicit Impl(EgressProxyConfig cfg) : config(std::move(cfg)) {}
 
     EgressProxyConfig config;
-    std::atomic<int64_t> down_bytes{};
+    concurrent::Variable<i64> down_bytes_{0};
     std::atomic<bool> closed{false};
     concurrent::Variable<std::optional<String>> error;
     eng::io::Socket listener;
     std::optional<eng::TaskWithResult<void>> accept_task;
     concurrent::Variable<std::vector<eng::TaskWithResult<void>>> client_tasks;
 
-    [[nodiscard]] bool IsClosed() const noexcept { return closed.load(std::memory_order_relaxed); }
+    [[nodiscard]] bool IsClosed() const noexcept { return closed.load(); }
 
     void NoteError(String reason) noexcept
     {
@@ -569,48 +569,44 @@ struct EgressProxy::Impl final {
             task.RequestCancel();
     }
 
-    void AccountDownBytes(i64 bytes)
-    {
-        if (bytes <= 0_i64)
-            return;
-        const auto delta = Raw(bytes);
-        const auto next = down_bytes.fetch_add(delta, std::memory_order_relaxed) + delta;
-        if (next <= Raw(config.down_bytes_max))
-            return;
-        NoteError(
-            text::Format(
-                "net_limit: proxy downstream bytes {} exceeded limit {}", next,
-                config.down_bytes_max
-            )
-        );
-        closed.store(true, std::memory_order_relaxed);
-        RequestCancelAllClientTasksNoWait();
-    }
-
     [[nodiscard]] usize
     SendBudgeted(eng::io::Socket &sock, std::span<const char> bytes, eng::Deadline deadline)
     {
-        if (IsClosed() || bytes.empty())
+        if (bytes.empty())
             return 0_uz;
-        const auto used = i64(down_bytes.load(std::memory_order_relaxed));
-        const auto remaining = config.down_bytes_max - used;
-        if (remaining <= 0_i64) {
-            NoteError(
-                text::Format(
-                    "net_limit: proxy downstream bytes {} exceeded limit {}", used,
-                    config.down_bytes_max
-                )
-            );
-            closed.store(true, std::memory_order_relaxed);
+        if (IsClosed())
             return 0_uz;
+
+        const auto max_claim = std::min<i64>(ssize(bytes), config.down_bytes_max);
+        if (max_claim <= 0_i64)
+            return 0_uz;
+        {
+            auto counter = down_bytes_.Lock();
+            if (*counter > config.down_bytes_max - max_claim) {
+                NoteError(
+                    text::Format(
+                        "net_limit: proxy downstream bytes {} exceeded limit {}", *counter,
+                        config.down_bytes_max
+                    )
+                );
+                closed.store(true);
+                RequestCancelAllClientTasksNoWait();
+                return 0_uz;
+            }
+            *counter += max_claim;
         }
 
-        const auto allowed = std::min(remaining, ssize(bytes));
         try {
-            const auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(allowed), deadline);
-            AccountDownBytes(i64{sent});
+            const auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(max_claim), deadline);
+            const auto unused = max_claim - i64{sent};
+            if (unused > 0_i64) {
+                auto counter = down_bytes_.Lock();
+                *counter -= unused;
+            }
             return usize{sent};
         } catch (const std::exception &) {
+            auto counter = down_bytes_.Lock();
+            *counter -= max_claim;
             return 0_uz;
         }
     }
@@ -950,7 +946,7 @@ struct EgressProxy::Impl final {
 
     void CloseAll() noexcept
     {
-        closed.store(true, std::memory_order_relaxed);
+        closed.store(true);
         if (accept_task) {
             accept_task->RequestCancel();
             static_cast<void>(accept_task->WaitNothrow());
@@ -1008,7 +1004,11 @@ Expected<void, String> EgressProxy::Start(dns::Resolver &resolver, eng::Deadline
 
 void EgressProxy::Close() noexcept { impl_->CloseAll(); }
 
-i64 EgressProxy::DownBytes() const noexcept { return i64(impl_->down_bytes.load()); }
+i64 EgressProxy::DownBytes() const noexcept
+{
+    auto locked = impl_->down_bytes_.Lock();
+    return i64{*locked};
+}
 
 std::optional<String> EgressProxy::ErrorReason() const noexcept
 {
