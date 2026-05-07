@@ -11,6 +11,7 @@
 #include "deny_and_purge_handler.hpp"
 #include "denylist_check_handler.hpp"
 #include "docs_handler.hpp"
+#include "exception_handling_middleware.hpp"
 #include "handler.hpp"
 #include "job_handler.hpp"
 #include "metrics.hpp"
@@ -27,6 +28,7 @@
 #include <userver/engine/task_processors_load_monitor.hpp>
 #include <userver/server/handlers/http_handler_static.hpp>
 #include <userver/server/handlers/server_monitor.hpp>
+#include <userver/server/middlewares/http_middleware_base.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/storages/secdist/component.hpp>
 #include <userver/storages/secdist/provider_component.hpp>
@@ -57,6 +59,8 @@ int main(int argc, char *argv[])
             .Append<ws::Config>()
             .Append<ws::Metrics>()
             .Append<ws::Crud>()
+            .Append<us::server::middlewares::SimpleHttpMiddlewareFactory<
+                ws::ExceptionHandlingMiddleware>>()
             .Append<ws::ByPrefixHandler>()
             .Append<ws::CaptureByLinkHandler>()
             .Append<ws::JobHandler>()

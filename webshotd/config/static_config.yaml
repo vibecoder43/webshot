@@ -24,6 +24,9 @@ components_manager:
       missing-ok: true
       format: json
     process-starter: {}
+    default-server-middleware-pipeline-builder:
+      append:
+        - ws-exception-handling-middleware
     dynamic-config:
       defaults:
         USERVER_RPS_CCONTROL_ENABLED: true

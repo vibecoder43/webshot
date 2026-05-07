@@ -69,6 +69,7 @@ set(${PROJECT_NAME}_headers
     src/deny_and_purge_handler.hpp
     src/denylist_check_handler.hpp
     src/docs_handler.hpp
+    src/exception_handling_middleware.hpp
     src/ui_replay_handler.hpp
     src/test_only_components.hpp
     include/crud.hpp
@@ -109,6 +110,7 @@ add_library(
   src/deny_and_purge_handler.cpp
   src/denylist_check_handler.cpp
   src/docs_handler.cpp
+  src/exception_handling_middleware.cpp
   src/ui_replay_handler.cpp
   src/crud.cpp
   src/metrics.cpp
