@@ -3,6 +3,9 @@ security.md
 .python-version
 design.md
 .clangd
+.clang-uml
+# diagram produced bt clang-uml
+diagrams/
 .devenv
 .devenv.flake.nix
 .envrc

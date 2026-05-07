@@ -11,6 +11,7 @@
     dev = {
       buildDir = ctx.paths.build.san;
       clangd = ctx.paths.clangd.san;
+      clangUml = ctx.paths.clangUml.san;
       variant = ctx.variants.san;
       infra = "dev";
       configVars = "${config.devenv.root}/webshotd/config/config_vars.dev.yaml";
@@ -20,6 +21,7 @@
     prodlike = {
       buildDir = ctx.paths.build.san;
       clangd = ctx.paths.clangd.san;
+      clangUml = ctx.paths.clangUml.san;
       variant = ctx.variants.san;
       infra = "prodlike";
       configVars = "${config.devenv.root}/webshotd/config/config_vars.prodlike.yaml";
@@ -38,9 +40,16 @@
     fi
   '';
 
+  mkClangUmlLink = clangUmlFile: ''
+    if [[ ! -f remote_compile.json ]]; then
+      ln -sf ${lib.escapeShellArg clangUmlFile} .clang-uml
+    fi
+  '';
+
   mkBuild = {
     buildDir,
     clangdFile,
+    clangUmlFile,
     variant,
     manageClangd ? true,
     timingsOutput ? null,
@@ -66,6 +75,7 @@
       '';
   in ''
     ${lib.optionalString manageClangd (mkClangdLink clangdFile)}
+    ${lib.optionalString manageClangd (mkClangUmlLink clangUmlFile)}
     python3 devenv/build_task.py \
       --build-dir ${lib.escapeShellArg buildDir} \
       ${mkRepeatedFlagArgs "--configure-arg" configureArgv}${buildArgFlags}${timingsArgs}
@@ -116,6 +126,7 @@
       ${mkBuild {
         inherit (cfg) buildDir variant;
         clangdFile = cfg.clangd;
+        clangUmlFile = cfg.clangUml;
         timingsOutput = "${cfg.buildDir}/latest_build_times.json";
       }}
     '';
@@ -132,6 +143,7 @@
       ${mkBuild {
         inherit (cfg) buildDir variant;
         clangdFile = cfg.clangd;
+        clangUmlFile = cfg.clangUml;
         timingsOutput = "${cfg.buildDir}/latest_build_times.json";
       }}
       exec ${mkRuntime "up" mode null}
@@ -155,6 +167,7 @@
       ${mkBuild {
         inherit (modes.${mode}) buildDir variant;
         clangdFile = modes.${mode}.clangd;
+        clangUmlFile = modes.${mode}.clangUml;
         timingsOutput = "${modes.${mode}.buildDir}/latest_build_times.json";
       }}
       cleanup() {
@@ -170,6 +183,7 @@
       ${mkBuild {
         inherit (modes.${mode}) buildDir variant;
         clangdFile = modes.${mode}.clangd;
+        clangUmlFile = modes.${mode}.clangUml;
         manageClangd = false;
         timingsOutput = "${modes.${mode}.buildDir}/latest_build_times.json";
       }}
@@ -209,6 +223,7 @@ in {
     ${mkBuild {
       buildDir = ctx.paths.build.tidy;
       clangdFile = ctx.paths.clangd.tidy;
+      clangUmlFile = ctx.paths.clangUml.tidy;
       variant = ctx.variants.tidy;
       buildArgs = ["--" "-k" "0"];
     }}

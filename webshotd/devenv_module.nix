@@ -22,6 +22,7 @@ in {
       ctx.toolchain.cc
       ctx.nix.llvmPackages_22.llvm
       ctx.nix.llvmPackages_22.clang-tools
+      ctx.nix.clang-uml
       ctx.drv.includeWhatYouUse
       ctx.drv.userverDbg
       ctx.drv.unialgo

@@ -75,6 +75,23 @@
         CompilationDatabase: ${buildDir}
     '';
 
+  mkClangUml = name: relativeBuildDir:
+    nix.writeText "webshot-clang-uml-${name}" ''
+      compilation_database_dir: ${relativeBuildDir}
+      output_directory: diagrams
+      relative_to: ${config.devenv.root}
+      diagrams:
+        class_overview:
+          type: class
+          glob:
+            - webshotd/src/**.cpp
+            - webshotd/include/**.hpp
+          generate_method_arguments: none
+          include:
+            namespaces:
+              - ws
+    '';
+
   paths = rec {
     build = {
       san = "${config.devenv.root}/build/webshotd/san";
@@ -85,6 +102,11 @@
     clangd = {
       san = mkClangd "san" build.san;
       tidy = mkClangd "tidy" build.tidy;
+    };
+
+    clangUml = {
+      san = mkClangUml "san" "build/webshotd/san";
+      tidy = mkClangUml "tidy" "build/webshotd/tidy";
     };
 
     cmakePrefix = lib.concatStringsSep ";" sets.cmakePrefix;
