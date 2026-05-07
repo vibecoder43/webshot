@@ -370,11 +370,6 @@ struct CdpClient::PendingCommandWaiter final {
 
 namespace {
 
-[[nodiscard]] String ParsePrintableText(std::string_view value)
-{
-    return *String::FromBytes(value);
-}
-
 [[nodiscard]] CdpError MakeTimeoutError(const String &timeout_message)
 {
     return {
@@ -532,7 +527,7 @@ Expected<json::Value, CdpError> CdpClient::SendRaw(
         sent = SendWebSocketText(*connection_, request_bytes);
     }
     if (!sent) {
-        TraceTransportError("send"_t, ParsePrintableText(sent.Error()));
+        TraceTransportError("send"_t, *String::FromBytes(sent.Error()));
         CdpError error{.code = kTransport, .detail = {}};
         SetFatalError(error);
         return Unex(error);
@@ -592,7 +587,7 @@ Expected<void, CdpError> CdpClient::Close()
                                         : Expected<void, std::string>{};
     }
     if (!closed_connection) {
-        TraceTransportError("close"_t, ParsePrintableText(closed_connection.Error()));
+        TraceTransportError("close"_t, *String::FromBytes(closed_connection.Error()));
         CdpError error{.code = CdpErrorCode::kTransport, .detail = {}};
         SetFatalError(error);
         StopReaderTask();
@@ -634,7 +629,7 @@ void CdpClient::ReaderLoop()
                 SetFatalError(MakeSocketClosedError("websocket close requested"_t));
                 return;
             }
-            TraceTransportError("recv"_t, ParsePrintableText(e.what()));
+            TraceTransportError("recv"_t, *String::FromBytes(std::string_view{e.what()}));
             SetFatalError(CdpError{.code = CdpErrorCode::kTransport, .detail = {}});
             return;
         }
