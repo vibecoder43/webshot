@@ -989,25 +989,27 @@ EgressProxy::EgressProxy(EgressProxyConfig config)
 
 EgressProxy::~EgressProxy() noexcept { Stop(); }
 
-Expected<void, String> EgressProxy::Start(dns::Resolver &resolver, eng::Deadline deadline)
+Expected<std::unique_ptr<EgressProxy>, String>
+EgressProxy::Create(EgressProxyConfig config, dns::Resolver &resolver, eng::Deadline deadline)
 {
     Invariant(deadline.IsReachable(), "proxy start deadline must be reachable"_t);
-    if (impl_->accept_task)
-        return Unex("proxy already started"_t);
 
-    impl_->listener = eng::io::Socket(eng::io::AddrDomain::kUnix, eng::io::SocketType::kStream);
+    auto proxy = std::unique_ptr<EgressProxy>{new EgressProxy(std::move(config))};
+    auto &impl = *proxy->impl_;
+
+    impl.listener = eng::io::Socket(eng::io::AddrDomain::kUnix, eng::io::SocketType::kStream);
     try {
-        auto addr = eng::io::Sockaddr::MakeUnixSocketAddress(impl_->config.socket_path_);
-        impl_->listener.Bind(addr);
-        impl_->listener.Listen();
+        auto addr = eng::io::Sockaddr::MakeUnixSocketAddress(impl.config.socket_path_);
+        impl.listener.Bind(addr);
+        impl.listener.Listen();
     } catch (const std::exception &e) {
         return Unex(text::Format("proxy bind then listen failed: {}", e.what()));
     }
 
-    impl_->accept_task = eng::AsyncNoSpan([this, &resolver, deadline]() {
-        impl_->AcceptLoop(resolver, deadline);
+    impl.accept_task = eng::AsyncNoSpan([&impl, &resolver, deadline]() {
+        impl.AcceptLoop(resolver, deadline);
     });
-    return {};
+    return proxy;
 }
 
 void EgressProxy::Stop() noexcept { impl_->StopAll(); }

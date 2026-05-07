@@ -351,45 +351,48 @@ void CleanupProbeSession(
 [[nodiscard]] Expected<dto::BrowserProbeResponse, String>
 RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng::Deadline deadline)
 {
-    crawler::BrowserSession browser{
-        config.dns_resolver_, config.process_starter_, config.fs_task_processor_,
-        crawler::BrowserSessionConfig{
-            .url_bytes_max = config.svc_config.UrlBytesMax(),
-            .proxy_down_bytes_max = config.cdp_max_remote_payload_bytes * 4_i64,
-            .browser_runs_root_ =
-                crawler::BuildBrowserRunsRoot(std::string(config.svc_config.StateDir())),
-            .cgroup_root_path_ = crawler::ResolveDelegatedCgroupRootPath(config.fs_task_processor_),
-            .cgroup_limits_ = {},
-            .local_fixture_trust_db_source_path =
-                crawler::LocalFixtureTrustDbSourcePath(config.svc_config.StateDir()),
-            .devtools_startup_timeout = config.devtools_startup_timeout,
-            .cdp_handshake_timeout = config.cdp_handshake_timeout,
-            .cdp_command_timeout = config.cdp_command_timeout,
-            .devtools_poll_interval = config.devtools_poll_interval,
-            .browser_stop_timeout = config.browser_stop_timeout,
-            .cdp_max_remote_payload_bytes = config.cdp_max_remote_payload_bytes,
-            .proxy_require_auth = false,
-            .enable_local_fixture_rewrite = config.local_fixture_rewrite,
-            .testsuite_loopback_ports = config.testsuite_loopback_ports,
-            .cgroup_name_prefix = "webshotd_browser_probe",
-            .metrics = &config.metrics,
-        }
-    };
+    auto browser = TRY(
+        crawler::BrowserSession::Create(
+            config.dns_resolver_, config.process_starter_, config.fs_task_processor_,
+            crawler::BrowserSessionConfig{
+                .url_bytes_max = config.svc_config.UrlBytesMax(),
+                .proxy_down_bytes_max = config.cdp_max_remote_payload_bytes * 4_i64,
+                .browser_runs_root_ =
+                    crawler::BuildBrowserRunsRoot(std::string(config.svc_config.StateDir())),
+                .cgroup_root_path_ =
+                    crawler::ResolveDelegatedCgroupRootPath(config.fs_task_processor_),
+                .cgroup_limits_ = {},
+                .local_fixture_trust_db_source_path =
+                    crawler::LocalFixtureTrustDbSourcePath(config.svc_config.StateDir()),
+                .devtools_startup_timeout = config.devtools_startup_timeout,
+                .cdp_handshake_timeout = config.cdp_handshake_timeout,
+                .cdp_command_timeout = config.cdp_command_timeout,
+                .devtools_poll_interval = config.devtools_poll_interval,
+                .browser_stop_timeout = config.browser_stop_timeout,
+                .cdp_max_remote_payload_bytes = config.cdp_max_remote_payload_bytes,
+                .proxy_require_auth = false,
+                .enable_local_fixture_rewrite = config.local_fixture_rewrite,
+                .testsuite_loopback_ports = config.testsuite_loopback_ports,
+                .cgroup_name_prefix = "webshotd_browser_probe",
+                .metrics = &config.metrics,
+            }
+        )
+    );
     std::unique_ptr<crawler::CdpClient> cdp;
     std::unique_ptr<crawler::BrowserPageSession> page_session;
     std::vector<String> console;
     std::vector<String> page_errors;
 
-    const auto decorate_error = [&browser](auto detail) {
-        return browser.BuildErrorDetail(std::move(detail));
+    const auto decorate_error = [ptr = browser.get()](auto detail) {
+        return ptr->BuildErrorDetail(std::move(detail));
     };
     const auto result = [&]() -> Expected<dto::BrowserProbeResponse, String> {
-        TRY(browser.Start());
+        const auto mark_phase = [ptr = browser.get()](std::string_view phase) {
+            ptr->MarkPhase(phase);
+        };
 
-        const auto mark_phase = [&browser](std::string_view phase) { browser.MarkPhase(phase); };
-
-        browser.MarkPhase("connect_cdp");
-        cdp = TRY(browser.ConnectCdp(deadline));
+        browser->MarkPhase("connect_cdp");
+        cdp = TRY(browser->ConnectCdp(deadline));
         page_session = std::make_unique<crawler::BrowserPageSession>(*cdp);
 
         TRY(page_session->AttachFreshTarget(mark_phase));
@@ -397,7 +400,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         TRY(page_session->EnableBaseDomains(mark_phase));
         TRY(DrainProbeEvents(cdp_session, console, page_errors));
 
-        browser.MarkPhase("navigate");
+        browser->MarkPhase("navigate");
         dto::PageNavigateParams navigate_params;
         navigate_params.url = request.url;
         const auto navigate_result = TRY_MAP_ERR(
@@ -407,7 +410,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         ENSURE(!navigate_result.errorText, *String::FromBytes(*navigate_result.errorText));
         TRY(DrainProbeEvents(cdp_session, console, page_errors));
 
-        browser.MarkPhase("wait_expression");
+        browser->MarkPhase("wait_expression");
         const auto wait_expression = *String::FromBytes(request.wait_expression);
         TRY(WaitForExpression(
             cdp_session, wait_expression, deadline, config.devtools_poll_interval, console,

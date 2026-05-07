@@ -57,7 +57,7 @@ struct [[nodiscard]] BrowserSessionConfig final {
 
 class [[nodiscard]] BrowserSession final {
 public:
-    BrowserSession(
+    [[nodiscard]] static Expected<std::unique_ptr<BrowserSession>, String> Create(
         us::clients::dns::Resolver &dns_resolver, eng::subprocess::ProcessStarter &process_starter,
         eng::TaskProcessor &fs_task_processor, BrowserSessionConfig config
     );
@@ -68,7 +68,6 @@ public:
     BrowserSession &operator=(const BrowserSession &) = delete;
     BrowserSession &operator=(BrowserSession &&) = delete;
 
-    [[nodiscard]] Expected<void, String> Start();
     [[nodiscard]] Expected<std::unique_ptr<CdpClient>, String>
     ConnectCdp(eng::Deadline overall_deadline) const;
     [[nodiscard]] std::pair<std::string, std::string> DrainBrowserLogs() const;
@@ -80,6 +79,11 @@ public:
     [[nodiscard]] std::optional<String> ProxyErrorReason() const noexcept;
 
 private:
+    BrowserSession(
+        us::clients::dns::Resolver &dns_resolver, eng::subprocess::ProcessStarter &process_starter,
+        eng::TaskProcessor &fs_task_processor, BrowserSessionConfig config
+    );
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

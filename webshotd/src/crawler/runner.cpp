@@ -1147,40 +1147,13 @@ Expected<void, String> RunSiteBehavior(crawler::CdpSession &cdp_session, eng::De
 class [[nodiscard]] CaptureSession final {
 public:
     CaptureSession(
-        AccessPolicyStore &access_policy, const Config &config, dns::Resolver &dns_resolver,
-        usize url_bytes_max, i64 proxy_down_bytes_max,
-        eng::subprocess::ProcessStarter &process_starter, eng::TaskProcessor &fs_task_processor,
-        std::string browser_runs_root_in, std::string cgroup_root_path_in,
-        std::optional<crawler::CgroupLimits> cgroup_limits_in, crawler::CaptureTimings timings,
-        crawler::CrawlerTunables tunables_in, i64 max_archive_bytes_in, eng::Deadline deadline,
-        crawler::RunRequest run, Metrics &metrics
+        AccessPolicyStore &access_policy, const Config &config,
+        std::unique_ptr<crawler::BrowserSession> browser, crawler::CaptureTimings timings,
+        i64 max_archive_bytes_in, eng::Deadline deadline, crawler::RunRequest run
     )
         : access_policy_(access_policy), config_(config), timings_(std::move(timings)),
           run_(std::move(run)), deadline_(deadline), max_archive_bytes_(max_archive_bytes_in),
-          browser_(
-              dns_resolver, process_starter, fs_task_processor,
-              crawler::BrowserSessionConfig{
-                  .url_bytes_max = url_bytes_max,
-                  .proxy_down_bytes_max = proxy_down_bytes_max,
-                  .browser_runs_root_ = std::move(browser_runs_root_in),
-                  .cgroup_root_path_ = std::move(cgroup_root_path_in),
-                  .cgroup_limits_ = std::move(cgroup_limits_in),
-                  .local_fixture_trust_db_source_path =
-                      crawler::LocalFixtureTrustDbSourcePath(config.StateDir()),
-                  .devtools_startup_timeout = tunables_in.devtools_startup_timeout,
-                  .cdp_handshake_timeout = tunables_in.cdp_handshake_timeout,
-                  .cdp_command_timeout = tunables_in.cdp_command_timeout,
-                  .devtools_poll_interval = tunables_in.devtools_poll_interval,
-                  .browser_stop_timeout = tunables_in.browser_stop_timeout,
-                  .cdp_max_remote_payload_bytes =
-                      ComputeCdpMaxRemotePayloadBytes(max_archive_bytes_in),
-                  .proxy_require_auth = true,
-                  .enable_local_fixture_rewrite = tunables_in.enable_local_fixture_rewrite,
-                  .testsuite_loopback_ports = {},
-                  .cgroup_name_prefix = "webshotd_crawler",
-                  .metrics = &metrics,
-              }
-          )
+          browser_(std::move(browser))
     {
     }
 
@@ -1190,14 +1163,14 @@ public:
     {
         auto started = Start();
         if (!started) {
-            auto error_detail = browser_.BuildErrorDetail(started.Error());
+            auto error_detail = browser_->BuildErrorDetail(started.Error());
             StopCdpForError();
             return Unex(CaptureError{std::move(error_detail), {}});
         }
 
         auto captured = CaptureAttachedTarget();
         if (!captured) {
-            auto error_detail = browser_.BuildErrorDetail(captured.Error());
+            auto error_detail = browser_->BuildErrorDetail(captured.Error());
             if (tracker_) {
                 const auto tracker_error = tracker_->ErrorReason();
                 if (tracker_error)
@@ -1205,7 +1178,7 @@ public:
                         "{}, tracker_error={}", error_detail, *tracker_error
                     );
             }
-            if (const auto proxy_error = browser_.ProxyErrorReason())
+            if (const auto proxy_error = browser_->ProxyErrorReason())
                 error_detail = text::Format("{}, proxy_error={}", error_detail, *proxy_error);
             auto seed_probe = CurrentSeedProbe();
             StopCdpForError();
@@ -1219,7 +1192,7 @@ public:
         auto value = GrabValueOf(captured);
         return CaptureWithNetwork{
             .exchange = std::move(value),
-            .proxy_down_bytes = browser_.ProxyDownBytes(),
+            .proxy_down_bytes = browser_->ProxyDownBytes(),
         };
     }
 
@@ -1360,13 +1333,12 @@ private:
 
     [[nodiscard]] Expected<void, String> Start()
     {
-        TRY(browser_.Start());
-        browser_.MarkPhase("connect_cdp");
-        cdp_ = TRY(browser_.ConnectCdp(deadline_));
+        browser_->MarkPhase("connect_cdp");
+        cdp_ = TRY(browser_->ConnectCdp(deadline_));
         page_session_ = std::make_unique<crawler::BrowserPageSession>(GetCdpClient());
 
         TRY(page_session_->AttachFreshTarget([this](std::string_view phase) {
-            browser_.MarkPhase(phase);
+            browser_->MarkPhase(phase);
         }));
         tracker_ = std::make_unique<PageTracker>(
             page_session_->SessionId(), page_session_->TargetId()
@@ -1378,32 +1350,32 @@ private:
     [[nodiscard]] Expected<crawler::CapturedExchange, String> CaptureAttachedTarget()
     {
         TRY(page_session_->EnableBaseDomains([this](std::string_view phase) {
-            browser_.MarkPhase(phase);
+            browser_->MarkPhase(phase);
         }));
 
-        browser_.MarkPhase("enable_fetch");
+        browser_->MarkPhase("enable_fetch");
         dto::FetchEnableParams fetch_params;
         fetch_params.handleAuthRequests = true;
         TRY(SendSessionVoid("Fetch.enable"_t, fetch_params));
 
-        browser_.MarkPhase("disable_cache");
+        browser_->MarkPhase("disable_cache");
         dto::NetworkSetCacheDisabledParams cache_params;
         cache_params.cacheDisabled = true;
         TRY(SendSessionVoid("Network.setCacheDisabled"_t, cache_params));
 
-        browser_.MarkPhase("bypass_service_worker");
+        browser_->MarkPhase("bypass_service_worker");
         dto::NetworkSetBypassServiceWorkerParams service_worker_params;
         service_worker_params.bypass = true;
         TRY(SendSessionVoid("Network.setBypassServiceWorker"_t, service_worker_params));
 
-        browser_.MarkPhase("set_extra_headers");
+        browser_->MarkPhase("set_extra_headers");
         dto::NetworkSetExtraHTTPHeadersParams header_params;
         header_params.headers.extra.emplace(
             "Accept-Language", std::string(crawler::kBrowserAcceptLanguage)
         );
         TRY(SendSessionVoid("Network.setExtraHTTPHeaders"_t, header_params));
 
-        browser_.MarkPhase("get_frame_tree");
+        browser_->MarkPhase("get_frame_tree");
         const auto frame_tree = TRY_MAP_ERR(
             GetSession().Send<dto::PageGetFrameTreeResult>("Page.getFrameTree"_t), [](auto error) {
                 return FormatCdpError("Page.getFrameTree failed"_t, std::move(error));
@@ -1411,7 +1383,7 @@ private:
         );
         GetPageTracker().SetMainFrameId(*String::FromBytes(frame_tree.frameTree.frame.id));
 
-        browser_.MarkPhase("navigate");
+        browser_->MarkPhase("navigate");
         dto::PageNavigateParams navigate_params;
         navigate_params.url = run_.seed_url.ToBytes();
         GetPageTracker().BeginSeedNavigation(run_.seed_url);
@@ -1422,69 +1394,69 @@ private:
         ENSURE(!navigate_result.errorText, *String::FromBytes(*navigate_result.errorText));
         GetPageTracker().SetExpectedMainLoaderId(StringOrNull(navigate_result.loaderId));
 
-        browser_.MarkPhase("wait_for_load");
+        browser_->MarkPhase("wait_for_load");
         TRY(WaitForPredicate(
             [this]() { return GetPageTracker().IsLoadedOrFailed(); },
             "timed out waiting for page load"_t
         ));
         if (timings_.post_load_delay > 0s) {
-            browser_.MarkPhase("post_load_delay");
+            browser_->MarkPhase("post_load_delay");
             const auto phase_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.post_load_delay)
             );
             TRY_ERR_AS(
                 SleepUntilDeadline(phase_deadline), "timed out waiting for post-load delay"_t
             );
-            browser_.MarkPhase("post_load_delay_done");
+            browser_->MarkPhase("post_load_delay_done");
         }
         if (timings_.behavior_timeout > 0s) {
-            browser_.MarkPhase("run_site_behavior");
-            browser_.MarkPhase("run_site_behavior_runtime_evaluate");
+            browser_->MarkPhase("run_site_behavior");
+            browser_->MarkPhase("run_site_behavior_runtime_evaluate");
             const auto behavior_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.behavior_timeout)
             );
             TRY(RunSiteBehavior(GetSession(), behavior_deadline));
-            browser_.MarkPhase("run_site_behavior_done");
+            browser_->MarkPhase("run_site_behavior_done");
         }
         if (timings_.net_idle_wait > 0s) {
-            browser_.MarkPhase("wait_for_idle");
-            browser_.MarkPhase("wait_for_idle_wait");
+            browser_->MarkPhase("wait_for_idle");
+            browser_->MarkPhase("wait_for_idle_wait");
             TRY(WaitForIdle(timings_.net_idle_wait));
-            browser_.MarkPhase("wait_for_idle_done");
+            browser_->MarkPhase("wait_for_idle_done");
         }
         if (timings_.page_extra_delay > 0s) {
-            browser_.MarkPhase("page_extra_delay");
+            browser_->MarkPhase("page_extra_delay");
             const auto phase_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.page_extra_delay)
             );
             TRY_ERR_AS(
                 SleepUntilDeadline(phase_deadline), "timed out waiting for extra page delay"_t
             );
-            browser_.MarkPhase("page_extra_delay_done");
+            browser_->MarkPhase("page_extra_delay_done");
         }
-        browser_.MarkPhase("wait_for_main_document");
-        browser_.MarkPhase("wait_for_main_document_wait");
+        browser_->MarkPhase("wait_for_main_document");
+        browser_->MarkPhase("wait_for_main_document_wait");
         TRY(WaitForPredicate(
             [this]() { return GetPageTracker().HasMainDocumentOrError(); },
             "timed out waiting for main document response"_t
         ));
-        browser_.MarkPhase("wait_for_main_document_done");
+        browser_->MarkPhase("wait_for_main_document_done");
 
-        browser_.MarkPhase("read_dom_state");
-        browser_.MarkPhase("read_dom_state_runtime_evaluate");
+        browser_->MarkPhase("read_dom_state");
+        browser_->MarkPhase("read_dom_state_runtime_evaluate");
         auto dom_state = TRY(ReadDomState(GetSession()));
-        browser_.MarkPhase("read_dom_state_done");
+        browser_->MarkPhase("read_dom_state_done");
         RetainedBodyBudget budget{max_archive_bytes_, 0_i64};
-        browser_.MarkPhase("read_main_body");
+        browser_->MarkPhase("read_main_body");
         auto body = TRY(GetPageTracker().ReadBody(GetSession(), budget, dom_state.html));
-        browser_.MarkPhase("read_resources");
+        browser_->MarkPhase("read_resources");
         auto resources = TRY(GetPageTracker().ReadResources(GetSession(), budget));
 
         StopEventLoop();
-        TRY(page_session_->Stop([this](std::string_view phase) { browser_.MarkPhase(phase); }));
+        TRY(page_session_->Stop([this](std::string_view phase) { browser_->MarkPhase(phase); }));
         page_session_.reset();
 
-        browser_.MarkPhase("build_exchange_start");
+        browser_->MarkPhase("build_exchange_start");
         LOG_INFO() << std::format(
             "captureViaProxy building exchange for {} (body_bytes={}, resources={})", run_.seed_url,
             body.size(), resources.size()
@@ -1493,7 +1465,7 @@ private:
             std::move(dom_state.final_url), std::move(dom_state.title), std::move(body),
             std::move(resources)
         );
-        browser_.MarkPhase("build_exchange_done");
+        browser_->MarkPhase("build_exchange_done");
         LOG_INFO() << std::format(
             "captureViaProxy built exchange for {} (status={}, resources={}, body_bytes={})",
             run_.seed_url, exchange.status_code, exchange.resources.size(), exchange.body.size()
@@ -1501,9 +1473,9 @@ private:
         tracker_.reset();
         cdp_.reset();
 
-        browser_.MarkPhase("stop_browser_success");
+        browser_->MarkPhase("stop_browser_success");
         LOG_INFO() << std::format("captureViaProxy stopping browser for {}", run_.seed_url);
-        if (const auto proxy_error = browser_.ProxyErrorReason()) {
+        if (const auto proxy_error = browser_->ProxyErrorReason()) {
             if (!IsSuccessfulMainDocumentExchange(exchange))
                 return Unex(*proxy_error);
             LOG_WARNING() << std::format(
@@ -1610,7 +1582,7 @@ private:
                                         *auth_required->authChallenge.source == "Proxy";
         if (is_proxy_challenge) {
             auth_challenge_response.response = "ProvideCredentials";
-            auth_challenge_response.username = browser_.RunId();
+            auth_challenge_response.username = browser_->RunId();
             auth_challenge_response.password = "x";
         } else {
             auth_challenge_response.response = "Default";
@@ -1693,7 +1665,7 @@ private:
     crawler::RunRequest run_;
     eng::Deadline deadline_;
     i64 max_archive_bytes_;
-    crawler::BrowserSession browser_;
+    std::unique_ptr<crawler::BrowserSession> browser_;
     std::unique_ptr<crawler::CdpClient> cdp_;
     std::unique_ptr<PageTracker> tracker_;
     std::unique_ptr<crawler::BrowserPageSession> page_session_;
@@ -1712,11 +1684,42 @@ private:
     i64 max_archive_bytes, eng::Deadline deadline, const crawler::RunRequest &run, Metrics &metrics
 )
 {
+    auto browser = TRY_MAP_ERR(
+        crawler::BrowserSession::Create(
+            dns_resolver, process_starter, fs_task_processor,
+            crawler::BrowserSessionConfig{
+                .url_bytes_max = url_bytes_max,
+                .proxy_down_bytes_max = proxy_down_bytes_max,
+                .browser_runs_root_ = std::string(browser_runs_root),
+                .cgroup_root_path_ = std::string(cgroup_root_path),
+                .cgroup_limits_ = std::move(cgroup_limits),
+                .local_fixture_trust_db_source_path =
+                    crawler::LocalFixtureTrustDbSourcePath(config.StateDir()),
+                .devtools_startup_timeout = tunables.devtools_startup_timeout,
+                .cdp_handshake_timeout = tunables.cdp_handshake_timeout,
+                .cdp_command_timeout = tunables.cdp_command_timeout,
+                .devtools_poll_interval = tunables.devtools_poll_interval,
+                .browser_stop_timeout = tunables.browser_stop_timeout,
+                .cdp_max_remote_payload_bytes = ComputeCdpMaxRemotePayloadBytes(max_archive_bytes),
+                .proxy_require_auth = true,
+                .enable_local_fixture_rewrite = tunables.enable_local_fixture_rewrite,
+                .testsuite_loopback_ports = {},
+                .cgroup_name_prefix = "webshotd_crawler",
+                .metrics = &metrics,
+            }
+        ),
+        [](auto error) -> CaptureError {
+            if (auto detail = String::FromBytes(std::string(error.View())))
+                return CaptureError(GrabValueOf(detail), std::optional<crawler::SeedProbe>{});
+            return CaptureError(
+                "browser session creation failed"_t, std::optional<crawler::SeedProbe>{}
+            );
+        }
+    );
+
     auto session = CaptureSession(
-        access_policy, config, dns_resolver, url_bytes_max, proxy_down_bytes_max, process_starter,
-        fs_task_processor, std::string(browser_runs_root), std::string(cgroup_root_path),
-        std::move(cgroup_limits), std::move(timings), tunables, max_archive_bytes, deadline,
-        crawler::RunRequest{.seed_url = run.seed_url}, metrics
+        access_policy, config, std::move(browser), std::move(timings), max_archive_bytes, deadline,
+        crawler::RunRequest{.seed_url = run.seed_url}
     );
     return session.Capture();
 }

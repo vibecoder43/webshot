@@ -724,19 +724,18 @@ BrowserCgroupPath(const BrowserPaths &paths, const BrowserSessionConfig &config)
 )
 {
     auto run_dir_fd = TRY(OpenBrowserRunDir(fs_task_processor, paths));
-    auto proxy = std::make_unique<EgressProxy>(EgressProxyConfig{
-        BrowserRunFdPath(run_dir_fd, kProxySocketFileName),
-        paths.run_id,
-        config.url_bytes_max,
-        config.proxy_down_bytes_max,
-        config.proxy_require_auth,
-        config.enable_local_fixture_rewrite,
-        config.testsuite_loopback_ports,
-    });
-    TRY_MAP_ERR(proxy->Start(dns_resolver, deadline), [](auto detail) {
-        return text::Format("proxy failed to start: {}", detail);
-    });
-    return proxy;
+    return EgressProxy::Create(
+        EgressProxyConfig{
+            BrowserRunFdPath(run_dir_fd, kProxySocketFileName),
+            paths.run_id,
+            config.url_bytes_max,
+            config.proxy_down_bytes_max,
+            config.proxy_require_auth,
+            config.enable_local_fixture_rewrite,
+            config.testsuite_loopback_ports,
+        },
+        dns_resolver, deadline
+    );
 }
 
 [[nodiscard]] Expected<std::unique_ptr<CdpClient>, String> ConnectCdpOnce(
@@ -934,10 +933,12 @@ struct BrowserSession::Impl final {
         StopProcess(process, config.browser_stop_timeout);
         if (proxy)
             proxy->Stop();
-        if (auto ret = RemoveBrowserRunDir(fs_task_processor, paths.root_dir); !ret) {
-            LOG_WARNING() << std::format(
-                "Failed to remove browser dir {}: {}", paths.root_dir, ret.Error()
-            );
+        if (!paths.root_dir.empty()) {
+            if (auto ret = RemoveBrowserRunDir(fs_task_processor, paths.root_dir); !ret) {
+                LOG_WARNING() << std::format(
+                    "Failed to remove browser dir {}: {}", paths.root_dir, ret.Error()
+                );
+            }
         }
     }
 
@@ -1018,7 +1019,17 @@ BrowserSession::BrowserSession(
 
 BrowserSession::~BrowserSession() = default;
 
-Expected<void, String> BrowserSession::Start() { return impl_->Start(); }
+Expected<std::unique_ptr<BrowserSession>, String> BrowserSession::Create(
+    us::clients::dns::Resolver &dns_resolver, eng::subprocess::ProcessStarter &process_starter,
+    eng::TaskProcessor &fs_task_processor, BrowserSessionConfig config
+)
+{
+    auto browser = std::unique_ptr<BrowserSession>(
+        new BrowserSession(dns_resolver, process_starter, fs_task_processor, std::move(config))
+    );
+    TRY_MAP_ERR(browser->impl_->Start(), [](auto error) { return error; });
+    return browser;
+}
 
 Expected<std::unique_ptr<CdpClient>, String>
 BrowserSession::ConnectCdp(eng::Deadline overall_deadline) const

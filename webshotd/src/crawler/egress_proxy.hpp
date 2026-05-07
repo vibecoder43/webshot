@@ -40,7 +40,8 @@ struct [[nodiscard]] EgressProxyConfig final {
 
 class [[nodiscard]] EgressProxy final {
 public:
-    explicit EgressProxy(EgressProxyConfig config);
+    [[nodiscard]] static Expected<std::unique_ptr<EgressProxy>, String>
+    Create(EgressProxyConfig config, us::clients::dns::Resolver &resolver, eng::Deadline deadline);
     ~EgressProxy() noexcept;
 
     EgressProxy(const EgressProxy &) = delete;
@@ -48,14 +49,14 @@ public:
     EgressProxy &operator=(const EgressProxy &) = delete;
     EgressProxy &operator=(EgressProxy &&) = delete;
 
-    [[nodiscard]] Expected<void, String>
-    Start(us::clients::dns::Resolver &resolver, eng::Deadline deadline);
     void Stop() noexcept;
 
     [[nodiscard]] i64 DownBytes() const noexcept;
     [[nodiscard]] std::optional<String> ErrorReason() const noexcept;
 
 private:
+    explicit EgressProxy(EgressProxyConfig config);
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
