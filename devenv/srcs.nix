@@ -41,7 +41,6 @@ in
     unialgo = inputs.uniAlgoSrc;
     userver = inputs.userverSrc;
     boostsml = inputs.boostSmlSrc;
-    pgque = inputs.pgqueSrc;
     rapidoc = inputs.rapidocSrc;
     htmx = inputs.htmxSrc;
     htmxJsonEnc = inputs.htmxJsonEncSrc;

@@ -192,23 +192,6 @@
         "type": "github"
       }
     },
-    "pgqueSrc": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1777986818,
-        "narHash": "sha256-CwxHGmjnO7vOOXeSzHepTJvwH5UtN4eMda4hpqnOWwo=",
-        "owner": "nikolays",
-        "repo": "pgque",
-        "rev": "b23df0611c93fa2d1516b735af6db548d88001a4",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nikolays",
-        "repo": "pgque",
-        "rev": "b23df0611c93fa2d1516b735af6db548d88001a4",
-        "type": "github"
-      }
-    },
     "rapidocSrc": {
       "flake": false,
       "locked": {
@@ -247,12 +230,11 @@
         "nixpkgs": "nixpkgs",
         "nunjucksSrc": "nunjucksSrc",
         "pgmigrateSrc": "pgmigrateSrc",
-        "pgqueSrc": "pgqueSrc",
         "rapidocSrc": "rapidocSrc",
         "replaywebpageSrc": "replaywebpageSrc",
         "seaweedfsNixpkgs": "seaweedfsNixpkgs",
-        "treefmt-nix": "treefmt-nix",
         "transliterateSrc": "transliterateSrc",
+        "treefmt-nix": "treefmt-nix",
         "uniAlgoSrc": "uniAlgoSrc",
         "userverSrc": "userverSrc",
         "websocketsSrc": "websocketsSrc",
@@ -275,6 +257,19 @@
         "type": "github"
       }
     },
+    "transliterateSrc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1537217555,
+        "narHash": "sha256-GLdzlTRMtN9y9GuUg8hXjKJPuD8kpmeqy0/MfXPOvQw=",
+        "type": "tarball",
+        "url": "https://files.pythonhosted.org/packages/source/t/transliterate/transliterate-1.10.2.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://files.pythonhosted.org/packages/source/t/transliterate/transliterate-1.10.2.tar.gz"
+      }
+    },
     "treefmt-nix": {
       "inputs": {
         "nixpkgs": [
@@ -293,19 +288,6 @@
         "owner": "numtide",
         "repo": "treefmt-nix",
         "type": "github"
-      }
-    },
-    "transliterateSrc": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1537217555,
-        "narHash": "sha256-GLdzlTRMtN9y9GuUg8hXjKJPuD8kpmeqy0/MfXPOvQw=",
-        "type": "tarball",
-        "url": "https://files.pythonhosted.org/packages/source/t/transliterate/transliterate-1.10.2.tar.gz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://files.pythonhosted.org/packages/source/t/transliterate/transliterate-1.10.2.tar.gz"
       }
     },
     "uniAlgoSrc": {

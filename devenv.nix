@@ -15,7 +15,6 @@
         ./devenv/drv.nix
         ./devenv/overlay/backtrace.nix
         ./devenv/pkg/pgmigrate.nix
-        ./devenv/pkg/pgque.nix
         ./devenv/pkg/repo_python.nix
         ./devenv/pkg/seaweedfs.nix
         ./devenv/pkg/testsuite.nix

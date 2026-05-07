@@ -30,9 +30,6 @@ inputs:
   boostSmlSrc:
     url: github:stateforward/sml.cpp/4a7109b5dd4aae40e78304e3ac03440ccc35031e
     flake: false
-  pgqueSrc:
-    url: github:nikolays/pgque/b23df0611c93fa2d1516b735af6db548d88001a4
-    flake: false
   rapidocSrc:
     url: https://registry.npmjs.org/rapidoc/-/rapidoc-9.3.8.tgz
     flake: false

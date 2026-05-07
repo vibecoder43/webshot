@@ -42,8 +42,6 @@
   unialgo = callSrcPkg ./pkg/uni-algo.nix "unialgo" {
     inherit toolchain;
   };
-  pgque = callSrcPkg ./pkg/pgque.nix "pgque" {};
-
   rapidoc = nix.stdenvNoCC.mkDerivation {
     name = "rapidoc-assets";
     src = srcs.rapidoc;
@@ -114,5 +112,4 @@ in {
   userverDbg = userverPkgs.userver-debug-addr-ub;
   inherit (repoPython) repoPy repoToolPy;
   webUi = webUi;
-  pgque = pgque;
 }
