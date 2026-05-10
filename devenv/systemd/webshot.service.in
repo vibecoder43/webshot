@@ -10,10 +10,10 @@ RemainAfterExit=yes
 Delegate=cpu memory
 DynamicUser=yes
 StateDirectory=webshot
+RuntimeDirectory=webshot
 WorkingDirectory=@out@
-Environment=PATH=@runtimePath@
-ExecStart=@repoPython@/bin/python3 -m s6.runtime up --mode prod --layout-root @out@ --state-dir %S/webshot --binary-path @out@/webshotd/webshotd_wrapper --config-vars-source /etc/webshot/config_vars.yaml@execStartExtra@
-ExecStop=@repoPython@/bin/python3 -m s6.runtime down --mode prod --layout-root @out@ --state-dir %S/webshot
+ExecStart=@out@/bin/webshot-systemd-runtime up --mode prod --layout-root @out@ --state-dir %S/webshot --runtime-dir %t/webshot --binary-path @out@/webshotd/webshotd_wrapper --config-vars-source /etc/webshot/config_vars.yaml@execStartExtra@
+ExecStop=@out@/bin/webshot-systemd-runtime down --mode prod --layout-root @out@ --state-dir %S/webshot --runtime-dir %t/webshot
 TimeoutStartSec=120
 TimeoutStopSec=120
 KillMode=control-group

@@ -6,7 +6,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from s6.common import ToolError, die, need_cmd, run
+import yaml
+
+from s6.common import die, need_cmd, run
 from s6.runtime_config import (
     resolve_local_s3_bootstrap_config,
     resolve_runtime_dependency_modes,
@@ -24,6 +26,9 @@ from s6.runtime_services import (
     render_service_tree,
 )
 from s6.s3_bucket import ensure_s3_bucket_exists
+
+_LOCAL_PG_CAPTURE_META_DB_DSN = "postgresql://postgres@localhost:5432/webshot_capture_meta_db"
+_LOCAL_PG_SHARED_STATE_DB_DSN = "postgresql://postgres@localhost:5432/webshot_shared_state_db"
 
 
 @dataclass(frozen=True)
@@ -54,11 +59,19 @@ def _validate_seaweedfs_s3_config_arg(ctx: RuntimeUpContext) -> None:
             die("--seaweedfs-s3-config requires s3_mode: local", exit_code=2)
         return
 
-    if ctx.seaweedfs_s3_config_path is not None and not ctx.seaweedfs_s3_config_path.is_file():
-        die(
-            f"Missing SeaweedFS S3 config file: {ctx.seaweedfs_s3_config_path}",
-            exit_code=2,
-        )
+    if ctx.seaweedfs_s3_config_path is not None:
+        try:
+            is_file = ctx.seaweedfs_s3_config_path.is_file()
+        except PermissionError as e:
+            die(
+                f"Cannot access SeaweedFS S3 config file: {ctx.seaweedfs_s3_config_path} ({e})",
+                exit_code=2,
+            )
+        if not is_file:
+            die(
+                f"Missing SeaweedFS S3 config file: {ctx.seaweedfs_s3_config_path}",
+                exit_code=2,
+            )
 
     if ctx.seaweedfs_s3_config_path is None:
         die("--seaweedfs-s3-config is required when s3_mode is local", exit_code=2)
@@ -207,13 +220,19 @@ def _bootstrap_databases(
 
 def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     ctx.state_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        raw = ctx.config_vars_source.read_text(encoding="utf-8")
-    except FileNotFoundError as e:
-        raise ToolError(
-            message=f"Missing config vars file: {ctx.config_vars_source}", exit_code=2
-        ) from e
-    ctx.runtime_config_vars_path.write_text(raw, encoding="utf-8")
+    raw_vars = read_yaml(ctx.config_vars_source)
+    dependency_modes = resolve_runtime_dependency_modes(raw_vars, source=ctx.config_vars_source)
+
+    # Keep NixOS config_vars.yaml minimal: when running in pg_mode=local, we always
+    # want concrete DSN keys present in the effective runtime config vars file.
+    if dependency_modes.pg_mode == "local":
+        raw_vars.setdefault("pg_capture_meta_db_dsn", _LOCAL_PG_CAPTURE_META_DB_DSN)
+        raw_vars.setdefault("pg_shared_state_db_dsn", _LOCAL_PG_SHARED_STATE_DB_DSN)
+
+    ctx.runtime_config_vars_path.write_text(
+        yaml.safe_dump(raw_vars, sort_keys=True),
+        encoding="utf-8",
+    )
 
 
 def _ensure_postgres_database(db_name: str) -> None:

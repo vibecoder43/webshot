@@ -308,22 +308,33 @@ in {
       };
 
       postInstall = ''
-        ${mkStageRuntimeAssets {
+                ${mkStageRuntimeAssets {
           layoutRoot = "\"$out\"";
           shellLayoutRoot = true;
         }}
 
-        patchShebangs "$out/webshotd/webshotd_wrapper"
-        wrapProgram "$out/webshotd/webshotd_wrapper" \
-          --set PATH "${lib.makeBinPath sets.runtimeTools}"
+                patchShebangs "$out/webshotd/webshotd_wrapper"
+                wrapProgram "$out/webshotd/webshotd_wrapper" \
+                  --set PATH "${lib.makeBinPath sets.runtimeTools}"
 
-        install_systemd_unit() {
-          local unit_name="$1"
-          local description="$2"
-          local conflicts="$3"
-          local local_s3_assert="$4"
-          local exec_start_extra="$5"
-          local unit_path="$out/lib/systemd/system/$unit_name"
+                # NixOS may generate a drop-in that overrides PATH. Avoid relying on unit
+                # environment by routing through a package entrypoint that sets PATH to
+                # the runtime toolchain.
+                install -Dm0755 /dev/null "$out/bin/webshot-systemd-runtime"
+                cat >"$out/bin/webshot-systemd-runtime" <<'EOF'
+        #!${nix.bash}/bin/bash
+        set -euo pipefail
+        export PATH='${sets.systemdRuntimePath}'
+        exec '${drv.repoPy}/bin/python3' -m s6.runtime "$@"
+        EOF
+
+                install_systemd_unit() {
+                  local unit_name="$1"
+                  local description="$2"
+                  local conflicts="$3"
+                  local local_s3_assert="$4"
+                  local exec_start_extra="$5"
+                  local unit_path="$out/lib/systemd/system/$unit_name"
 
           install -Dm0644 ${./systemd/webshot.service.in} "$unit_path"
           substituteInPlace "$unit_path" \
@@ -331,23 +342,21 @@ in {
             --replace-fail '@conflicts@' "$conflicts" \
             --replace-fail '@localS3Assert@' "$local_s3_assert" \
             --replace-fail '@out@' "$out" \
-            --replace-fail '@repoPython@' '${drv.repoPy}' \
-            --replace-fail '@runtimePath@' '${sets.systemdRuntimePath}' \
             --replace-fail '@execStartExtra@' "$exec_start_extra"
         }
 
-        install_systemd_unit \
-          webshot.service \
-          "webshot stack" \
-          webshot-local-s3.service \
-          "" \
-          ""
-        install_systemd_unit \
-          webshot-local-s3.service \
-          "webshot stack (local S3)" \
-          webshot.service \
-          "" \
-          " --seaweedfs-s3-config /run/credentials/webshot-local-s3.service/seaweedfs_s3_config.json"
+                install_systemd_unit \
+                  webshot.service \
+                  "webshot stack" \
+                  webshot-local-s3.service \
+                  "" \
+                  ""
+                install_systemd_unit \
+                  webshot-local-s3.service \
+                  "webshot stack (local S3)" \
+                  webshot.service \
+                  "" \
+                  ' --seaweedfs-s3-config ${"$"}{CREDENTIALS_DIRECTORY}/seaweedfs_s3_config.json'
       '';
     };
 }

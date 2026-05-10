@@ -10,17 +10,18 @@
     lib.optionalAttrs (value != null) {
       ${name} = value;
     };
-  serviceUnit =
+  unitName =
     if cfg.s3Mode == "local"
-    then "webshot-local-s3.service"
-    else "webshot.service";
+    then "webshot-local-s3"
+    else "webshot";
+  unitFile = "${unitName}.service";
   configVars =
     optionalValue "pg_mode" cfg.pgMode
     // optionalValue "s3_mode" cfg.s3Mode
     // optionalValue "s3_bucket" cfg.s3Bucket
     // optionalValue "public_base_url" cfg.publicBaseUrl
     // lib.optionalAttrs (cfg.secdistPath != null) {
-      secdist_path = "/run/credentials/${serviceUnit}/secdist.json";
+      secdist_path = "/run/credentials/${unitFile}/secdist.json";
     }
     // optionalValue "allowlist_only" cfg.allowlistOnly
     // optionalValue "https_only" cfg.httpsOnly
@@ -41,6 +42,23 @@
 in {
   options.services.webshot = {
     enable = lib.mkEnableOption "webshot";
+
+    # The shipped systemd units use DynamicUser=yes, which is incompatible with
+    # persisting the embedded Postgres data dir across restarts (the numeric UID
+    # changes and Postgres requires strict data dir ownership).
+    #
+    # The NixOS module pins execution to a stable system user.
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "webshot";
+      description = "System user account used to run the webshot systemd service.";
+    };
+
+    group = lib.mkOption {
+      type = lib.types.str;
+      default = "webshot";
+      description = "System group used to run the webshot systemd service.";
+    };
 
     package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
@@ -148,16 +166,36 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    users.groups = lib.mkIf (cfg.package != null) {
+      ${cfg.group} = {};
+    };
+    users.users = lib.mkIf (cfg.package != null) {
+      ${cfg.user} = {
+        isSystemUser = true;
+        group = cfg.group;
+      };
+    };
+
     systemd.packages = lib.optional (cfg.package != null) cfg.package;
 
     environment.etc."webshot/config_vars.yaml".source =
       configVarsFormat.generate "webshot-config-vars.yaml" configVars;
 
-    systemd.targets.multi-user.wants = lib.optional (cfg.package != null) serviceUnit;
+    systemd.targets.multi-user.wants = lib.optional (cfg.package != null) unitFile;
 
-    systemd.services.${serviceUnit}.serviceConfig.LoadCredential = lib.mkIf (cfg.package != null) (
-      lib.optional (cfg.secdistPath != null) "secdist.json:${cfg.secdistPath}"
-      ++ lib.optional (cfg.s3Mode == "local" && cfg.seaweedfsS3ConfigPath != null) "seaweedfs_s3_config.json:${cfg.seaweedfsS3ConfigPath}"
-    );
+    systemd.services.${unitName} = lib.mkIf (cfg.package != null) {
+      serviceConfig = {
+        # Override the unit's DynamicUser=yes to avoid UID churn breaking embedded Postgres.
+        DynamicUser = lib.mkForce false;
+        User = cfg.user;
+        Group = cfg.group;
+        RuntimeDirectory = "webshot";
+
+        LoadCredential =
+          lib.optional (cfg.secdistPath != null) "secdist.json:${cfg.secdistPath}"
+          ++ lib.optional (cfg.s3Mode == "local" && cfg.seaweedfsS3ConfigPath != null)
+          "seaweedfs_s3_config.json:${cfg.seaweedfsS3ConfigPath}";
+      };
+    };
   };
 }

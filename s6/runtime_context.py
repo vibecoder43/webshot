@@ -26,8 +26,15 @@ class RuntimeStateContext:
     mode: str
     repo_root: Path
     state_dir: Path
-    scan_dir: Path
-    svscan_pid_file: Path
+    runtime_dir: Path
+
+    @property
+    def scan_dir(self) -> Path:
+        return self.runtime_dir / "s6_scan"
+
+    @property
+    def svscan_pid_file(self) -> Path:
+        return self.runtime_dir / "s6_svscan.pid"
 
     def supervised_service_dir(self, name: str) -> Path:
         return self.scan_dir / name
@@ -181,6 +188,7 @@ def require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> st
 def build_state_context(
     *,
     mode: str,
+    runtime_dir: str,
     layout_root: str | None = None,
     state_dir: str | None = None,
 ) -> RuntimeStateContext:
@@ -188,12 +196,12 @@ def build_state_context(
         Path(layout_root).resolve() if layout_root else repo_root_from_file(Path(__file__))
     )
     resolved_state_dir = Path(state_dir).resolve() if state_dir else Path("/tmp/webshot") / mode
+    resolved_runtime_dir = Path(runtime_dir).resolve()
     return RuntimeStateContext(
         mode=mode,
         repo_root=resolved_repo_root,
         state_dir=resolved_state_dir,
-        scan_dir=resolved_state_dir / "s6_scan",
-        svscan_pid_file=resolved_state_dir / "s6_svscan.pid",
+        runtime_dir=resolved_runtime_dir,
     )
 
 
@@ -201,19 +209,24 @@ def build_inspect_context(
     *,
     mode: str,
     service_profile: str,
+    runtime_dir: str,
     layout_root: str | None = None,
     state_dir: str | None = None,
 ) -> RuntimeInspectContext:
     if service_profile == "test_infra" and mode != "dev":
         die("service profile 'test_infra' requires --mode dev", exit_code=2)
 
-    state_ctx = build_state_context(mode=mode, layout_root=layout_root, state_dir=state_dir)
+    state_ctx = build_state_context(
+        mode=mode,
+        runtime_dir=runtime_dir,
+        layout_root=layout_root,
+        state_dir=state_dir,
+    )
     return RuntimeInspectContext(
         mode=state_ctx.mode,
         repo_root=state_ctx.repo_root,
         state_dir=state_ctx.state_dir,
-        scan_dir=state_ctx.scan_dir,
-        svscan_pid_file=state_ctx.svscan_pid_file,
+        runtime_dir=state_ctx.runtime_dir,
         service_profile=service_profile,
     )
 
@@ -224,6 +237,7 @@ def build_up_context(
     service_profile: str,
     layout_root: str | None,
     state_dir: str | None,
+    runtime_dir: str,
     binary_path: str,
     config_vars_source: str,
     runtime_ld_library_path: str | None,
@@ -232,6 +246,7 @@ def build_up_context(
     inspect_ctx = build_inspect_context(
         mode=mode,
         service_profile=service_profile,
+        runtime_dir=runtime_dir,
         layout_root=layout_root,
         state_dir=state_dir,
     )
@@ -239,8 +254,7 @@ def build_up_context(
         mode=inspect_ctx.mode,
         repo_root=inspect_ctx.repo_root,
         state_dir=inspect_ctx.state_dir,
-        scan_dir=inspect_ctx.scan_dir,
-        svscan_pid_file=inspect_ctx.svscan_pid_file,
+        runtime_dir=inspect_ctx.runtime_dir,
         service_profile=service_profile,
         binary_path=Path(binary_path),
         config_vars_source=Path(config_vars_source),

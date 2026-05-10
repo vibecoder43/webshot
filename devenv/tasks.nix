@@ -91,6 +91,7 @@
 
   mkRuntime = action: mode: profile: let
     cfg = modes.${mode};
+    runtimeDir = "${cfg.buildDir}/runtime_run/${cfg.infra}";
     profileArg =
       if profile == null
       then ""
@@ -104,6 +105,7 @@
     then ''
       python3 -m s6.runtime up \
         --mode ${lib.escapeShellArg cfg.infra}${profileArg} \
+        --runtime-dir ${lib.escapeShellArg runtimeDir} \
         --binary-path ${lib.escapeShellArg "${cfg.buildDir}/runtime_root/webshotd/webshotd_wrapper"} \
         --config-vars-source ${lib.escapeShellArg cfg.configVars} \
         --runtime-ld-library-path ${lib.escapeShellArg runtimeLdPath}${seaweedfsS3ConfigArg}
@@ -111,11 +113,13 @@
     else if action == "down"
     then ''
       python3 -m s6.runtime down \
-        --mode ${lib.escapeShellArg cfg.infra}
+        --mode ${lib.escapeShellArg cfg.infra} \
+        --runtime-dir ${lib.escapeShellArg runtimeDir}
     ''
     else ''
       python3 -m s6.runtime ${lib.escapeShellArg action} \
-        --mode ${lib.escapeShellArg cfg.infra}${profileArg}
+        --mode ${lib.escapeShellArg cfg.infra}${profileArg} \
+        --runtime-dir ${lib.escapeShellArg runtimeDir}
     '';
 
   mkBuildTask = mode: let

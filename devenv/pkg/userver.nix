@@ -5,7 +5,9 @@
   userverBuildPython,
   userverLibs,
 }: let
-  baseCmakeFlags = [
+  lib = pkgs.lib;
+
+  commonCmakeFlags = [
     "-DUSERVER_DOWNLOAD_PACKAGES=OFF"
     "-DUSERVER_USE_STATIC_LIBS=OFF"
     "-DUSERVER_CHECK_PACKAGE_VERSIONS=0"
@@ -13,9 +15,6 @@
     "-DUSERVER_FEATURE_POSTGRESQL=ON"
     "-DUSERVER_FEATURE_S3API=ON"
     "-DUSERVER_FEATURE_PATCH_LIBPQ=OFF"
-
-    "-DUSERVER_FEATURE_TESTSUITE=ON"
-    "-DUSERVER_TESTSUITE_USE_VENV=OFF"
 
     "-DUSERVER_FEATURE_MONGODB=OFF"
     "-DUSERVER_FEATURE_REDIS=OFF"
@@ -34,6 +33,7 @@
   mkUserver = {
     buildType,
     sanitize ? "",
+    enableTestsuite ? false,
   }:
     toolchain.stdenv.mkDerivation {
       name = "userver";
@@ -64,7 +64,17 @@
       dontStrip = true;
 
       cmakeFlags =
-        baseCmakeFlags
+        commonCmakeFlags
+        ++ [
+          "-DUSERVER_FEATURE_TESTSUITE=${
+            if enableTestsuite
+            then "ON"
+            else "OFF"
+          }"
+        ]
+        ++ lib.optionals enableTestsuite [
+          "-DUSERVER_TESTSUITE_USE_VENV=OFF"
+        ]
         ++ [
           "-DUSERVER_INSTALL=ON"
           "-DUSERVER_CHAOTIC_USE_VENV=OFF"
@@ -91,11 +101,13 @@
   userver-release = mkUserver {
     buildType = "Release";
     sanitize = "";
+    enableTestsuite = false;
   };
 
   userver-debug-addr-ub = mkUserver {
     buildType = "Debug";
     sanitize = "addr;ub";
+    enableTestsuite = true;
   };
 in {
   inherit userver-release userver-debug-addr-ub;

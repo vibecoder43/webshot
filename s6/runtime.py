@@ -475,6 +475,7 @@ def _build_parser() -> argparse.ArgumentParser:
     up_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
     up_parser.add_argument("--layout-root")
     up_parser.add_argument("--state-dir")
+    up_parser.add_argument("--runtime-dir", required=True)
     up_parser.add_argument("--service-profile", choices=["full", "test_infra"], default="full")
     up_parser.add_argument("--binary-path", required=True)
     up_parser.add_argument("--config-vars-source", required=True)
@@ -485,12 +486,14 @@ def _build_parser() -> argparse.ArgumentParser:
     down_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
     down_parser.add_argument("--layout-root")
     down_parser.add_argument("--state-dir")
+    down_parser.add_argument("--runtime-dir", required=True)
 
     for action in ["status", "logs", "check"]:
         action_parser = subparsers.add_parser(action)
         action_parser.add_argument("--mode", required=True, choices=RUNTIME_MODES)
         action_parser.add_argument("--layout-root")
         action_parser.add_argument("--state-dir")
+        action_parser.add_argument("--runtime-dir", required=True)
         action_parser.add_argument(
             "--service-profile",
             choices=["full", "test_infra"],
@@ -511,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
                 service_profile=args.service_profile,
                 layout_root=args.layout_root,
                 state_dir=args.state_dir,
+                runtime_dir=args.runtime_dir,
                 binary_path=args.binary_path,
                 config_vars_source=args.config_vars_source,
                 runtime_ld_library_path=args.runtime_ld_library_path,
@@ -521,6 +525,7 @@ def main(argv: list[str] | None = None) -> int:
             _down(
                 build_state_context(
                     mode=args.mode,
+                    runtime_dir=args.runtime_dir,
                     layout_root=args.layout_root,
                     state_dir=args.state_dir,
                 )
@@ -530,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
                 build_inspect_context(
                     mode=args.mode,
                     service_profile=args.service_profile,
+                    runtime_dir=args.runtime_dir,
                     layout_root=args.layout_root,
                     state_dir=args.state_dir,
                 )
@@ -539,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
                 build_inspect_context(
                     mode=args.mode,
                     service_profile=args.service_profile,
+                    runtime_dir=args.runtime_dir,
                     layout_root=args.layout_root,
                     state_dir=args.state_dir,
                 )
@@ -548,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
                 build_inspect_context(
                     mode=args.mode,
                     service_profile=args.service_profile,
+                    runtime_dir=args.runtime_dir,
                     layout_root=args.layout_root,
                     state_dir=args.state_dir,
                 )
