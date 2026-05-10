@@ -57,13 +57,9 @@ components_manager:
       client_ip_header_name#fallback: X-Forwarded-For
       s3_mode: $s3_mode
       s3_bucket: $s3_bucket
-      s3_bucket#fallback: webshot
       s3_endpoint: $s3_endpoint
-      s3_endpoint#fallback: http://127.0.0.1:8333
       s3_region: $s3_region
-      s3_region#fallback: us-east-1
       public_base_url: $public_base_url
-      public_base_url#fallback: http://127.0.0.1:8333/webshot
       s3_timeout_ms: 3000
     dns-client:
       fs-task-processor: fs-task-processor
@@ -339,7 +335,6 @@ components_manager:
       s3_credentials_endpoint: $s3_credentials_endpoint
       s3_credentials_endpoint#fallback: 'https://sts.example.com/'
       s3_use_sts: $s3_use_sts
-      s3_use_sts#fallback: false
       s3_credentials_duration_sec: $s3_credentials_duration_sec
       s3_credentials_duration_sec#fallback: 3600
       s3_credentials_refresh_margin_sec: $s3_credentials_refresh_margin_sec

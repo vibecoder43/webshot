@@ -29,6 +29,10 @@ from s6.s3_bucket import ensure_s3_bucket_exists
 
 _LOCAL_PG_CAPTURE_META_DB_DSN = "postgresql://postgres@localhost:5432/webshot_capture_meta_db"
 _LOCAL_PG_SHARED_STATE_DB_DSN = "postgresql://postgres@localhost:5432/webshot_shared_state_db"
+_LOCAL_S3_BUCKET = "webshot"
+_LOCAL_S3_ENDPOINT = "http://127.0.0.1:8333"
+_LOCAL_S3_REGION = "us-east-1"
+_LOCAL_PUBLIC_BASE_URL = "http://127.0.0.1:8333/webshot"
 
 
 @dataclass(frozen=True)
@@ -221,6 +225,7 @@ def _bootstrap_databases(
 def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     ctx.state_dir.mkdir(parents=True, exist_ok=True)
     raw_vars = read_yaml(ctx.config_vars_source)
+    raw_vars.setdefault("pg_mode", "local")
     dependency_modes = resolve_runtime_dependency_modes(raw_vars, source=ctx.config_vars_source)
 
     # Keep NixOS config_vars.yaml minimal: when running in pg_mode=local, we always
@@ -228,6 +233,15 @@ def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     if dependency_modes.pg_mode == "local":
         raw_vars.setdefault("pg_capture_meta_db_dsn", _LOCAL_PG_CAPTURE_META_DB_DSN)
         raw_vars.setdefault("pg_shared_state_db_dsn", _LOCAL_PG_SHARED_STATE_DB_DSN)
+
+    # Local SeaweedFS S3 runs on 127.0.0.1:8333 in this repo. Allow minimal config_vars.yaml
+    # for the local mode by filling in these values for runtime bootstrap purposes.
+    if dependency_modes.s3_mode == "local":
+        raw_vars.setdefault("s3_bucket", _LOCAL_S3_BUCKET)
+        raw_vars.setdefault("s3_endpoint", _LOCAL_S3_ENDPOINT)
+        raw_vars.setdefault("s3_region", _LOCAL_S3_REGION)
+        raw_vars.setdefault("public_base_url", _LOCAL_PUBLIC_BASE_URL)
+        raw_vars.setdefault("s3_use_sts", False)
 
     ctx.runtime_config_vars_path.write_text(
         yaml.safe_dump(raw_vars, sort_keys=True),
