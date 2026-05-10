@@ -61,11 +61,14 @@ namespace {
 }
 
 [[nodiscard]] Expected<std::string, StorageUrlError> RenderReplayLocation(
-    const CaptureRecord &capture, const Config &config, const std::optional<String> &request_host
+    const CaptureRecord &capture, const Config &config, const std::optional<String> &request_host,
+    const std::optional<String> &forwarded_host, const std::optional<String> &forwarded_proto
 )
 {
-    const auto download_url = TRY(BuildCaptureDownloadUrl(
-        capture.uuid, config.S3Mode(), config.S3PublicBaseUrl(), request_host
+    // Replay redirect is used behind a reverse proxy; respect forwarded origin when present.
+    const auto download_url = TRY(MakeCaptureDownloadUrl(
+        capture.uuid, config.S3Mode(), config.S3PublicBaseUrl(), request_host, forwarded_host,
+        forwarded_proto, config.HttpsOnly()
     ));
 
     std::string out = "/vendor/replaywebpage/index.html?source=";
@@ -183,7 +186,9 @@ std::string UiReplayHandler::HandleRequestThrow(
     }
     response.SetStatus(kFound);
     auto replay_location = RenderReplayLocation(
-        **capture, config_, request_support.RequestHost(request)
+        **capture, config_, request_support.RequestHost(request),
+        request_support.RequestForwardedHost(request),
+        request_support.RequestForwardedProto(request)
     );
     if (!replay_location) {
         LOG_ERROR() << std::format(

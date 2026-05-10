@@ -14,11 +14,14 @@ enum class StorageUrlError {
     kInvalidPublicBaseUrl,
     kMissingRequestHost,
     kInvalidRequestHost,
+    kInvalidForwardedHost,
+    kInvalidForwardedProto,
 };
 
-[[nodiscard]] Expected<Url, StorageUrlError> BuildCaptureDownloadUrl(
+[[nodiscard]] Expected<Url, StorageUrlError> MakeCaptureDownloadUrl(
     ws::uuid::Uuid uuid, Mode s3_mode, const String &public_base_url,
-    const std::optional<String> &request_host
+    const std::optional<String> &request_host, const std::optional<String> &forwarded_host,
+    const std::optional<String> &forwarded_proto, bool https_only
 );
 
 [[nodiscard]] String StorageUrlErrorMessage(StorageUrlError error);

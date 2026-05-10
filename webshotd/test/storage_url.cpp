@@ -20,8 +20,9 @@ namespace {
 
 UTEST(StorageUrl, ExternalModePreservesConfiguredBase)
 {
-    const auto url = BuildCaptureDownloadUrl(
-        SampleUuid(), kExternal, "https://storage.example/webshot"_t, "client.example:8080"_t
+    const auto url = MakeCaptureDownloadUrl(
+        SampleUuid(), kExternal, "https://storage.example/webshot"_t, "client.example:8080"_t, {},
+        {}, false
     );
 
     ASSERT_TRUE(url);
@@ -32,8 +33,9 @@ UTEST(StorageUrl, ExternalModePreservesConfiguredBase)
 
 UTEST(StorageUrl, LocalModeUsesRequestHostnameAndConfiguredPort)
 {
-    const auto url = BuildCaptureDownloadUrl(
-        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "client.example:8080"_t
+    const auto url = MakeCaptureDownloadUrl(
+        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "client.example:8080"_t, {}, {},
+        false
     );
 
     ASSERT_TRUE(url);
@@ -45,8 +47,9 @@ UTEST(StorageUrl, LocalModeUsesRequestHostnameAndConfiguredPort)
 
 UTEST(StorageUrl, LocalModeHandlesBracketedIpv6RequestHost)
 {
-    const auto url = BuildCaptureDownloadUrl(
-        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "[2001:db8::1]:8080"_t
+    const auto url = MakeCaptureDownloadUrl(
+        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "[2001:db8::1]:8080"_t, {}, {},
+        false
     );
 
     ASSERT_TRUE(url);
@@ -57,8 +60,8 @@ UTEST(StorageUrl, LocalModeHandlesBracketedIpv6RequestHost)
 
 UTEST(StorageUrl, LocalModeRejectsMissingRequestHost)
 {
-    const auto url = BuildCaptureDownloadUrl(
-        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, {}
+    const auto url = MakeCaptureDownloadUrl(
+        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, {}, {}, {}, false
     );
 
     ASSERT_FALSE(url);
@@ -67,8 +70,9 @@ UTEST(StorageUrl, LocalModeRejectsMissingRequestHost)
 
 UTEST(StorageUrl, LocalModeRejectsInvalidRequestHost)
 {
-    const auto url = BuildCaptureDownloadUrl(
-        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "client.example/path"_t
+    const auto url = MakeCaptureDownloadUrl(
+        SampleUuid(), kLocal, "http://127.0.0.1:8333/webshot"_t, "client.example/path"_t, {}, {},
+        false
     );
 
     ASSERT_FALSE(url);

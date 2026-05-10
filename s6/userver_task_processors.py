@@ -46,7 +46,9 @@ def _static_main_worker_threads(static_config: dict[str, Any]) -> int:
         die("static config is missing main-task-processor.worker_threads", exit_code=2)
 
     if value == MAIN_WORKER_THREADS_CONFIG_VAR:
-        value = main_task_processor.get("worker_threads#fallback", MAIN_WORKER_THREADS_FALLBACK_DEFAULT)
+        value = main_task_processor.get(
+            "worker_threads#fallback", MAIN_WORKER_THREADS_FALLBACK_DEFAULT
+        )
 
     if not isinstance(value, int) or value <= 0:
         die(

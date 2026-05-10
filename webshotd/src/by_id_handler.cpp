@@ -87,9 +87,10 @@ std::string ByIdHandler::HandleRequestThrow(
         return httpu::RespondError(response, kNotFound, "capture not found"_t);
     }
 
-    const auto download_url = BuildCaptureDownloadUrl(
+    const auto download_url = MakeCaptureDownloadUrl(
         (**capture).uuid, config_.S3Mode(), config_.S3PublicBaseUrl(),
-        request_support.RequestHost(request)
+        request_support.RequestHost(request), request_support.RequestForwardedHost(request),
+        request_support.RequestForwardedProto(request), config_.HttpsOnly()
     );
     if (!download_url) {
         LOG_ERROR() << std::format(

@@ -15,6 +15,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <userver/engine/task/current_task.hpp>
@@ -144,13 +145,31 @@ public:
 
     [[nodiscard]] std::optional<String> RequestHost(const server::http::HttpRequest &request) const
     {
-        auto host = String::FromBytes(request.GetHeader(us::http::headers::kHost));
-        if (!host)
-            return {};
-        return *host;
+        return RequestHeader(request, us::http::headers::kHost);
+    }
+
+    [[nodiscard]] std::optional<String>
+    RequestForwardedHost(const server::http::HttpRequest &request) const
+    {
+        return RequestHeader(request, "X-Forwarded-Host");
+    }
+
+    [[nodiscard]] std::optional<String>
+    RequestForwardedProto(const server::http::HttpRequest &request) const
+    {
+        return RequestHeader(request, "X-Forwarded-Proto");
     }
 
 private:
+    [[nodiscard]] static std::optional<String>
+    RequestHeader(const server::http::HttpRequest &request, std::string_view name)
+    {
+        const auto value = request.GetHeader(std::string{name});
+        if (value.empty())
+            return {};
+        return TRY(String::FromBytes(value));
+    }
+
     [[nodiscard]] static ParamError MissingParamError(String param_name)
     {
         using namespace text::literals;
