@@ -91,7 +91,8 @@
 
   mkRuntime = action: mode: profile: let
     cfg = modes.${mode};
-    runtimeDir = "${cfg.buildDir}/runtime_run/${cfg.infra}";
+    ephemeralStateDir = "${cfg.buildDir}/ephemeral_state/${cfg.infra}";
+    persistentStateDir = "${cfg.buildDir}/persistent_state/${cfg.infra}";
     profileArg =
       if profile == null
       then ""
@@ -105,7 +106,8 @@
     then ''
       python3 -m s6.runtime up \
         --mode ${lib.escapeShellArg cfg.infra}${profileArg} \
-        --runtime-dir ${lib.escapeShellArg runtimeDir} \
+        --ephemeral-state-dir ${lib.escapeShellArg ephemeralStateDir} \
+        --persistent-state-dir ${lib.escapeShellArg persistentStateDir} \
         --binary-path ${lib.escapeShellArg "${cfg.buildDir}/runtime_root/webshotd/webshotd_wrapper"} \
         --config-vars-source ${lib.escapeShellArg cfg.configVars} \
         --runtime-ld-library-path ${lib.escapeShellArg runtimeLdPath}${seaweedfsS3ConfigArg}
@@ -114,12 +116,14 @@
     then ''
       python3 -m s6.runtime down \
         --mode ${lib.escapeShellArg cfg.infra} \
-        --runtime-dir ${lib.escapeShellArg runtimeDir}
+        --ephemeral-state-dir ${lib.escapeShellArg ephemeralStateDir} \
+        --persistent-state-dir ${lib.escapeShellArg persistentStateDir}
     ''
     else ''
       python3 -m s6.runtime ${lib.escapeShellArg action} \
         --mode ${lib.escapeShellArg cfg.infra}${profileArg} \
-        --runtime-dir ${lib.escapeShellArg runtimeDir}
+        --ephemeral-state-dir ${lib.escapeShellArg ephemeralStateDir} \
+        --persistent-state-dir ${lib.escapeShellArg persistentStateDir}
     '';
 
   mkBuildTask = mode: let

@@ -25,30 +25,30 @@ class ServiceSpec:
 class RuntimeStateContext:
     mode: str
     repo_root: Path
-    state_dir: Path
-    runtime_dir: Path
+    persistent_state_dir: Path
+    ephemeral_state_dir: Path
 
     @property
     def scan_dir(self) -> Path:
-        return self.runtime_dir / "s6_scan"
+        return self.ephemeral_state_dir / "s6_scan"
 
     @property
     def svscan_pid_file(self) -> Path:
-        return self.runtime_dir / "s6_svscan.pid"
+        return self.ephemeral_state_dir / "s6_svscan.pid"
 
     def supervised_service_dir(self, name: str) -> Path:
         return self.scan_dir / name
 
     def runtime_log_file(self, name: str) -> Path:
-        return self.state_dir / name
+        return self.persistent_state_dir / name
 
     @property
     def managed_cgroup_root_file(self) -> Path:
-        return self.state_dir / "managed_cgroup_root"
+        return self.persistent_state_dir / "managed_cgroup_root"
 
     @property
     def runtime_config_vars_path(self) -> Path:
-        return self.state_dir / "config_vars.yaml"
+        return self.persistent_state_dir / "config_vars.yaml"
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class RuntimeUpContext(RuntimeInspectContext):
 
     @property
     def postgres_dir(self) -> Path:
-        return self.state_dir / "postgres"
+        return self.persistent_state_dir / "postgres"
 
     @property
     def postgres_data_dir(self) -> Path:
@@ -89,23 +89,23 @@ class RuntimeUpContext(RuntimeInspectContext):
 
     @property
     def postgres_bootstrap_log(self) -> Path:
-        return self.state_dir / "postgres_bootstrap.log"
+        return self.persistent_state_dir / "postgres_bootstrap.log"
 
     @property
     def seaweed_data_dir(self) -> Path:
-        return self.state_dir / "seaweed"
+        return self.persistent_state_dir / "seaweed"
 
     @property
     def test_target_dir(self) -> Path:
-        return self.state_dir / "test-target"
+        return self.persistent_state_dir / "test-target"
 
     @property
     def webshotd_state_dir(self) -> Path:
-        return self.state_dir / "webshotd"
+        return self.persistent_state_dir / "webshotd"
 
     @property
     def webshotd_config_vars_override_path(self) -> Path:
-        return self.state_dir / "webshotd_config_vars_override.yaml"
+        return self.persistent_state_dir / "webshotd_config_vars_override.yaml"
 
     @property
     def test_pki_dir(self) -> Path:
@@ -141,7 +141,7 @@ class RuntimeUpContext(RuntimeInspectContext):
 
     @property
     def nginx_payload_dir(self) -> Path:
-        return self.state_dir / "nginx_payloads"
+        return self.persistent_state_dir / "nginx_payloads"
 
     @property
     def generated_nginx_config_path(self) -> Path:
@@ -188,20 +188,20 @@ def require_yaml_string(raw: dict[str, object], key: str, *, source: Path) -> st
 def build_state_context(
     *,
     mode: str,
-    runtime_dir: str,
+    ephemeral_state_dir: str,
+    persistent_state_dir: str,
     layout_root: str | None = None,
-    state_dir: str | None = None,
 ) -> RuntimeStateContext:
     resolved_repo_root = (
         Path(layout_root).resolve() if layout_root else repo_root_from_file(Path(__file__))
     )
-    resolved_state_dir = Path(state_dir).resolve() if state_dir else Path("/tmp/webshot") / mode
-    resolved_runtime_dir = Path(runtime_dir).resolve()
+    resolved_persistent_state_dir = Path(persistent_state_dir).resolve()
+    resolved_ephemeral_state_dir = Path(ephemeral_state_dir).resolve()
     return RuntimeStateContext(
         mode=mode,
         repo_root=resolved_repo_root,
-        state_dir=resolved_state_dir,
-        runtime_dir=resolved_runtime_dir,
+        persistent_state_dir=resolved_persistent_state_dir,
+        ephemeral_state_dir=resolved_ephemeral_state_dir,
     )
 
 
@@ -209,24 +209,24 @@ def build_inspect_context(
     *,
     mode: str,
     service_profile: str,
-    runtime_dir: str,
+    ephemeral_state_dir: str,
+    persistent_state_dir: str,
     layout_root: str | None = None,
-    state_dir: str | None = None,
 ) -> RuntimeInspectContext:
     if service_profile == "test_infra" and mode != "dev":
         die("service profile 'test_infra' requires --mode dev", exit_code=2)
 
     state_ctx = build_state_context(
         mode=mode,
-        runtime_dir=runtime_dir,
+        ephemeral_state_dir=ephemeral_state_dir,
+        persistent_state_dir=persistent_state_dir,
         layout_root=layout_root,
-        state_dir=state_dir,
     )
     return RuntimeInspectContext(
         mode=state_ctx.mode,
         repo_root=state_ctx.repo_root,
-        state_dir=state_ctx.state_dir,
-        runtime_dir=state_ctx.runtime_dir,
+        persistent_state_dir=state_ctx.persistent_state_dir,
+        ephemeral_state_dir=state_ctx.ephemeral_state_dir,
         service_profile=service_profile,
     )
 
@@ -236,8 +236,8 @@ def build_up_context(
     mode: str,
     service_profile: str,
     layout_root: str | None,
-    state_dir: str | None,
-    runtime_dir: str,
+    persistent_state_dir: str,
+    ephemeral_state_dir: str,
     binary_path: str,
     config_vars_source: str,
     runtime_ld_library_path: str | None,
@@ -246,15 +246,15 @@ def build_up_context(
     inspect_ctx = build_inspect_context(
         mode=mode,
         service_profile=service_profile,
-        runtime_dir=runtime_dir,
+        ephemeral_state_dir=ephemeral_state_dir,
+        persistent_state_dir=persistent_state_dir,
         layout_root=layout_root,
-        state_dir=state_dir,
     )
     return RuntimeUpContext(
         mode=inspect_ctx.mode,
         repo_root=inspect_ctx.repo_root,
-        state_dir=inspect_ctx.state_dir,
-        runtime_dir=inspect_ctx.runtime_dir,
+        persistent_state_dir=inspect_ctx.persistent_state_dir,
+        ephemeral_state_dir=inspect_ctx.ephemeral_state_dir,
         service_profile=service_profile,
         binary_path=Path(binary_path),
         config_vars_source=Path(config_vars_source),

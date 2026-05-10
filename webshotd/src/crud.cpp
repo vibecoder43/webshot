@@ -368,7 +368,7 @@ properties:
         description: 'Grace timeout after SIGTERM before SIGKILL for the proxy bridge process in milliseconds'
     s3_credentials_endpoint:
         type: string
-        description: 'STS url used to obtain temporary S3 credentials; S3 data url s3_endpoint (in config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
+        description: 'STS url used to obtain temporary S3 credentials (required only when s3_use_sts=true); S3 data url s3_endpoint (in config) must be http(s)://host[:port] with optional trailing slash and no additional path or query'
     s3_use_sts:
         type: boolean
         description: 'Whether to fetch temporary S3 credentials from STS (true) or use static credentials from secdist (false)'
@@ -442,7 +442,7 @@ public:
     const chrono::seconds crawl_job_retention;
     const chrono::seconds crawl_job_cleanup_interval;
     const bool s3_use_sts;
-    const String s3_credentials_endpoint;
+    const std::optional<String> s3_credentials_endpoint;
     const chrono::seconds s3_credentials_duration;
     const chrono::seconds s3_credentials_refresh_margin;
     const chrono::seconds s3_credentials_refresh_retry;
@@ -539,9 +539,11 @@ public:
           crawl_job_retention(cfg["crawl_job_retention_sec"].As<int64_t>() * 1s),
           crawl_job_cleanup_interval(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>() * 1s),
           s3_use_sts(cfg["s3_use_sts"].As<bool>()),
-          s3_credentials_endpoint(
-              *String::FromBytes(cfg["s3_credentials_endpoint"].As<std::string>())
-          ),
+          s3_credentials_endpoint([&cfg] -> std::optional<String> {
+              if (!cfg["s3_use_sts"].As<bool>())
+                  return {};
+              return *String::FromBytes(cfg["s3_credentials_endpoint"].As<std::string>());
+          }()),
           s3_credentials_duration(cfg["s3_credentials_duration_sec"].As<int64_t>() * 1s),
           s3_credentials_refresh_margin(
               cfg["s3_credentials_refresh_margin_sec"].As<int64_t>() * 1s
@@ -850,6 +852,10 @@ Expected<std::optional<dto::CaptureJob>, PgError> Crud::Impl::LoadJob(Uuid id)
 
 Expected<Crud::Impl::S3ClientState, std::string> Crud::Impl::FetchS3ClientStateFromSts()
 {
+    ENSURE(
+        s3_credentials_endpoint,
+        std::string{"missing s3_credentials_endpoint while s3_use_sts is enabled"}
+    );
     const auto session_uuid = text::Format("{}", us::utils::generators::GenerateBoostUuid());
     const auto session_name = text::Format("{}", session_uuid);
     const auto role_arn_description = "ephemeral_s3_credentials"_t;
@@ -862,7 +868,7 @@ Expected<Crud::Impl::S3ClientState, std::string> Crud::Impl::FetchS3ClientStateF
     );
 
     const auto sts = FetchStsCredentials(
-        http_client_, s3_credentials_endpoint, static_access_key_id, static_secret_access_key,
+        http_client_, *s3_credentials_endpoint, static_access_key_id, static_secret_access_key,
         svc_cfg.S3Region(), role_arn_description, session_name, policy_json,
         s3_credentials_duration, svc_cfg.S3Timeout()
     );

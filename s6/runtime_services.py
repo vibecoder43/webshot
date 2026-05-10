@@ -218,6 +218,8 @@ def _prepare_seaweedfs(ctx: RuntimeUpContext) -> None:
 
 
 def _seaweedfs_test_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list[str | Path]:
+    filer_sock = ctx.ephemeral_state_dir / "seaweedfs-filer.sock"
+    s3_sock = ctx.ephemeral_state_dir / "seaweedfs-s3.sock"
     return [
         "weed",
         "server",
@@ -225,6 +227,8 @@ def _seaweedfs_test_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list
         "-filer",
         "-ip.bind=0.0.0.0",
         f"-dir={ctx.seaweed_data_dir}",
+        f"-filer.localSocket={filer_sock}",
+        f"-s3.localSocket={s3_sock}",
         "-filer.concurrentUploadLimitMB=512",
         "-filer.maxMB=16",
         "-volume.concurrentUploadLimitMB=512",
@@ -238,6 +242,8 @@ def _seaweedfs_test_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list
 
 
 def _seaweedfs_full_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list[str | Path]:
+    filer_sock = ctx.ephemeral_state_dir / "seaweedfs-filer.sock"
+    s3_sock = ctx.ephemeral_state_dir / "seaweedfs-s3.sock"
     return [
         "weed",
         "server",
@@ -250,6 +256,8 @@ def _seaweedfs_full_run_cmd(ctx: RuntimeUpContext, s3_config_path: Path) -> list
         "-s3.ip.bind=127.0.0.1",
         "-s3.port=8333",
         f"-dir={ctx.seaweed_data_dir}",
+        f"-filer.localSocket={filer_sock}",
+        f"-s3.localSocket={s3_sock}",
         "-master.volumeSizeLimitMB=8192",
         "-volume.max=0",
         "-volume.minFreeSpace=5",

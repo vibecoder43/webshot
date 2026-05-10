@@ -2,7 +2,6 @@ components_manager:
   task_processors:
     main-task-processor:
       worker_threads: $main_worker_threads
-      worker_threads#fallback: 4
     purge_task_processor:
       worker_threads: 1
       thread_name: purge_task_processor_worker
@@ -47,14 +46,10 @@ components_manager:
     config:
       url_bytes_max: 32768
       allowlist_only: $allowlist_only
-      allowlist_only#fallback: true
       https_only: $https_only
-      https_only#fallback: true
       state_dir: $state_dir
       client_ip_source: $client_ip_source
-      client_ip_source#fallback: trusted_header
       client_ip_header_name: $client_ip_header_name
-      client_ip_header_name#fallback: X-Forwarded-For
       s3_mode: $s3_mode
       s3_bucket: $s3_bucket
       s3_endpoint: $s3_endpoint
@@ -293,54 +288,31 @@ components_manager:
       captures_per_link_max: 2
       captures_links_per_page_max: 10
       crawler_run_timeout_sec: $crawler_run_timeout_sec
-      crawler_run_timeout_sec#fallback: 15
       crawler_cpu_cores: $crawler_cpu_cores
-      crawler_cpu_cores#fallback: 1
       crawler_memory_gib: $crawler_memory_gib
-      crawler_memory_gib#fallback: 1
       crawler_job_overhead_timeout_sec: $crawler_job_overhead_timeout_sec
-      crawler_job_overhead_timeout_sec#fallback: 45
       crawler_post_load_delay_sec: $crawler_post_load_delay_sec
-      crawler_post_load_delay_sec#fallback: 1
       crawler_net_idle_wait_sec: $crawler_net_idle_wait_sec
-      crawler_net_idle_wait_sec#fallback: 0
       crawler_page_extra_delay_sec: $crawler_page_extra_delay_sec
-      crawler_page_extra_delay_sec#fallback: 1
       crawler_behavior_timeout_sec: $crawler_behavior_timeout_sec
-      crawler_behavior_timeout_sec#fallback: 1
       crawler_devtools_startup_timeout_sec: $crawler_devtools_startup_timeout_sec
-      crawler_devtools_startup_timeout_sec#fallback: 15
       crawler_cdp_handshake_timeout_sec: $crawler_cdp_handshake_timeout_sec
-      crawler_cdp_handshake_timeout_sec#fallback: 10
       crawler_cdp_command_timeout_sec: $crawler_cdp_command_timeout_sec
-      crawler_cdp_command_timeout_sec#fallback: 10
       crawler_size_limit_mib: $crawler_size_limit_mib
-      crawler_size_limit_mib#fallback: 5
       crawler_network_down_bytes_ratio_max: $crawler_network_down_bytes_ratio_max
-      crawler_network_down_bytes_ratio_max#fallback: 10
       crawler_local_fixture_rewrite: $crawler_local_fixture_rewrite
-      crawler_local_fixture_rewrite#fallback: false
       crawler_devtools_poll_interval_ms: $crawler_devtools_poll_interval_ms
-      crawler_devtools_poll_interval_ms#fallback: 100
       crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
-      crawler_browser_stop_timeout_ms#fallback: 1500
       crawler_proxy_stop_timeout_ms: $crawler_proxy_stop_timeout_ms
-      crawler_proxy_stop_timeout_ms#fallback: 500
       link_cooldown_sec: $link_cooldown_sec
-      link_cooldown_sec#fallback: 0
       ip_cooldown_ms: $ip_cooldown_ms
-      ip_cooldown_ms#fallback: 500
       crawl_job_retention_sec: 604800
       crawl_job_cleanup_interval_sec: 3600
       s3_credentials_endpoint: $s3_credentials_endpoint
-      s3_credentials_endpoint#fallback: 'https://sts.example.com/'
       s3_use_sts: $s3_use_sts
       s3_credentials_duration_sec: $s3_credentials_duration_sec
-      s3_credentials_duration_sec#fallback: 3600
       s3_credentials_refresh_margin_sec: $s3_credentials_refresh_margin_sec
-      s3_credentials_refresh_margin_sec#fallback: 300
       s3_credentials_refresh_retry_sec: $s3_credentials_refresh_retry_sec
-      s3_credentials_refresh_retry_sec#fallback: 60
       purge_job_timeout_sec: 10
       purge_delete_batch_size: 1000
     capture_meta_db:

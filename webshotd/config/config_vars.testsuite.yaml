@@ -20,3 +20,16 @@ crawler_proxy_stop_timeout_ms: 200
 link_cooldown_sec: 60
 ip_cooldown_ms: 0
 client_ip_source: peer
+client_ip_header_name: X-Forwarded-For
+s3_credentials_endpoint: "https://sts.invalid/"
+s3_credentials_duration_sec: 3600
+s3_credentials_refresh_margin_sec: 300
+s3_credentials_refresh_retry_sec: 60
+crawler_cpu_cores: 1
+crawler_memory_gib: 1
+crawler_post_load_delay_sec: 1
+crawler_net_idle_wait_sec: 0
+crawler_page_extra_delay_sec: 1
+crawler_behavior_timeout_sec: 1
+crawler_network_down_bytes_ratio_max: 10
+crawler_devtools_poll_interval_ms: 100

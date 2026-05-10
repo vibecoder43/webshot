@@ -33,6 +33,7 @@ _LOCAL_S3_BUCKET = "webshot"
 _LOCAL_S3_ENDPOINT = "http://127.0.0.1:8333"
 _LOCAL_S3_REGION = "us-east-1"
 _LOCAL_PUBLIC_BASE_URL = "http://127.0.0.1:8333/webshot"
+_UNUSED_STS_ENDPOINT = "https://sts.invalid/"
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ def prepare_runtime(ctx: RuntimeUpContext) -> list[ServiceSpec]:
     snapshot_runtime_config_vars(ctx)
     _validate_seaweedfs_s3_config_arg(ctx)
     definitions = active_service_definitions(ctx)
-    ctx.state_dir.mkdir(parents=True, exist_ok=True)
+    ctx.persistent_state_dir.mkdir(parents=True, exist_ok=True)
     _bootstrap_postgres(ctx)
     if ctx.scan_dir.exists():
         shutil.rmtree(ctx.scan_dir)
@@ -223,9 +224,10 @@ def _bootstrap_databases(
 
 
 def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
-    ctx.state_dir.mkdir(parents=True, exist_ok=True)
+    ctx.persistent_state_dir.mkdir(parents=True, exist_ok=True)
     raw_vars = read_yaml(ctx.config_vars_source)
     raw_vars.setdefault("pg_mode", "local")
+    raw_vars.setdefault("s3_mode", "external")
     dependency_modes = resolve_runtime_dependency_modes(raw_vars, source=ctx.config_vars_source)
 
     # Keep NixOS config_vars.yaml minimal: when running in pg_mode=local, we always
@@ -242,6 +244,46 @@ def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
         raw_vars.setdefault("s3_region", _LOCAL_S3_REGION)
         raw_vars.setdefault("public_base_url", _LOCAL_PUBLIC_BASE_URL)
         raw_vars.setdefault("s3_use_sts", False)
+
+    raw_vars.setdefault("allowlist_only", True)
+    raw_vars.setdefault("https_only", True)
+    raw_vars.setdefault("client_ip_source", "trusted_header")
+    raw_vars.setdefault("client_ip_header_name", "X-Forwarded-For")
+
+    raw_vars.setdefault("crawler_run_timeout_sec", 15)
+    raw_vars.setdefault("crawler_cpu_cores", 1)
+    raw_vars.setdefault("crawler_memory_gib", 1)
+    raw_vars.setdefault("crawler_job_overhead_timeout_sec", 45)
+    raw_vars.setdefault("crawler_post_load_delay_sec", 1)
+    raw_vars.setdefault("crawler_net_idle_wait_sec", 0)
+    raw_vars.setdefault("crawler_page_extra_delay_sec", 1)
+    raw_vars.setdefault("crawler_behavior_timeout_sec", 1)
+    raw_vars.setdefault("crawler_devtools_startup_timeout_sec", 15)
+    raw_vars.setdefault("crawler_cdp_handshake_timeout_sec", 10)
+    raw_vars.setdefault("crawler_cdp_command_timeout_sec", 10)
+    raw_vars.setdefault("crawler_size_limit_mib", 5)
+    raw_vars.setdefault("crawler_network_down_bytes_ratio_max", 10)
+    raw_vars.setdefault("crawler_local_fixture_rewrite", False)
+    raw_vars.setdefault("crawler_devtools_poll_interval_ms", 100)
+    raw_vars.setdefault("crawler_browser_stop_timeout_ms", 1500)
+    raw_vars.setdefault("crawler_proxy_stop_timeout_ms", 500)
+    raw_vars.setdefault("link_cooldown_sec", 0)
+    raw_vars.setdefault("ip_cooldown_ms", 500)
+
+    raw_vars.setdefault("s3_use_sts", False)
+    if "s3_credentials_endpoint" not in raw_vars:
+        raw_vars["s3_credentials_endpoint"] = _UNUSED_STS_ENDPOINT
+    if raw_vars.get("s3_use_sts") is True and raw_vars.get("s3_credentials_endpoint") in (
+        "",
+        _UNUSED_STS_ENDPOINT,
+    ):
+        die(
+            f"Missing required config var 's3_credentials_endpoint' in {ctx.config_vars_source}",
+            exit_code=2,
+        )
+    raw_vars.setdefault("s3_credentials_duration_sec", 3600)
+    raw_vars.setdefault("s3_credentials_refresh_margin_sec", 300)
+    raw_vars.setdefault("s3_credentials_refresh_retry_sec", 60)
 
     ctx.runtime_config_vars_path.write_text(
         yaml.safe_dump(raw_vars, sort_keys=True),

@@ -8,6 +8,7 @@ from s6.common import CGROUP_FS_ROOT, current_cgroup_v2_relative_path, die
 
 USERVER_DEFAULT_HW_THREADS_ESTIMATE = 512
 MAIN_WORKER_THREADS_CONFIG_VAR = "$main_worker_threads"
+MAIN_WORKER_THREADS_FALLBACK_DEFAULT = 4
 
 
 def task_processor_config_vars(static_config: dict[str, Any]) -> dict[str, int]:
@@ -45,12 +46,12 @@ def _static_main_worker_threads(static_config: dict[str, Any]) -> int:
         die("static config is missing main-task-processor.worker_threads", exit_code=2)
 
     if value == MAIN_WORKER_THREADS_CONFIG_VAR:
-        value = main_task_processor.get("worker_threads#fallback")
+        value = main_task_processor.get("worker_threads#fallback", MAIN_WORKER_THREADS_FALLBACK_DEFAULT)
 
     if not isinstance(value, int) or value <= 0:
         die(
-            "main-task-processor.worker_threads or worker_threads#fallback "
-            "must be a positive integer"
+            "main-task-processor.worker_threads must be a positive integer",
+            exit_code=2,
         )
     return value
 
