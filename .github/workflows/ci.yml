@@ -25,13 +25,23 @@ jobs:
           name: ${{ secrets.CACHIX_CACHE_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           useDaemon: false
+      - name: Allow unprivileged userns (CI)
+        run: |
+          set -euo pipefail
+          if [[ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            echo "before: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)"
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            echo "after:  $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)"
+          else
+            echo "no /proc/sys/kernel/apparmor_restrict_unprivileged_userns on this runner"
+          fi
       - name: Build, test
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
-          ./delegated_devenv.sh tasks run proj:devBuild 2>&1 | tee ci-artifacts/devBuild.log
+          ./.github/run_devenv_task.sh ci-artifacts/devBuild.log tasks run proj:devBuild
           ulimit -c unlimited || true
-          ./delegated_devenv.sh tasks run proj:devTest 2>&1 | tee ci-artifacts/devTest.log
+          ./.github/run_devenv_task.sh ci-artifacts/devTest.log tasks run proj:devTest
       - name: Collect failure artifacts
         if: failure()
         run: |
@@ -52,7 +62,9 @@ jobs:
               -print0 2>/dev/null
           )
           tar -C / -czf ci-artifacts/collect/tmp-webshot.tgz tmp/webshot || true
-          tar -C / -czf ci-artifacts/collect/tmp-run.tgz tmp/run || true
+          if [[ -d /tmp/run ]]; then
+            tar -C / -czf ci-artifacts/collect/tmp-run.tgz tmp/run || true
+          fi
           mkdir -p ci-artifacts/collect/core-dumps ci-artifacts/collect/backtraces
           binary_path=build/webshotd/san/runtime_root/webshotd
           while IFS= read -r -d '' core_path; do
@@ -82,3 +94,6 @@ jobs:
         run: |
           set -euo pipefail
           ./delegated_devenv.sh tasks run proj:devDown || true
+          if [[ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1 || true
+          fi

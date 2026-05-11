@@ -41,23 +41,33 @@ fi
 
 if [[ -n ${GITHUB_ACTIONS:-} ]]; then
   need sudo
+  need systemctl
+
+  # Use a stable unit name so CI can query systemd for exit attribution.
+  # (systemd will append ".service".)
+  unit_name="webshot-gha-devenv-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}"
+  unit_name=${unit_name//[^A-Za-z0-9_.-]/_}
+
   # Important: because we invoke systemd-run via sudo, "$HOME" in the systemd-run
   # process would be /root. Pass the caller's env explicitly to the delegated unit.
   exec sudo systemd-run \
     --quiet \
-    --collect \
     --same-dir \
     --pipe \
     --slice=user.slice \
+    --unit "${unit_name}" \
     --uid "$(id -u)" \
     --gid "$(id -g)" \
-    --setenv=WEBSHOT_DELEGATED_DEVENV=1 \
-    --setenv=PATH="${PATH}" \
-    --setenv=HOME="${HOME}" \
-    --setenv=TMPDIR="${TMPDIR:-/tmp}" \
     --property='Delegate=cpu memory' \
+    --property='Type=exec' \
+    --property='KillMode=process' \
     --description="webshot delegated devenv" \
-    bash -lc "cd \"\$1\"; shift; exec ./delegated_devenv.sh \"\$@\"" bash "${repo_root}" "${inner_argv[@]}"
+    env \
+      WEBSHOT_DELEGATED_DEVENV=1 \
+      PATH="${PATH}" \
+      HOME="${HOME}" \
+      TMPDIR="${TMPDIR:-/tmp}" \
+      bash -lc "cd \"\$1\"; shift; exec ./delegated_devenv.sh \"\$@\"" bash "${repo_root}" "${inner_argv[@]}"
 fi
 
 exec systemd-run \
