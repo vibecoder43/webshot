@@ -1,7 +1,7 @@
 #include "exception_handling_middleware.hpp"
 
 #include "error_utils.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "text.hpp"
 
 #include <userver/engine/exception.hpp>

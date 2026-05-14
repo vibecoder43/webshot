@@ -7,19 +7,17 @@
 #include "config.hpp"
 #include "crud.hpp"
 #include "handler_request_support.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
 #include "schema/public/webshot.hpp"
 #include "server_errors.hpp"
 #include "text.hpp"
 
-#include <chrono>
 #include <string>
 #include <utility>
 
 #include <userver/components/component.hpp>
-#include <userver/engine/task/current_task.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/formats/serialize/common_containers.hpp>
 #include <userver/http/common_headers.hpp>
@@ -32,7 +30,6 @@
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/boost_uuid4.hpp>
-#include <userver/yaml_config/merge_schemas.hpp>
 
 namespace ws {
 namespace us = userver;
@@ -40,35 +37,19 @@ namespace server = us::server;
 } // namespace ws
 
 using namespace ws;
-using namespace std::chrono_literals;
 using namespace text::literals;
 
 CaptureByLinkHandler::CaptureByLinkHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), crud_(context.FindComponent<Crud>()),
+    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
       config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+      metrics_(context.FindComponent<Metrics>())
 {
 }
 
-us::yaml_config::Schema CaptureByLinkHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/capture handler in milliseconds
-)");
-}
-
-std::string CaptureByLinkHandler::HandleRequestThrow(
+std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -77,7 +58,6 @@ std::string CaptureByLinkHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{crud_, config_};
-    request_support.ApplyRequestDeadline(request, request_timeout_);
 
     if (request.GetMethod() == kPost) {
         const auto req = request_support.ParseJsonBody<dto::CreateCaptureRequest>(request);

@@ -3,8 +3,7 @@
 #include "client_ip.hpp"
 #include "config.hpp"
 #include "crud.hpp"
-#include "deadline_utils.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "json.hpp"
 #include "link.hpp"
 #include "schema/common/common.hpp"
@@ -12,13 +11,11 @@
 #include "try.hpp"
 #include "uuid_utils.hpp"
 
-#include <chrono>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include <userver/engine/task/current_task.hpp>
 #include <userver/http/common_headers.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/http/http_response.hpp>
@@ -29,7 +26,6 @@ namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
-namespace eng = us::engine;
 
 struct [[nodiscard]] ParamError final {
     String name;
@@ -65,14 +61,6 @@ enum class ClientRequestError {
 class [[nodiscard]] HandlerRequestSupport final {
 public:
     HandlerRequestSupport(Crud &crud, const Config &config) : crud_(crud), config_(config) {}
-
-    void ApplyRequestDeadline(
-        const server::http::HttpRequest &request, std::chrono::milliseconds request_timeout
-    ) const
-    {
-        auto final_deadline = ComputeHandlerDeadline(request, request_timeout);
-        eng::current_task::SetDeadline(final_deadline);
-    }
 
     [[nodiscard]] Expected<String, ParamError>
     ParseRequiredQueryText(const server::http::HttpRequest &request, String param_name) const

@@ -7,7 +7,7 @@
 #include "config.hpp"
 #include "crud.hpp"
 #include "handler_request_support.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
 #include "text.hpp"
@@ -16,54 +16,33 @@
 #include <string>
 
 #include <userver/components/component.hpp>
-#include <userver/engine/task/current_task.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/server/http/http_method.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
-#include <userver/yaml_config/merge_schemas.hpp>
 
 namespace ws {
 namespace us = userver;
 namespace server = us::server;
-namespace eng = us::engine;
-using namespace std::chrono_literals;
 using namespace text::literals;
 
 AllowlistCheckHandler::AllowlistCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
 {
 }
 
-us::yaml_config::Schema AllowlistCheckHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Allowlist check handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/allowlist/check handler in milliseconds
-)");
-}
-
-std::string AllowlistCheckHandler::HandleRequestThrow(
+std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto final_deadline = ComputeHandlerDeadline(request, request_timeout_);
-    eng::current_task::SetDeadline(final_deadline);
 
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
@@ -87,36 +66,19 @@ std::string AllowlistCheckHandler::HandleRequestThrow(
 AllowlistAddHandler::AllowlistAddHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
 {
 }
 
-us::yaml_config::Schema AllowlistAddHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Allowlist add handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/allowlist/add handler in milliseconds
-)");
-}
-
-std::string AllowlistAddHandler::HandleRequestThrow(
+std::string AllowlistAddHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    auto final_deadline = ComputeHandlerDeadline(request, request_timeout_);
-    eng::current_task::SetDeadline(final_deadline);
 
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
@@ -137,28 +99,13 @@ std::string AllowlistAddHandler::HandleRequestThrow(
 AllowlistRemoveHandler::AllowlistRemoveHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), config_(context.FindComponent<Config>()),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
 {
 }
 
-us::yaml_config::Schema AllowlistRemoveHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Allowlist remove handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/allowlist/remove handler in milliseconds
-)");
-}
-
-std::string AllowlistRemoveHandler::HandleRequestThrow(
+std::string AllowlistRemoveHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {

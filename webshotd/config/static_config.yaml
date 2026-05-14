@@ -87,65 +87,65 @@ components_manager:
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 2000
+      request_timeout_ms: 2000
       max_request_size: &max-data-per-request 65536
     allowlist_check:
       path: /v1/allowlist/check
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 2000
+      request_timeout_ms: 2000
       max_request_size: *max-data-per-request
     allowlist_add:
       path: /v1/allowlist/add
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 2000
+      request_timeout_ms: 2000
       max_request_size: *max-data-per-request
     allowlist_remove:
       path: /v1/allowlist/remove
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 2000
+      request_timeout_ms: 2000
       max_request_size: *max-data-per-request
     handler:
       path: /v1/capture
       method: GET,POST
       task_processor: main-task-processor
-      request-timeout-ms: 60000
+      request_timeout_ms: 60000
       max_request_size: *max-data-per-request
     by_prefix:
       path: /v1/capture/prefix
       method: GET
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
     job_handler:
       path: /v1/capture/jobs/{uuid}
       method: GET
       task_processor: main-task-processor
-      request-timeout-ms: 5000
+      request_timeout_ms: 5000
       max_request_size: *max-data-per-request
     deny_and_purge:
       path: /v1/denylist/deny-and-purge
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
     by_id:
       path: /v1/capture/{uuid}
       method: GET
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
     docs:
       path: /rapidoc
       method: GET
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
       title: Webshot API
       spec-url: /openapi/public/webshot.yaml
@@ -154,7 +154,7 @@ components_manager:
       method: GET
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
       title: Webshot Admin API
       spec-url: /openapi/admin/webshot.yaml
@@ -237,7 +237,7 @@ components_manager:
       path: /vendor/replaywebpage/replay/{uuid}
       method: GET
       task_processor: main-task-processor
-      request-timeout-ms: 10000
+      request_timeout_ms: 10000
       max_request_size: *max-data-per-request
     web_ui_cache:
       dir: $web_ui_dir

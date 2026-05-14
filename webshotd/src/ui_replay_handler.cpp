@@ -23,7 +23,6 @@
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
-#include <userver/yaml_config/merge_schemas.hpp>
 
 using namespace ws;
 using namespace text::literals;
@@ -117,27 +116,12 @@ namespace server = us::server;
 UiReplayHandler::UiReplayHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
+      config_(context.FindComponent<Config>())
 {
 }
 
-us::yaml_config::Schema UiReplayHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Replay UI handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /vendor/replaywebpage/replay/{uuid} handler in milliseconds
-)");
-}
-
-std::string UiReplayHandler::HandleRequestThrow(
+std::string UiReplayHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -145,7 +129,6 @@ std::string UiReplayHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{crud_, config_};
-    request_support.ApplyRequestDeadline(request, request_timeout_);
     response.SetContentType("text/html; charset=utf-8");
 
     const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);

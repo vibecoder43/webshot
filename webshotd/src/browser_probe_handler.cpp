@@ -7,7 +7,7 @@
 #include "crawler/browser_session.hpp"
 #include "crawler/cdp_client.hpp"
 #include "deadline_utils.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "json.hpp"
 #include "metrics.hpp"
 #include "schema/browser_probe.hpp"
@@ -479,7 +479,7 @@ BrowserProbeHandler::BrowserProbeHandler(
                       context.FindComponent<us::clients::dns::Component>().GetResolver(),
                   .process_starter_ = context.FindComponent<us::components::ProcessStarter>().Get(),
                   .fs_task_processor_ = context.GetTaskProcessor("fs-task-processor"),
-                  .request_timeout = config["request-timeout-ms"].As<int64_t>() * 1ms,
+                  .request_timeout = config["request_timeout_ms"].As<int64_t>() * 1ms,
                   .devtools_startup_timeout = config["devtools_startup_timeout_ms"].As<int64_t>() *
                                               1ms,
                   .cdp_handshake_timeout = config["cdp_handshake_timeout_ms"].As<int64_t>() * 1ms,
@@ -505,10 +505,10 @@ type: object
 description: Monitor-only browser probe handler static config
 additionalProperties: false
 properties:
-  request-timeout-ms:
+  request_timeout_ms:
     type: integer
     minimum: 1
-    description: Upper bound for /tests/browser_probe handler in milliseconds
+    description: Upper bound for /tests/browser-probe handler in milliseconds
   devtools_startup_timeout_ms:
     type: integer
     minimum: 1

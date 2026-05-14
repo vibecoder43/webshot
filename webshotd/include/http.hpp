@@ -1,36 +1,86 @@
 #pragma once
 /**
  * @file
- * @brief Helpers for producing JSON HTTP responses.
+ * @brief HTTP helpers: JSON responses and request deadlines for handlers.
  */
+
+#include "deadline_utils.hpp"
 #include "error_utils.hpp"
 #include "text.hpp"
 
 #include <chrono>
 #include <format>
 
+#include <userver/components/component_config.hpp>
+#include <userver/components/component_context.hpp>
+#include <userver/engine/task/current_task.hpp>
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/value.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/common_headers.hpp>
 #include <userver/http/content_type.hpp>
+#include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
+#include <userver/yaml_config/merge_schemas.hpp>
+#include <userver/yaml_config/schema.hpp>
 
-namespace ws::httpu {
+namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
+namespace eng = us::engine;
+
+// Handler base that enforces per-handler request deadlines.
+class [[nodiscard]] DeadlinedHttpHandler : public server::handlers::HttpHandlerBase {
+public:
+    explicit DeadlinedHttpHandler(
+        const us::components::ComponentConfig &config,
+        const us::components::ComponentContext &context
+    )
+        : HttpHandlerBase(config, context),
+          request_timeout_(std::chrono::milliseconds{config["request_timeout_ms"].As<int64_t>()})
+    {
+    }
+
+    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema()
+    {
+        return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
+type: object
+description: Handler static config
+additionalProperties: false
+properties:
+  request_timeout_ms:
+    type: integer
+    minimum: 1
+    description: Upper bound for the handler in milliseconds
+)");
+    }
+
+    [[nodiscard]]
+    std::string HandleRequestThrow(
+        const server::http::HttpRequest &request, server::request::RequestContext &context
+    ) const final
+    {
+        auto final_deadline = ComputeHandlerDeadline(request, request_timeout_);
+        eng::current_task::SetDeadline(final_deadline);
+        return HandleRequestThrowDeadlined(request, context);
+    }
+
+protected:
+    [[nodiscard]]
+    virtual std::string HandleRequestThrowDeadlined(
+        const server::http::HttpRequest &request, server::request::RequestContext &context
+    ) const = 0;
+
+private:
+    const std::chrono::milliseconds request_timeout_;
+};
+
+namespace httpu {
+
 namespace json = us::formats::json;
-/**
- * @brief Serialize an object to JSON and set status and content type.
- *
- * @tparam T Type supported by userver JSON serialization.
- * @param resp Response to write headers into.
- * @param status HTTP status to set.
- * @param body JSON-serializable value.
- * @return Response body as a JSON string.
- */
+
 template <typename T>
 [[nodiscard]] inline std::string
 RespondJson(server::http::HttpResponse &resp, server::http::HttpStatus status, const T &body)
@@ -40,9 +90,6 @@ RespondJson(server::http::HttpResponse &resp, server::http::HttpStatus status, c
     return json::ToString(json::ValueBuilder(body).ExtractValue());
 }
 
-/**
- * @brief Variant that takes a prebuilt JSON value.
- */
 [[nodiscard]] inline std::string
 RespondJson(server::http::HttpResponse &resp, server::http::HttpStatus status, json::Value body)
 {
@@ -51,9 +98,6 @@ RespondJson(server::http::HttpResponse &resp, server::http::HttpStatus status, j
     return json::ToString(std::move(body));
 }
 
-/**
- * @brief Write a JSON error envelope with a human-readable message.
- */
 [[nodiscard]] inline std::string
 RespondError(server::http::HttpResponse &resp, server::http::HttpStatus status, String message)
 {
@@ -79,4 +123,7 @@ RespondClientIpCooldown(server::http::HttpResponse &resp, std::chrono::milliseco
         resp, server::http::HttpStatus::kTooManyRequests, "client IP in cooldown"_t
     );
 }
-} // namespace ws::httpu
+
+} // namespace httpu
+
+} // namespace ws

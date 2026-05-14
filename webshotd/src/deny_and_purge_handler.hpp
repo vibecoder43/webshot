@@ -1,15 +1,13 @@
 #pragma once
 
+#include "http.hpp"
 #include "integers.hpp"
 
-#include <chrono>
 #include <string>
 #include <string_view>
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
-#include <userver/server/handlers/http_handler_base.hpp>
-#include <userver/yaml_config/schema.hpp>
 
 namespace ws {
 namespace us = userver;
@@ -23,7 +21,7 @@ class Config;
  * Accepts a JSON link request body, derives its prefix, inserts it into
  * the denylist, and enqueues background purge of matching captures.
  */
-class [[nodiscard]] DenyPrefixAndPurgeHandler : public server::handlers::HttpHandlerBase {
+class [[nodiscard]] DenyPrefixAndPurgeHandler : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "deny_and_purge";
     explicit DenyPrefixAndPurgeHandler(
@@ -31,16 +29,13 @@ public:
         const us::components::ComponentContext &context
     );
 
-    [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
-
     [[nodiscard]]
-    std::string HandleRequestThrow(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
     Crud &crud_;
     const Config &config_;
-    const std::chrono::milliseconds request_timeout_;
 };
 } // namespace ws

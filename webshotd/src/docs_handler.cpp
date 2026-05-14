@@ -3,11 +3,9 @@
 #include "deadline_utils.hpp"
 #include "integers.hpp"
 
-#include <chrono>
 #include <format>
 
 #include <userver/components/component.hpp>
-#include <userver/engine/task/current_task.hpp>
 #include <userver/http/content_type.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
@@ -15,29 +13,22 @@
 namespace ws {
 namespace us = userver;
 namespace server = us::server;
-namespace eng = us::engine;
-using namespace std::chrono_literals;
 
 DocsHandler::DocsHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms),
-      title(config["title"].As<std::string>()), spec_url(config["spec-url"].As<std::string>())
+    : DeadlinedHttpHandler(config, context), title(config["title"].As<std::string>()),
+      spec_url(config["spec-url"].As<std::string>())
 {
 }
 
 us::yaml_config::Schema DocsHandler::GetStaticConfigSchema()
 {
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
+    return us::yaml_config::MergeSchemas<DeadlinedHttpHandler>(R"(
 type: object
 description: RapiDoc docs handler
 additionalProperties: false
 properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /rapidoc handler in milliseconds
   title:
     type: string
     description: HTML title used for the RapiDoc page
@@ -47,13 +38,10 @@ properties:
 )");
 }
 
-std::string DocsHandler::HandleRequestThrow(
+std::string DocsHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
-    auto final_deadline = ComputeHandlerDeadline(request, request_timeout_);
-    eng::current_task::SetDeadline(final_deadline);
-
     auto &response = request.GetHttpResponse();
     response.SetStatus(server::http::HttpStatus::kOk);
     response.SetContentType("text/html");

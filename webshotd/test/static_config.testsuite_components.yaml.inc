@@ -1,10 +1,10 @@
     testsuite-support: {}
     browser_probe:
-      path: /tests/browser_probe
+      path: /tests/browser-probe
       method: POST
       monitor-handler: true
       task_processor: main-task-processor
-      request-timeout-ms: 30000
+      request_timeout_ms: 30000
       max_request_size: *max-data-per-request
       devtools_startup_timeout_ms: 10000
       cdp_handshake_timeout_ms: 10000

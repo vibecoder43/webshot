@@ -88,7 +88,7 @@ set(${PROJECT_NAME}_headers
     include/crawler/fallback.hpp
     include/client_ip.hpp
     include/error_utils.hpp
-    include/http_utils.hpp
+    include/http.hpp
     include/ip.hpp
     src/access_policy.hpp
     include/link.hpp

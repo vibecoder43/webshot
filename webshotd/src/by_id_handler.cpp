@@ -6,24 +6,21 @@
 #include "config.hpp"
 #include "crud.hpp"
 #include "handler_request_support.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "storage_url.hpp"
 #include "text.hpp"
 #include "uuid_utils.hpp"
 
-#include <chrono>
 #include <format>
 
 #include <userver/components/component.hpp>
 #include <userver/engine/exception.hpp>
-#include <userver/engine/task/current_task.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/boost_uuid4.hpp>
-#include <userver/yaml_config/merge_schemas.hpp>
 
 namespace ws {
 namespace us = userver;
@@ -32,32 +29,16 @@ namespace server = us::server;
 
 using namespace ws;
 using namespace text::literals;
-using namespace std::chrono_literals;
 
 ByIdHandler::ByIdHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
+      config_(context.FindComponent<Config>())
 {
 }
 
-us::yaml_config::Schema ByIdHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: By_id handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/capture/{uuid} handler in milliseconds
-)");
-}
-
-std::string ByIdHandler::HandleRequestThrow(
+std::string ByIdHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -65,7 +46,6 @@ std::string ByIdHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{crud_, config_};
-    request_support.ApplyRequestDeadline(request, request_timeout_);
 
     const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
     if (!uuid)

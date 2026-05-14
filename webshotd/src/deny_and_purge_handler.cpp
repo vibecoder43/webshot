@@ -6,26 +6,23 @@
 #include "config.hpp"
 #include "crud.hpp"
 #include "handler_request_support.hpp"
-#include "http_utils.hpp"
+#include "http.hpp"
 #include "integers.hpp"
 #include "link.hpp"
 #include "prefix_utils.hpp"
 #include "text.hpp"
 
-#include <chrono>
 #include <format>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include <userver/components/component.hpp>
-#include <userver/engine/task/current_task.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/server/http/http_status.hpp>
 #include <userver/utils/assert.hpp>
-#include <userver/yaml_config/merge_schemas.hpp>
 
 namespace ws {
 namespace us = userver;
@@ -34,32 +31,16 @@ namespace server = us::server;
 
 using namespace ws;
 using namespace text::literals;
-using namespace std::chrono_literals;
 
 DenyPrefixAndPurgeHandler::DenyPrefixAndPurgeHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : HttpHandlerBase(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>()),
-      request_timeout_(config["request-timeout-ms"].As<int64_t>() * 1ms)
+    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
+      config_(context.FindComponent<Config>())
 {
 }
 
-us::yaml_config::Schema DenyPrefixAndPurgeHandler::GetStaticConfigSchema()
-{
-    return us::yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Disallow_and_purge handler static config
-additionalProperties: false
-properties:
-  request-timeout-ms:
-    type: integer
-    minimum: 1
-    description: Upper bound for /ws/denylist/deny_and_purge handler in milliseconds
-)");
-}
-
-std::string DenyPrefixAndPurgeHandler::HandleRequestThrow(
+std::string DenyPrefixAndPurgeHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -67,7 +48,6 @@ std::string DenyPrefixAndPurgeHandler::HandleRequestThrow(
 
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{crud_, config_};
-    request_support.ApplyRequestDeadline(request, request_timeout_);
 
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
