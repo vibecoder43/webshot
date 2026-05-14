@@ -148,6 +148,10 @@ function(apply_defaults target)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD 26)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED ON)
   set_property(TARGET ${target} PROPERTY CXX_EXTENSIONS OFF)
+  # Make libstdc++ container bounds checks explicit in our build, rather than
+  # relying on toolchain hardening defaults.
+  target_compile_definitions(
+    ${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:_GLIBCXX_ASSERTIONS>)
   set(lifetime_safety_warnings
       -Wexperimental-lifetime-safety-suggestions
       -Wexperimental-lifetime-safety-intra-tu-suggestions
