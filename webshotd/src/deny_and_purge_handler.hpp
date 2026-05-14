@@ -21,7 +21,7 @@ class Config;
  * Accepts a JSON link request body, derives its prefix, inserts it into
  * the denylist, and enqueues background purge of matching captures.
  */
-class [[nodiscard]] DenyPrefixAndPurgeHandler : public DeadlinedHttpHandler {
+class [[nodiscard]] DenyPrefixAndPurgeHandler : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "deny_and_purge";
     explicit DenyPrefixAndPurgeHandler(
@@ -30,12 +30,8 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
-
-private:
-    Crud &crud_;
-    const Config &config_;
 };
 } // namespace ws

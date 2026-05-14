@@ -40,7 +40,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-[[nodiscard]] std::string RespondJobPollCooldown(
+[[nodiscard]] std::string RespondJobPollRatelimit(
     server::http::HttpResponse &response, const Uuid &uuid, std::chrono::milliseconds retry_after
 )
 {
@@ -49,10 +49,10 @@ namespace {
     const auto retry_after_seconds = std::max(
         1s, std::chrono::ceil<std::chrono::seconds>(retry_after)
     );
-    dto::CaptureJobCooldownResponse body{
+    dto::CaptureJobRatelimitResponse body{
         .uuid = uuid,
         .retry_after_sec = i64{retry_after_seconds.count()},
-        .error = dto::CaptureJobCooldownResponse::Error{"client IP in cooldown"},
+        .error = dto::CaptureJobRatelimitResponse::Error{"client IP rate limited"},
     };
 
     response.SetHeader(us::http::headers::kRetryAfter, std::to_string(retry_after_seconds.count()));
@@ -64,19 +64,18 @@ namespace {
 JobHandler::JobHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>())
+    : RatelimitedDeadlinedHttpHandler(config, context)
 {
 }
 
-std::string JobHandler::HandleRequestThrowDeadlined(
+std::string JobHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
 
     const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
     if (!uuid)
@@ -84,16 +83,29 @@ std::string JobHandler::HandleRequestThrowDeadlined(
             response, kBadRequest, uuid.Error().name, uuid.Error().message
         );
 
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown)
-        return RespondClientRequestError(response, cooldown.Error());
-    if (*cooldown)
-        return RespondJobPollCooldown(response, *uuid, (*cooldown)->retry_after);
-
     auto job = crud_.FindCaptureJob(*uuid);
     if (!job)
         return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
     if (!*job)
         return httpu::RespondError(response, kNotFound, "job not found"_t);
     return httpu::RespondJson(response, kOk, **job);
+}
+
+std::string JobHandler::RespondClientIpRatelimit(
+    const server::http::HttpRequest &request, std::chrono::milliseconds retry_after
+) const
+{
+    using enum server::http::HttpStatus;
+    using namespace text::literals;
+
+    auto &response = request.GetHttpResponse();
+    HandlerRequestSupport request_support{config_};
+
+    const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
+    if (!uuid)
+        return httpu::RespondParamError(
+            response, kBadRequest, uuid.Error().name, uuid.Error().message
+        );
+
+    return RespondJobPollRatelimit(response, *uuid, retry_after);
 }

@@ -37,18 +37,17 @@ using namespace text::literals;
 ByPrefixHandler::ByPrefixHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>())
+    : RatelimitedDeadlinedHttpHandler(config, context)
 {
 }
 
-std::string ByPrefixHandler::HandleRequestThrowDeadlined(
+std::string ByPrefixHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
 
     const auto prefix = request_support.ParseRequiredQueryLink(request, "prefix"_t);
     if (!prefix)
@@ -61,12 +60,6 @@ std::string ByPrefixHandler::HandleRequestThrowDeadlined(
         return httpu::RespondParamError(
             response, kBadRequest, token.Error().name, token.Error().message
         );
-
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown)
-        return RespondClientRequestError(response, cooldown.Error());
-    if (*cooldown)
-        return httpu::RespondClientIpCooldown(response, (*cooldown)->retry_after);
 
     auto page = crud_.FindCapturesByPrefixPage(prefix->Normalized(), *token);
     if (!page) {

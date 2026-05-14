@@ -267,8 +267,8 @@ def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     raw_vars.setdefault("crawler_devtools_poll_interval_ms", 100)
     raw_vars.setdefault("crawler_browser_stop_timeout_ms", 1500)
     raw_vars.setdefault("crawler_proxy_stop_timeout_ms", 500)
-    raw_vars.setdefault("link_cooldown_sec", 0)
-    raw_vars.setdefault("ip_cooldown_ms", 500)
+    raw_vars.setdefault("link_ratelimit_sec", 0)
+    raw_vars.setdefault("ip_ratelimit_ms", 500)
 
     raw_vars.setdefault("s3_use_sts", False)
     if "s3_credentials_endpoint" not in raw_vars:

@@ -12,7 +12,7 @@ _DENYLIST_REQUEST_COUNT = 6
 
 @pytest.mark.asyncio
 async def test_concurrent_same_link_uses_single_job(service_client, pgsql):
-    link = f"https://{TEST_HOST}/concurrent-cooldown-path"
+    link = f"https://{TEST_HOST}/concurrent-ratelimit-path"
 
     tasks = [
         service_client.post("/v1/capture", json={"link": link})

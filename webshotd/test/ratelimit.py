@@ -11,15 +11,15 @@ _CLIENT_IPV6 = "2001:db8::9"
 _CLIENT_IPV6_BRACKETED = f"[{_CLIENT_IPV6}]"
 
 
-def _enable_ip_cooldown(_config_yaml, config_vars):
-    config_vars["ip_cooldown_ms"] = 500
+def _enable_ip_ratelimit(_config_yaml, config_vars):
+    config_vars["ip_ratelimit_ms"] = 500
     config_vars["client_ip_source"] = "trusted_header"
     config_vars["client_ip_header_name"] = _CLIENT_IP_HEADER
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
-async def test_create_capture_respects_link_cooldown(service_client, pgsql):
-    link = f"https://{TEST_HOST}/cooldown-path"
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
+async def test_create_capture_respects_link_ratelimit(service_client, pgsql):
+    link = f"https://{TEST_HOST}/ratelimit-path"
 
     resp1 = await service_client.post(
         "/v1/capture", json={"link": link}, headers={_CLIENT_IP_HEADER: _CLIENT_IP}
@@ -28,7 +28,7 @@ async def test_create_capture_respects_link_cooldown(service_client, pgsql):
     job1 = resp1.json()
     job1_id = uuid.UUID(job1["uuid"])
 
-    # A different client IP is not blocked by IP cooldown, so link cooldown can reuse the job.
+    # A different client IP is not blocked by IP ratelimit, so link ratelimit can reuse the job.
     resp2 = await service_client.post(
         "/v1/capture", json={"link": link}, headers={_CLIENT_IP_HEADER: _OTHER_CLIENT_IP}
     )
@@ -36,7 +36,7 @@ async def test_create_capture_respects_link_cooldown(service_client, pgsql):
     job2 = resp2.json()
     assert job2["uuid"] == job1["uuid"]
 
-    # Move the existing job far into the past so that cooldown no longer applies
+    # Move the existing job far into the past so that ratelimit no longer applies
     db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
@@ -52,10 +52,10 @@ async def test_create_capture_respects_link_cooldown(service_client, pgsql):
     assert job3["uuid"] != job1["uuid"]
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
-async def test_create_capture_rejects_same_ip_during_cooldown(service_client, pgsql):
-    first_link = f"https://{TEST_HOST}/ip-cooldown-first"
-    second_link = f"https://{TEST_HOST}/ip-cooldown-second"
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
+async def test_create_capture_rejects_same_ip_during_ratelimit(service_client, pgsql):
+    first_link = f"https://{TEST_HOST}/ip-ratelimit-first"
+    second_link = f"https://{TEST_HOST}/ip-ratelimit-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IP}
 
     resp1 = await service_client.post("/v1/capture", json={"link": first_link}, headers=headers)
@@ -65,13 +65,13 @@ async def test_create_capture_rejects_same_ip_during_cooldown(service_client, pg
     assert resp2.status == 429
     assert resp2.headers["Retry-After"]
     body = resp2.json()
-    assert body["error"]["message"] == "client IP in cooldown"
+    assert body["error"]["message"] == "client IP rate limited"
 
     db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
             "select count(*), pg_typeof(client_ip)::text "
-            "from client_ip_cooldown where client_ip = %s::inet "
+            "from client_ip_ratelimit where client_ip = %s::inet "
             "group by pg_typeof(client_ip)::text",
             (_CLIENT_IP,),
         )
@@ -80,10 +80,10 @@ async def test_create_capture_rejects_same_ip_during_cooldown(service_client, pg
     assert client_ip_type == "inet"
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
 async def test_create_capture_accepts_ipv6_client_ip(service_client, pgsql):
-    first_link = f"https://{TEST_HOST}/ip-cooldown-ipv6-first"
-    second_link = f"https://{TEST_HOST}/ip-cooldown-ipv6-second"
+    first_link = f"https://{TEST_HOST}/ip-ratelimit-ipv6-first"
+    second_link = f"https://{TEST_HOST}/ip-ratelimit-ipv6-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IPV6_BRACKETED}
 
     resp1 = await service_client.post("/v1/capture", json={"link": first_link}, headers=headers)
@@ -91,22 +91,22 @@ async def test_create_capture_accepts_ipv6_client_ip(service_client, pgsql):
 
     resp2 = await service_client.post("/v1/capture", json={"link": second_link}, headers=headers)
     assert resp2.status == 429
-    assert resp2.json()["error"]["message"] == "client IP in cooldown"
+    assert resp2.json()["error"]["message"] == "client IP rate limited"
 
     db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
-            "select host(client_ip) from client_ip_cooldown where client_ip = %s::inet",
+            "select host(client_ip) from client_ip_ratelimit where client_ip = %s::inet",
             (_CLIENT_IPV6,),
         )
         (stored_client_ip,) = cur.fetchone()
     assert stored_client_ip == _CLIENT_IPV6
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
-async def test_create_capture_ip_cooldown_expires(service_client, pgsql):
-    first_link = f"https://{TEST_HOST}/ip-cooldown-expiry-first"
-    second_link = f"https://{TEST_HOST}/ip-cooldown-expiry-second"
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
+async def test_create_capture_ip_ratelimit_expires(service_client, pgsql):
+    first_link = f"https://{TEST_HOST}/ip-ratelimit-expiry-first"
+    second_link = f"https://{TEST_HOST}/ip-ratelimit-expiry-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IP}
 
     resp1 = await service_client.post("/v1/capture", json={"link": first_link}, headers=headers)
@@ -115,7 +115,7 @@ async def test_create_capture_ip_cooldown_expires(service_client, pgsql):
     db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(
-            "update client_ip_cooldown set expires_at = now() - interval '1 second' "
+            "update client_ip_ratelimit set expires_at = now() - interval '1 second' "
             "where client_ip = %s::inet",
             (_CLIENT_IP,),
         )
@@ -125,9 +125,9 @@ async def test_create_capture_ip_cooldown_expires(service_client, pgsql):
     assert resp2.json()["uuid"] != resp1.json()["uuid"]
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
-async def test_ip_cooldown_applies_to_read_crud_operations(service_client):
-    link = f"https://{TEST_HOST}/ip-cooldown-read-crud"
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
+async def test_ip_ratelimit_applies_to_read_crud_operations(service_client):
+    link = f"https://{TEST_HOST}/ip-ratelimit-read-crud"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IP}
 
     resp1 = await service_client.post("/v1/capture", json={"link": link}, headers=headers)
@@ -137,7 +137,7 @@ async def test_ip_cooldown_applies_to_read_crud_operations(service_client):
     resp2 = await service_client.get("/v1/capture", params={"link": link}, headers=headers)
     assert resp2.status == 429
     assert resp2.headers["Retry-After"]
-    assert resp2.json()["error"]["message"] == "client IP in cooldown"
+    assert resp2.json()["error"]["message"] == "client IP rate limited"
 
     resp3 = await service_client.get(f"/v1/capture/jobs/{job_id}", headers=headers)
     assert resp3.status == 429
@@ -145,12 +145,12 @@ async def test_ip_cooldown_applies_to_read_crud_operations(service_client):
     body = resp3.json()
     assert body["uuid"] == job_id
     assert body["retry_after_sec"] >= 1
-    assert body["error"]["message"] == "client IP in cooldown"
+    assert body["error"]["message"] == "client IP rate limited"
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
 async def test_create_capture_different_ip_can_reuse_link_job(service_client):
-    link = f"https://{TEST_HOST}/ip-cooldown-link-reuse"
+    link = f"https://{TEST_HOST}/ip-ratelimit-link-reuse"
 
     resp1 = await service_client.post(
         "/v1/capture",
@@ -168,9 +168,9 @@ async def test_create_capture_different_ip_can_reuse_link_job(service_client):
     assert resp2.json()["uuid"] == resp1.json()["uuid"]
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_cooldown])
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
 async def test_create_capture_rejects_missing_or_invalid_client_ip_header(service_client):
-    link = f"https://{TEST_HOST}/ip-cooldown-invalid-header"
+    link = f"https://{TEST_HOST}/ip-ratelimit-invalid-header"
 
     missing = await service_client.post("/v1/capture", json={"link": link})
     assert missing.status == 400

@@ -15,9 +15,8 @@ namespace server = us::server;
 class Config;
 class AccessPolicyStore;
 class Metrics;
-class Crud;
 
-class [[nodiscard]] AccessPolicyCheckHandler : public DeadlinedHttpHandler {
+class [[nodiscard]] AccessPolicyCheckHandler : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "denylist_check";
 
@@ -27,15 +26,13 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
-    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
-    Crud &crud_;
 };
 
 } // namespace ws

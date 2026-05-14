@@ -29,7 +29,7 @@ async def test_dedup_reuses_earlier_capture_uuid(service_client, pgsql):
     capture_id = job1["result"]["uuid"]
     normalized_link = job1["result"]["link"]
 
-    # Ensure a new job is created even if link cooldown is enabled.
+    # Ensure a new job is created even if link ratelimit is enabled.
     db = pgsql["shared_state_db"]
     with db.cursor() as cur:
         cur.execute(

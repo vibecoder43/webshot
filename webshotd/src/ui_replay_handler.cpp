@@ -116,46 +116,24 @@ namespace server = us::server;
 UiReplayHandler::UiReplayHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>())
+    : RatelimitedDeadlinedHttpHandler(config, context)
 {
 }
 
-std::string UiReplayHandler::HandleRequestThrowDeadlined(
+std::string UiReplayHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
     response.SetContentType("text/html; charset=utf-8");
 
     const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
     if (!uuid) {
         response.SetStatus(kBadRequest);
         return RenderErrorPage(text::Format("{}: {}", uuid.Error().name, uuid.Error().message));
-    }
-
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown) {
-        if (cooldown.Error() == ClientRequestError::kInvalidClientIp) {
-            response.SetStatus(kBadRequest);
-            return RenderErrorPage("invalid client IP"_t);
-        }
-
-        response.SetStatus(kInternalServerError);
-        return RenderErrorPage("internal server error"_t);
-    }
-    if (*cooldown) {
-        const auto retry_after_seconds = std::chrono::ceil<std::chrono::seconds>(
-            (*cooldown)->retry_after
-        );
-        response.SetStatus(kTooManyRequests);
-        response.SetHeader(
-            us::http::headers::kRetryAfter, std::to_string(retry_after_seconds.count())
-        );
-        return RenderErrorPage("client IP in cooldown"_t);
     }
 
     auto capture = crud_.FindCapture(*uuid);
@@ -183,6 +161,45 @@ std::string UiReplayHandler::HandleRequestThrowDeadlined(
     }
     response.SetHeader(us::http::headers::kLocation, *replay_location);
     return {};
+}
+
+std::string UiReplayHandler::RespondClientIpRatelimit(
+    const server::http::HttpRequest &request, std::chrono::milliseconds retry_after
+) const
+{
+    using namespace text::literals;
+    using enum server::http::HttpStatus;
+
+    auto &response = request.GetHttpResponse();
+    response.SetContentType("text/html; charset=utf-8");
+
+    const auto retry_after_seconds = std::chrono::ceil<std::chrono::seconds>(retry_after);
+    response.SetStatus(kTooManyRequests);
+    response.SetHeader(us::http::headers::kRetryAfter, std::to_string(retry_after_seconds.count()));
+    return RenderErrorPage("client IP rate limited"_t);
+}
+
+std::string UiReplayHandler::RespondInvalidClientIp(const server::http::HttpRequest &request) const
+{
+    using namespace text::literals;
+    using enum server::http::HttpStatus;
+
+    auto &response = request.GetHttpResponse();
+    response.SetContentType("text/html; charset=utf-8");
+    response.SetStatus(kBadRequest);
+    return RenderErrorPage("invalid client IP"_t);
+}
+
+std::string
+UiReplayHandler::RespondRatelimitInternalError(const server::http::HttpRequest &request) const
+{
+    using namespace text::literals;
+    using enum server::http::HttpStatus;
+
+    auto &response = request.GetHttpResponse();
+    response.SetContentType("text/html; charset=utf-8");
+    response.SetStatus(kInternalServerError);
+    return RenderErrorPage("internal server error"_t);
 }
 
 } // namespace ws

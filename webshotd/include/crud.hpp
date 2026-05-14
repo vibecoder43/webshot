@@ -23,7 +23,7 @@ namespace datetime = us::utils::datetime;
 enum class AccessPolicyError;
 class Config;
 
-struct [[nodiscard]] ClientIpCooldown final {
+struct [[nodiscard]] ClientIpRatelimit final {
     std::chrono::milliseconds retry_after;
 };
 
@@ -66,9 +66,9 @@ public:
      * job status via findCaptureJob().
      */
     [[nodiscard]] Expected<dto::CaptureJob, errors::CreateJobError> CreateCaptureJob(Link link);
-    /** @brief Acquire per-IP cooldown for an HTTP CRUD operation. */
-    [[nodiscard]] Expected<std::optional<ClientIpCooldown>, errors::CrudError>
-    AcquireClientIpCooldown(String client_ip);
+    /** @brief Acquire per-IP ratelimit for an HTTP CRUD operation. */
+    [[nodiscard]] Expected<std::optional<ClientIpRatelimit>, errors::CrudError>
+    AcquireClientIpRatelimit(String client_ip);
     /** @brief Look up capture metadata by id. */
     [[nodiscard]] Expected<std::optional<CaptureRecord>, errors::CrudError> FindCapture(Uuid uuid);
 

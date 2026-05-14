@@ -19,7 +19,7 @@ class Config;
  * @brief HTTP handler that lists captures for links sharing a normalized
  * prefix.
  */
-class [[nodiscard]] ByPrefixHandler : public DeadlinedHttpHandler {
+class [[nodiscard]] ByPrefixHandler : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "by_prefix";
     explicit ByPrefixHandler(
@@ -28,12 +28,8 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
-
-private:
-    Crud &crud_;
-    const Config &config_;
 };
 } // namespace ws

@@ -42,14 +42,13 @@ using namespace text::literals;
 CaptureByLinkHandler::CaptureByLinkHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>()),
+    : RatelimitedDeadlinedHttpHandler(config, context),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
       metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
+std::string CaptureByLinkHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -57,7 +56,7 @@ std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
 
     if (request.GetMethod() == kPost) {
         const auto req = request_support.ParseJsonBody<dto::CreateCaptureRequest>(request);
@@ -81,12 +80,6 @@ std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
                 response, kForbidden, AccessDecisionMessage(decision->reason)
             );
 
-        const auto cooldown = request_support.CheckClientIpCooldown(request);
-        if (!cooldown)
-            return RespondClientRequestError(response, cooldown.Error());
-        if (*cooldown)
-            return httpu::RespondClientIpCooldown(response, (*cooldown)->retry_after);
-
         auto job = crud_.CreateCaptureJob(std::move(*parsed));
         if (!job)
             return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
@@ -104,12 +97,6 @@ std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
         return httpu::RespondParamError(
             response, kBadRequest, token.Error().name, token.Error().message
         );
-
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown)
-        return RespondClientRequestError(response, cooldown.Error());
-    if (*cooldown)
-        return httpu::RespondClientIpCooldown(response, (*cooldown)->retry_after);
 
     auto page = crud_.FindCapturesByLinkPage(*link, *token);
     if (!page) {

@@ -88,7 +88,7 @@ properties:
   client_ip_source:
     type: string
     enum: [peer, trusted_header]
-    description: Source used for per-IP cooldown identity
+    description: Source used for per-IP ratelimit identity
   client_ip_header_name:
     type: string
     description: Trusted header containing a single client IP literal when client_ip_source is trusted_header

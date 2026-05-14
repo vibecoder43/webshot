@@ -16,7 +16,7 @@ namespace server = us::server;
 class Config;
 class Crud;
 
-class [[nodiscard]] UiReplayHandler final : public DeadlinedHttpHandler {
+class [[nodiscard]] UiReplayHandler final : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "ui_replay";
 
@@ -26,13 +26,20 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
-private:
-    Crud &crud_;
-    const Config &config_;
+protected:
+    [[nodiscard]] std::string RespondClientIpRatelimit(
+        const server::http::HttpRequest &request, std::chrono::milliseconds retry_after
+    ) const override;
+
+    [[nodiscard]] std::string
+    RespondInvalidClientIp(const server::http::HttpRequest &request) const override;
+
+    [[nodiscard]] std::string
+    RespondRatelimitInternalError(const server::http::HttpRequest &request) const override;
 };
 
 } // namespace ws

@@ -30,13 +30,13 @@ using namespace text::literals;
 AllowlistCheckHandler::AllowlistCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
+    : RatelimitedDeadlinedHttpHandler(config, context),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
+      metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
+std::string AllowlistCheckHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -66,13 +66,13 @@ std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
 AllowlistAddHandler::AllowlistAddHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
+    : RatelimitedDeadlinedHttpHandler(config, context),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
+      metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistAddHandler::HandleRequestThrowDeadlined(
+std::string AllowlistAddHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -99,13 +99,13 @@ std::string AllowlistAddHandler::HandleRequestThrowDeadlined(
 AllowlistRemoveHandler::AllowlistRemoveHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
+    : RatelimitedDeadlinedHttpHandler(config, context),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
+      metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistRemoveHandler::HandleRequestThrowDeadlined(
+std::string AllowlistRemoveHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {

@@ -38,7 +38,7 @@ async def test_s3_outage_marks_job_failed(service_client_with_s3_gate, s3_gate, 
 
 
 @pytest.mark.asyncio
-async def test_recent_failed_job_is_reused_during_cooldown(service_client_with_s3_gate, s3_gate):
+async def test_recent_failed_job_is_reused_during_ratelimit(service_client_with_s3_gate, s3_gate):
     await s3_gate.sockets_close()
     await s3_gate.stop_accepting()
 

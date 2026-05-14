@@ -1,8 +1,6 @@
 #pragma once
 
-#include "client_ip.hpp"
 #include "config.hpp"
-#include "crud.hpp"
 #include "http.hpp"
 #include "json.hpp"
 #include "link.hpp"
@@ -53,14 +51,9 @@ ParseJsonLinkBody(const server::http::HttpRequest &request, const Config &config
     return TRY_ERR_AS(Link::FromText(text, config.UrlBytesMax()), "invalid parameter"_t);
 }
 
-enum class ClientRequestError {
-    kInvalidClientIp,
-    kCrudError,
-};
-
 class [[nodiscard]] HandlerRequestSupport final {
 public:
-    HandlerRequestSupport(Crud &crud, const Config &config) : crud_(crud), config_(config) {}
+    explicit HandlerRequestSupport(const Config &config) : config_(config) {}
 
     [[nodiscard]] Expected<String, ParamError>
     ParseRequiredQueryText(const server::http::HttpRequest &request, String param_name) const
@@ -118,19 +111,6 @@ public:
         return TRY_OK_OR(ws::uuid::Parse(text.View()), InvalidParamError(param_name));
     }
 
-    [[nodiscard]] Expected<std::optional<ClientIpCooldown>, ClientRequestError>
-    CheckClientIpCooldown(const server::http::HttpRequest &request) const
-    {
-        auto client_ip = client::ip::Resolve(request, config_);
-        if (!client_ip)
-            return Unex(ClientRequestError::kInvalidClientIp);
-
-        auto cooldown = crud_.AcquireClientIpCooldown(std::move(*client_ip));
-        if (!cooldown)
-            return Unex(ClientRequestError::kCrudError);
-        return *cooldown;
-    }
-
     [[nodiscard]] std::optional<String> RequestHost(const server::http::HttpRequest &request) const
     {
         return RequestHeader(request, us::http::headers::kHost);
@@ -182,23 +162,7 @@ private:
                            }));
     }
 
-    Crud &crud_;
     const Config &config_;
 };
-
-[[nodiscard]] inline std::string
-RespondClientRequestError(server::http::HttpResponse &response, ClientRequestError error)
-{
-    using enum server::http::HttpStatus;
-    using namespace text::literals;
-    using enum ClientRequestError;
-
-    switch (error) {
-    case kInvalidClientIp:
-        return httpu::RespondError(response, kBadRequest, "invalid client IP"_t);
-    case kCrudError:
-        return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
-    }
-}
 
 } // namespace ws

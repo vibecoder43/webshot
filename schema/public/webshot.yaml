@@ -56,7 +56,7 @@ paths:
                     error:
                       message: "page_token: invalid page_token"
         '429':
-          description: Client IP is still in cooldown.
+          description: Client IP is rate limited.
           headers:
             Retry-After:
               description: Seconds until this client IP may perform another operation.
@@ -68,10 +68,10 @@ paths:
               schema:
                 $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
               examples:
-                ip_cooldown:
+                ip_ratelimit:
                   value:
                     error:
-                      message: client IP in cooldown
+                      message: client IP rate limited
         '500':
           description: Internal server error.
           content:
@@ -143,7 +143,7 @@ paths:
                     error:
                       message: link not in allowlist
         '429':
-          description: Client IP is still in cooldown.
+          description: Client IP is rate limited.
           headers:
             Retry-After:
               description: Seconds until this client IP may perform another operation.
@@ -155,10 +155,10 @@ paths:
               schema:
                 $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
               examples:
-                ip_cooldown:
+                ip_ratelimit:
                   value:
                     error:
-                      message: client IP in cooldown
+                      message: client IP rate limited
         '500':
           description: Internal server error.
           content:
@@ -217,7 +217,7 @@ paths:
                     error:
                       message: "page_token: invalid page_token"
         '429':
-          description: Client IP is still in cooldown.
+          description: Client IP is rate limited.
           headers:
             Retry-After:
               description: Seconds until this client IP may perform another operation.
@@ -229,10 +229,10 @@ paths:
               schema:
                 $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
               examples:
-                ip_cooldown:
+                ip_ratelimit:
                   value:
                     error:
-                      message: client IP in cooldown
+                      message: client IP rate limited
         '500':
           description: Internal server error.
           content:
@@ -281,7 +281,7 @@ paths:
                     error:
                       message: job not found
         '429':
-          description: Client IP is still in cooldown.
+          description: Client IP is rate limited.
           headers:
             Retry-After:
               description: Seconds until this client IP may perform another operation.
@@ -291,14 +291,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CaptureJobCooldownResponse'
+                $ref: '#/components/schemas/CaptureJobRatelimitResponse'
               examples:
-                ip_cooldown:
+                ip_ratelimit:
                   value:
                     uuid: 123e4567-e89b-12d3-a456-426614174000
                     retry_after_sec: 1
                     error:
-                      message: client IP in cooldown
+                      message: client IP rate limited
         '500':
           description: Internal server error.
           content:
@@ -348,7 +348,7 @@ paths:
                     error:
                       message: capture not found
         '429':
-          description: Client IP is still in cooldown.
+          description: Client IP is rate limited.
           headers:
             Retry-After:
               description: Seconds until this client IP may perform another operation.
@@ -360,10 +360,10 @@ paths:
               schema:
                 $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
               examples:
-                ip_cooldown:
+                ip_ratelimit:
                   value:
                     error:
-                      message: client IP in cooldown
+                      message: client IP rate limited
         '500':
           description: Internal server error.
           content:
@@ -391,7 +391,7 @@ components:
           type: string
           enum: [next, previous]
           description: Direction to page from the cursor item
-    CaptureJobCooldownResponse:
+    CaptureJobRatelimitResponse:
       type: object
       additionalProperties: false
       required: [uuid, retry_after_sec, error]
@@ -413,7 +413,7 @@ components:
         uuid: 123e4567-e89b-12d3-a456-426614174000
         retry_after_sec: 1
         error:
-          message: client IP in cooldown
+          message: client IP rate limited
     CreateCaptureRequest:
       type: object
       additionalProperties: false

@@ -50,10 +50,10 @@ public:
     /** @return Runner-owned state directory for webshotd instance. */
     [[nodiscard]] std::string_view StateDir() const noexcept { return state_dir_; }
 
-    /** @return Source used for client IP cooldown identity. */
+    /** @return Source used for client IP ratelimit identity. */
     [[nodiscard]] ClientIpSource ClientIpSource() const noexcept { return client_ip_source_; }
 
-    /** @return Trusted header name for client IP cooldown identity. */
+    /** @return Trusted header name for client IP ratelimit identity. */
     [[nodiscard]] std::string_view ClientIpHeaderName() const noexcept
     {
         return client_ip_header_name_;

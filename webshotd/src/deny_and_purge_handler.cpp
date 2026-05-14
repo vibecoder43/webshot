@@ -35,19 +35,18 @@ using namespace text::literals;
 DenyPrefixAndPurgeHandler::DenyPrefixAndPurgeHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>())
+    : RatelimitedDeadlinedHttpHandler(config, context)
 {
 }
 
-std::string DenyPrefixAndPurgeHandler::HandleRequestThrowDeadlined(
+std::string DenyPrefixAndPurgeHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
 
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
@@ -55,12 +54,6 @@ std::string DenyPrefixAndPurgeHandler::HandleRequestThrowDeadlined(
 
     auto prefix_key = prefix::MakePrefixKey(*link);
     LOG_INFO() << std::format("invoked for prefix: {}", prefix_key);
-
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown)
-        return RespondClientRequestError(response, cooldown.Error());
-    if (*cooldown)
-        return httpu::RespondClientIpCooldown(response, (*cooldown)->retry_after);
 
     auto ok = crud_.DenyPrefixAndPurge(prefix_key);
     if (!ok) {

@@ -28,20 +28,19 @@ namespace server = us::server;
 AccessPolicyCheckHandler::AccessPolicyCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
+    : RatelimitedDeadlinedHttpHandler(config, context),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
-      metrics_(context.FindComponent<Metrics>()), crud_(context.FindComponent<Crud>())
+      metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AccessPolicyCheckHandler::HandleRequestThrowDeadlined(
+std::string AccessPolicyCheckHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());

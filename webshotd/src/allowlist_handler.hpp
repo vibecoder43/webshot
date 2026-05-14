@@ -15,9 +15,8 @@ namespace server = us::server;
 class Config;
 class AccessPolicyStore;
 class Metrics;
-class Crud;
 
-class [[nodiscard]] AllowlistCheckHandler final : public DeadlinedHttpHandler {
+class [[nodiscard]] AllowlistCheckHandler final : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_check";
 
@@ -27,18 +26,16 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
-    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
-    Crud &crud_;
 };
 
-class [[nodiscard]] AllowlistAddHandler final : public DeadlinedHttpHandler {
+class [[nodiscard]] AllowlistAddHandler final : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_add";
 
@@ -48,18 +45,16 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
-    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
-    Crud &crud_;
 };
 
-class [[nodiscard]] AllowlistRemoveHandler final : public DeadlinedHttpHandler {
+class [[nodiscard]] AllowlistRemoveHandler final : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_remove";
 
@@ -69,15 +64,13 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
-    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
-    Crud &crud_;
 };
 
 } // namespace ws

@@ -33,31 +33,24 @@ using namespace text::literals;
 ByIdHandler::ByIdHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-      config_(context.FindComponent<Config>())
+    : RatelimitedDeadlinedHttpHandler(config, context)
 {
 }
 
-std::string ByIdHandler::HandleRequestThrowDeadlined(
+std::string ByIdHandler::HandleRequestThrowRatelimitedDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{crud_, config_};
+    HandlerRequestSupport request_support{config_};
 
     const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
     if (!uuid)
         return httpu::RespondParamError(
             response, kBadRequest, uuid.Error().name, uuid.Error().message
         );
-
-    const auto cooldown = request_support.CheckClientIpCooldown(request);
-    if (!cooldown)
-        return RespondClientRequestError(response, cooldown.Error());
-    if (*cooldown)
-        return httpu::RespondClientIpCooldown(response, (*cooldown)->retry_after);
 
     auto capture = crud_.FindCapture(*uuid);
     if (!capture)

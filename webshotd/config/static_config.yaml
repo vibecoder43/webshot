@@ -304,8 +304,8 @@ components_manager:
       crawler_devtools_poll_interval_ms: $crawler_devtools_poll_interval_ms
       crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
       crawler_proxy_stop_timeout_ms: $crawler_proxy_stop_timeout_ms
-      link_cooldown_sec: $link_cooldown_sec
-      ip_cooldown_ms: $ip_cooldown_ms
+      link_ratelimit_sec: $link_ratelimit_sec
+      ip_ratelimit_ms: $ip_ratelimit_ms
       crawl_job_retention_sec: 604800
       crawl_job_cleanup_interval_sec: 3600
       s3_credentials_endpoint: $s3_credentials_endpoint

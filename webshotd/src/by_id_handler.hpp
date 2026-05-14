@@ -17,7 +17,7 @@ class Crud;
 /**
  * @brief HTTP handler that returns stored capture metadata by id.
  */
-class [[nodiscard]] ByIdHandler : public DeadlinedHttpHandler {
+class [[nodiscard]] ByIdHandler : public RatelimitedDeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "by_id";
     explicit ByIdHandler(
@@ -26,12 +26,8 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowDeadlined(
+    std::string HandleRequestThrowRatelimitedDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
-
-private:
-    Crud &crud_;
-    const Config &config_;
 };
 } // namespace ws

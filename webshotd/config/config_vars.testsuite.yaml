@@ -17,8 +17,8 @@ crawler_size_limit_mib: 8
 crawler_local_fixture_rewrite: true
 crawler_browser_stop_timeout_ms: 400
 crawler_proxy_stop_timeout_ms: 200
-link_cooldown_sec: 60
-ip_cooldown_ms: 0
+link_ratelimit_sec: 60
+ip_ratelimit_ms: 0
 client_ip_source: peer
 client_ip_header_name: X-Forwarded-For
 s3_credentials_endpoint: "https://sts.invalid/"
