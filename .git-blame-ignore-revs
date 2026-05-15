@@ -1,0 +1,5 @@
+# Revisions to ignore in `git blame`.
+# Format: one full (40-hex) commit id per line. `#` comments are allowed.
+#
+# C++ codebase mechanical reformat to Google Style.
+c99b6e947af13372ec9f40bd3512e0ac0a00d6e0

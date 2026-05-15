@@ -30,6 +30,21 @@ in {
     };
   };
 
+  tasks."git:blame-ignore-revs" = {
+    cwd = config.devenv.root;
+    before = ["devenv:enterShell"];
+    status = ''
+      set -euo pipefail
+      git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+      git config --local --get-all blame.ignoreRevsFile 2>/dev/null | grep -Fxq .git-blame-ignore-revs
+    '';
+    exec = ''
+      set -euo pipefail
+      git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+      git config --local --add blame.ignoreRevsFile .git-blame-ignore-revs
+    '';
+  };
+
   git-hooks.hooks = {
     treefmt = {
       enable = true;
