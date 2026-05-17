@@ -6,6 +6,15 @@ def _enable_allowlist_only(_config_yaml, config_vars):
     config_vars["allowlist_only"] = True
 
 
+_CLIENT_IP_HEADER = "X-Test-Client-IP"
+
+
+def _enable_ip_ratelimit(_config_yaml, config_vars):
+    config_vars["ip_ratelimit_ms"] = 500
+    config_vars["client_ip_source"] = "trusted_header"
+    config_vars["client_ip_header_name"] = _CLIENT_IP_HEADER
+
+
 @pytest.mark.asyncio
 async def test_allowlist_check_not_exposed_on_main_listener(service_client):
     resp = await service_client.post("/v1/allowlist/check", json={"link": "http://example.com/"})
@@ -48,6 +57,13 @@ async def test_allowlist_add_missing_link(monitor_client):
     resp = await monitor_client.post("/v1/allowlist/add")
     assert resp.status == 400
     assert resp.json()["error"]["message"] == "invalid request body"
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
+@pytest.mark.asyncio
+async def test_allowlist_add_does_not_require_client_ip(monitor_client):
+    resp = await monitor_client.post("/v1/allowlist/add", json={"link": "https://example.com/"})
+    assert resp.status == 204
 
 
 @pytest.mark.asyncio

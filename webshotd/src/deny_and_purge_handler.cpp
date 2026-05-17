@@ -35,18 +35,18 @@ using namespace text::literals;
 DenyPrefixAndPurgeHandler::DenyPrefixAndPurgeHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context)
+    : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
+      config_(context.FindComponent<Config>())
 {
 }
 
-std::string DenyPrefixAndPurgeHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string DenyPrefixAndPurgeHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    HandlerRequestSupport request_support{config_};
 
     const auto link = ParseJsonLinkBody(request, config_);
     if (!link)

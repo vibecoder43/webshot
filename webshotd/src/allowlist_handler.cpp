@@ -30,13 +30,13 @@ using namespace text::literals;
 AllowlistCheckHandler::AllowlistCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
       metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistCheckHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -66,13 +66,13 @@ std::string AllowlistCheckHandler::HandleRequestThrowRatelimitedDeadlined(
 AllowlistAddHandler::AllowlistAddHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
       metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistAddHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string AllowlistAddHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
@@ -99,13 +99,13 @@ std::string AllowlistAddHandler::HandleRequestThrowRatelimitedDeadlined(
 AllowlistRemoveHandler::AllowlistRemoveHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
       metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AllowlistRemoveHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string AllowlistRemoveHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {

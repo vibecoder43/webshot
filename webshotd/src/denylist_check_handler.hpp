@@ -16,7 +16,7 @@ class Config;
 class AccessPolicyStore;
 class Metrics;
 
-class [[nodiscard]] AccessPolicyCheckHandler : public RatelimitedDeadlinedHttpHandler {
+class [[nodiscard]] AccessPolicyCheckHandler : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "denylist_check";
 
@@ -26,11 +26,12 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowRatelimitedDeadlined(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
+    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
 };

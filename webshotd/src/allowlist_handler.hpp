@@ -16,7 +16,7 @@ class Config;
 class AccessPolicyStore;
 class Metrics;
 
-class [[nodiscard]] AllowlistCheckHandler final : public RatelimitedDeadlinedHttpHandler {
+class [[nodiscard]] AllowlistCheckHandler final : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_check";
 
@@ -26,16 +26,17 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowRatelimitedDeadlined(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
+    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
 };
 
-class [[nodiscard]] AllowlistAddHandler final : public RatelimitedDeadlinedHttpHandler {
+class [[nodiscard]] AllowlistAddHandler final : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_add";
 
@@ -45,16 +46,17 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowRatelimitedDeadlined(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
+    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
 };
 
-class [[nodiscard]] AllowlistRemoveHandler final : public RatelimitedDeadlinedHttpHandler {
+class [[nodiscard]] AllowlistRemoveHandler final : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "allowlist_remove";
 
@@ -64,11 +66,12 @@ public:
     );
 
     [[nodiscard]]
-    std::string HandleRequestThrowRatelimitedDeadlined(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 
 private:
+    const Config &config_;
     AccessPolicyStore &access_policy_;
     Metrics &metrics_;
 };

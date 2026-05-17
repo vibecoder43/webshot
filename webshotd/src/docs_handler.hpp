@@ -14,7 +14,7 @@ namespace ws {
 
 namespace us = userver;
 namespace server = us::server;
-class [[nodiscard]] DocsHandler final : public RatelimitedDeadlinedHttpHandler {
+class [[nodiscard]] DocsHandler final : public DeadlinedHttpHandler {
 public:
     static constexpr std::string_view kName = "docs";
 
@@ -26,7 +26,7 @@ public:
     [[nodiscard]] static us::yaml_config::Schema GetStaticConfigSchema();
 
     [[nodiscard]]
-    std::string HandleRequestThrowRatelimitedDeadlined(
+    std::string HandleRequestThrowDeadlined(
         const server::http::HttpRequest &request, server::request::RequestContext &
     ) const final;
 

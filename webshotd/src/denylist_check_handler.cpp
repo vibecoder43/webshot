@@ -28,13 +28,13 @@ namespace server = us::server;
 AccessPolicyCheckHandler::AccessPolicyCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context),
+    : DeadlinedHttpHandler(config, context), config_(context.FindComponent<Config>()),
       access_policy_(context.FindComponent<AccessPolicyStore>()),
       metrics_(context.FindComponent<Metrics>())
 {
 }
 
-std::string AccessPolicyCheckHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string AccessPolicyCheckHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {

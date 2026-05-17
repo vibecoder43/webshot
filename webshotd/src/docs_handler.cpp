@@ -17,14 +17,14 @@ namespace server = us::server;
 DocsHandler::DocsHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
 )
-    : RatelimitedDeadlinedHttpHandler(config, context), title(config["title"].As<std::string>()),
+    : DeadlinedHttpHandler(config, context), title(config["title"].As<std::string>()),
       spec_url(config["spec-url"].As<std::string>())
 {
 }
 
 us::yaml_config::Schema DocsHandler::GetStaticConfigSchema()
 {
-    return us::yaml_config::MergeSchemas<RatelimitedDeadlinedHttpHandler>(R"(
+    return us::yaml_config::MergeSchemas<DeadlinedHttpHandler>(R"(
 type: object
 description: RapiDoc docs handler
 additionalProperties: false
@@ -38,7 +38,7 @@ properties:
 )");
 }
 
-std::string DocsHandler::HandleRequestThrowRatelimitedDeadlined(
+std::string DocsHandler::HandleRequestThrowDeadlined(
     const server::http::HttpRequest &request, server::request::RequestContext &
 ) const
 {
