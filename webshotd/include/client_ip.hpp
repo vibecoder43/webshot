@@ -17,18 +17,17 @@
 namespace ws::client::ip {
 namespace us = userver;
 namespace server = us::server;
-using text::literals::operator""_t;
 
-[[nodiscard]] inline std::optional<String> MakeClientIp(std::string_view raw)
+[[nodiscard]] inline std::optional<Ip> MakeClientIp(std::string_view raw)
 {
     std::string text{raw};
     absl::StripAsciiWhitespace(&text);
     auto ip_text = TRY(String::FromBytes(text));
     auto ip = TRY(ParseIp(ip_text));
-    return ToCanonicalIpText(ip);
+    return ip;
 }
 
-[[nodiscard]] inline std::optional<String>
+[[nodiscard]] inline std::optional<Ip>
 Resolve(const server::http::HttpRequest &request, const Config &config)
 {
     using enum ClientIpSource;

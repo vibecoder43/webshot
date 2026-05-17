@@ -6,6 +6,7 @@
 #include "allowlist_handler.hpp"
 #include "by_id_handler.hpp"
 #include "by_prefix_handler.hpp"
+#include "client_ip_ratelimiter.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deny_and_purge_handler.hpp"
@@ -60,6 +61,7 @@ int main(int argc, char *argv[])
             .Append<ws::AccessPolicyStore>()
             .Append<ws::Config>()
             .Append<ws::Metrics>()
+            .Append<ws::ClientIpRatelimiter>()
             .Append<ws::Crud>()
             .Append<us::server::middlewares::SimpleHttpMiddlewareFactory<
                 ws::ExceptionHandlingMiddleware>>()

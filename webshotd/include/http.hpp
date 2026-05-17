@@ -5,6 +5,7 @@
  */
 
 #include "client_ip.hpp"
+#include "client_ip_ratelimiter.hpp"
 #include "config.hpp"
 #include "crud.hpp"
 #include "deadline_utils.hpp"
@@ -96,7 +97,8 @@ public:
         const us::components::ComponentContext &context
     )
         : DeadlinedHttpHandler(config, context), crud_(context.FindComponent<Crud>()),
-          config_(context.FindComponent<Config>())
+          config_(context.FindComponent<Config>()),
+          ratelimiter_(context.FindComponent<ClientIpRatelimiter>())
     {
     }
 
@@ -119,11 +121,9 @@ properties: {}
         if (!client_ip)
             return RespondInvalidClientIp(request);
 
-        const auto ratelimit = crud_.AcquireClientIpRatelimit(std::move(*client_ip));
-        if (!ratelimit)
-            return RespondRatelimitInternalError(request);
-        if (*ratelimit)
-            return RespondClientIpRatelimit(request, (*ratelimit)->retry_after);
+        const auto ratelimit = ratelimiter_.Acquire(*client_ip);
+        if (ratelimit)
+            return RespondClientIpRatelimit(request, ratelimit->retry_after);
 
         return HandleRequestThrowRatelimitedDeadlined(request, context);
     }
@@ -162,6 +162,7 @@ protected:
 
     Crud &crud_;
     const Config &config_;
+    ClientIpRatelimiter &ratelimiter_;
 };
 
 namespace httpu {

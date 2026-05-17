@@ -87,6 +87,7 @@ set(${PROJECT_NAME}_headers
     src/crawler/error.hpp
     include/crawler/fallback.hpp
     include/client_ip.hpp
+    src/client_ip_ratelimiter.hpp
     include/error_utils.hpp
     include/http.hpp
     include/ip.hpp
@@ -113,6 +114,7 @@ add_library(
   src/exception_handling_middleware.cpp
   src/ui_replay_handler.cpp
   src/crud.cpp
+  src/client_ip_ratelimiter.cpp
   src/metrics.cpp
   src/url.cpp
   src/crawler/runner.cpp
@@ -148,8 +150,6 @@ function(apply_defaults target)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD 26)
   set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED ON)
   set_property(TARGET ${target} PROPERTY CXX_EXTENSIONS OFF)
-  # Make libstdc++ container bounds checks explicit in our build, rather than
-  # relying on toolchain hardening defaults.
   target_compile_definitions(
     ${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:_GLIBCXX_ASSERTIONS>)
   set(lifetime_safety_warnings
@@ -485,6 +485,7 @@ target_link_libraries(
           userver::core
           userver::postgresql
           userver::s3api
+          absl::hash
           absl::strings
           uni-algo::uni-algo)
 target_include_directories(

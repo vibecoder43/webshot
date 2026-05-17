@@ -1,4 +1,3 @@
-    testsuite-support: {}
     browser_probe:
       path: /tests/browser-probe
       method: POST

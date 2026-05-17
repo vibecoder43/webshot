@@ -10,7 +10,7 @@ _CLIENT_IP_HEADER = "X-Test-Client-IP"
 
 
 def _enable_ip_ratelimit(_config_yaml, config_vars):
-    config_vars["ip_ratelimit_ms"] = 500
+    config_vars["interval_ms"] = 500
     config_vars["client_ip_source"] = "trusted_header"
     config_vars["client_ip_header_name"] = _CLIENT_IP_HEADER
 

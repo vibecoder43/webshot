@@ -27,7 +27,7 @@ crawler_devtools_poll_interval_ms: 100
 crawler_browser_stop_timeout_ms: 1500
 crawler_proxy_stop_timeout_ms: 500
 link_ratelimit_sec: 0
-ip_ratelimit_ms: 500
+interval_ms: 500
 client_ip_source: peer
 client_ip_header_name: X-Forwarded-For
 s3_credentials_endpoint: "https://sts.invalid/"

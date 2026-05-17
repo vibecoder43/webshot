@@ -8,8 +8,10 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <variant>
 
+#include <absl/hash/hash.h>
 #include <arpa/inet.h>
 #include <userver/utils/ip.hpp>
 
@@ -19,6 +21,24 @@ namespace us = userver;
 using Ip4 = us::utils::ip::AddressV4;
 using Ip6 = us::utils::ip::AddressV6;
 using Ip = std::variant<Ip4, Ip6>;
+
+// userver does not ship std::hash for utils::ip::AddressV4/AddressV6.
+struct [[nodiscard]] IpHash {
+    [[nodiscard]] size_t operator()(const Ip &ip) const noexcept
+    {
+        return std::visit(
+            [](const auto &addr) -> size_t {
+                using Addr = std::decay_t<decltype(addr)>;
+                if constexpr (std::is_same_v<Addr, Ip4>) {
+                    return absl::HashOf(uint8_t{4}, addr.GetBytes());
+                } else {
+                    return absl::HashOf(uint8_t{6}, addr.GetBytes());
+                }
+            },
+            ip
+        );
+    }
+};
 
 namespace ip::detail {
 
@@ -63,9 +83,6 @@ CanonicalIpTextFromBytes(int family, const void *source) noexcept
 
 [[nodiscard]] inline std::optional<Ip6> ParseIp6(const String &text) noexcept
 {
-    if (text.Empty())
-        return {};
-
     auto candidate = text.View();
     if (candidate.front() == '[' && candidate.back() == ']')
         candidate = candidate.substr(1, candidate.size() - 2);
@@ -82,6 +99,8 @@ CanonicalIpTextFromBytes(int family, const void *source) noexcept
 
 [[nodiscard]] inline std::optional<Ip> ParseIp(const String &text) noexcept
 {
+    if (text.Empty())
+        return {};
     if (auto addr = ParseIp4(text))
         return Ip{*addr};
     if (auto addr = ParseIp6(text))

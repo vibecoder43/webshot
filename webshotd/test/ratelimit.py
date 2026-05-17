@@ -1,4 +1,4 @@
-import uuid
+import asyncio
 
 import pytest
 from helper.constants import TEST_HOST
@@ -9,16 +9,19 @@ _OTHER_CLIENT_IP = "198.51.100.10"
 _THIRD_CLIENT_IP = "198.51.100.11"
 _CLIENT_IPV6 = "2001:db8::9"
 _CLIENT_IPV6_BRACKETED = f"[{_CLIENT_IPV6}]"
+_IP_RATELIMIT_MS = 200
+_LINK_RATELIMIT_SEC = 1.0
 
 
 def _enable_ip_ratelimit(_config_yaml, config_vars):
-    config_vars["ip_ratelimit_ms"] = 500
+    config_vars["interval_ms"] = _IP_RATELIMIT_MS
+    config_vars["link_ratelimit_sec"] = int(_LINK_RATELIMIT_SEC)
     config_vars["client_ip_source"] = "trusted_header"
     config_vars["client_ip_header_name"] = _CLIENT_IP_HEADER
 
 
 @pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
-async def test_create_capture_respects_link_ratelimit(service_client, pgsql):
+async def test_create_capture_respects_link_ratelimit(service_client):
     link = f"https://{TEST_HOST}/ratelimit-path"
 
     resp1 = await service_client.post(
@@ -26,7 +29,6 @@ async def test_create_capture_respects_link_ratelimit(service_client, pgsql):
     )
     assert resp1.status == 202
     job1 = resp1.json()
-    job1_id = uuid.UUID(job1["uuid"])
 
     # A different client IP is not blocked by IP ratelimit, so link ratelimit can reuse the job.
     resp2 = await service_client.post(
@@ -36,24 +38,21 @@ async def test_create_capture_respects_link_ratelimit(service_client, pgsql):
     job2 = resp2.json()
     assert job2["uuid"] == job1["uuid"]
 
-    # Move the existing job far into the past so that ratelimit no longer applies
-    db = pgsql["shared_state_db"]
-    with db.cursor() as cur:
-        cur.execute(
-            "update crawl_job set created_at = created_at - interval '1 day' where id = %s",
-            (job1_id,),
+    for _ in range(3):
+        await asyncio.sleep(_LINK_RATELIMIT_SEC)
+        resp3 = await service_client.post(
+            "/v1/capture", json={"link": link}, headers={_CLIENT_IP_HEADER: _THIRD_CLIENT_IP}
         )
+        assert resp3.status == 202
+        job3 = resp3.json()
+        if job3["uuid"] != job1["uuid"]:
+            return
 
-    resp3 = await service_client.post(
-        "/v1/capture", json={"link": link}, headers={_CLIENT_IP_HEADER: _THIRD_CLIENT_IP}
-    )
-    assert resp3.status == 202
-    job3 = resp3.json()
-    assert job3["uuid"] != job1["uuid"]
+    raise AssertionError("link ratelimit did not expire")
 
 
 @pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
-async def test_create_capture_rejects_same_ip_during_ratelimit(service_client, pgsql):
+async def test_create_capture_rejects_same_ip_during_ratelimit(service_client):
     first_link = f"https://{TEST_HOST}/ip-ratelimit-first"
     second_link = f"https://{TEST_HOST}/ip-ratelimit-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IP}
@@ -67,21 +66,9 @@ async def test_create_capture_rejects_same_ip_during_ratelimit(service_client, p
     body = resp2.json()
     assert body["error"]["message"] == "client IP rate limited"
 
-    db = pgsql["shared_state_db"]
-    with db.cursor() as cur:
-        cur.execute(
-            "select count(*), pg_typeof(client_ip)::text "
-            "from client_ip_ratelimit where client_ip = %s::inet "
-            "group by pg_typeof(client_ip)::text",
-            (_CLIENT_IP,),
-        )
-        cnt, client_ip_type = cur.fetchone()
-    assert cnt == 1
-    assert client_ip_type == "inet"
-
 
 @pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
-async def test_create_capture_accepts_ipv6_client_ip(service_client, pgsql):
+async def test_create_capture_accepts_ipv6_client_ip(service_client):
     first_link = f"https://{TEST_HOST}/ip-ratelimit-ipv6-first"
     second_link = f"https://{TEST_HOST}/ip-ratelimit-ipv6-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IPV6_BRACKETED}
@@ -93,18 +80,9 @@ async def test_create_capture_accepts_ipv6_client_ip(service_client, pgsql):
     assert resp2.status == 429
     assert resp2.json()["error"]["message"] == "client IP rate limited"
 
-    db = pgsql["shared_state_db"]
-    with db.cursor() as cur:
-        cur.execute(
-            "select host(client_ip) from client_ip_ratelimit where client_ip = %s::inet",
-            (_CLIENT_IPV6,),
-        )
-        (stored_client_ip,) = cur.fetchone()
-    assert stored_client_ip == _CLIENT_IPV6
-
 
 @pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])
-async def test_create_capture_ip_ratelimit_expires(service_client, pgsql):
+async def test_create_capture_ip_ratelimit_expires(service_client):
     first_link = f"https://{TEST_HOST}/ip-ratelimit-expiry-first"
     second_link = f"https://{TEST_HOST}/ip-ratelimit-expiry-second"
     headers = {_CLIENT_IP_HEADER: _CLIENT_IP}
@@ -112,17 +90,30 @@ async def test_create_capture_ip_ratelimit_expires(service_client, pgsql):
     resp1 = await service_client.post("/v1/capture", json={"link": first_link}, headers=headers)
     assert resp1.status == 202
 
-    db = pgsql["shared_state_db"]
-    with db.cursor() as cur:
-        cur.execute(
-            "update client_ip_ratelimit set expires_at = now() - interval '1 second' "
-            "where client_ip = %s::inet",
-            (_CLIENT_IP,),
+    while True:
+        resp2 = await service_client.post(
+            "/v1/capture", json={"link": second_link}, headers=headers
         )
+        if resp2.status == 429:
+            break
+        assert resp2.status == 202
+        assert resp2.json()["uuid"] != resp1.json()["uuid"]
 
-    resp2 = await service_client.post("/v1/capture", json={"link": second_link}, headers=headers)
-    assert resp2.status == 202
-    assert resp2.json()["uuid"] != resp1.json()["uuid"]
+    retry_after = int(resp2.headers["Retry-After"])
+    await asyncio.sleep(retry_after)
+
+    while True:
+        allowed = await service_client.post(
+            "/v1/capture", json={"link": second_link}, headers=headers
+        )
+        if allowed.status == 202:
+            assert allowed.json()["uuid"] != resp1.json()["uuid"]
+            return
+        assert allowed.status == 429
+        retry_after = int(allowed.headers["Retry-After"])
+        await asyncio.sleep(retry_after)
+
+    raise AssertionError("unreachable")
 
 
 @pytest.mark.uservice_oneshot(config_hooks=[_enable_ip_ratelimit])

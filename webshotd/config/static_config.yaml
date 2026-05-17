@@ -56,6 +56,10 @@ components_manager:
       s3_region: $s3_region
       public_base_url: $public_base_url
       s3_timeout_ms: 3000
+    client_ip_ratelimiter:
+      interval_ms: $interval_ms
+      cache_max_size: $cache_max_size
+      cache_max_size#fallback: 10000
     dns-client:
       fs-task-processor: fs-task-processor
     server:
@@ -312,7 +316,6 @@ components_manager:
       crawler_browser_stop_timeout_ms: $crawler_browser_stop_timeout_ms
       crawler_proxy_stop_timeout_ms: $crawler_proxy_stop_timeout_ms
       link_ratelimit_sec: $link_ratelimit_sec
-      ip_ratelimit_ms: $ip_ratelimit_ms
       crawl_job_retention_sec: 604800
       crawl_job_cleanup_interval_sec: 3600
       s3_credentials_endpoint: $s3_credentials_endpoint

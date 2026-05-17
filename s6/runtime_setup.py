@@ -226,6 +226,8 @@ def _bootstrap_databases(
 def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     ctx.persistent_state_dir.mkdir(parents=True, exist_ok=True)
     raw_vars = read_yaml(ctx.config_vars_source)
+    if ctx.mode in ("dev", "prodlike"):
+        raw_vars.setdefault("testsuite-enabled", False)
     raw_vars.setdefault("pg_mode", "local")
     raw_vars.setdefault("s3_mode", "external")
     dependency_modes = resolve_runtime_dependency_modes(raw_vars, source=ctx.config_vars_source)
@@ -268,7 +270,7 @@ def snapshot_runtime_config_vars(ctx: RuntimeUpContext) -> None:
     raw_vars.setdefault("crawler_browser_stop_timeout_ms", 1500)
     raw_vars.setdefault("crawler_proxy_stop_timeout_ms", 500)
     raw_vars.setdefault("link_ratelimit_sec", 0)
-    raw_vars.setdefault("ip_ratelimit_ms", 500)
+    raw_vars.setdefault("interval_ms", 500)
 
     raw_vars.setdefault("s3_use_sts", False)
     if "s3_credentials_endpoint" not in raw_vars:

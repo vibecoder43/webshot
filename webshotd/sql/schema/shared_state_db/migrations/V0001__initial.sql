@@ -59,12 +59,3 @@ create index if not exists crawl_job_status_created_idx
 on crawl_job (status, created_at asc, id);
 create index if not exists crawl_job_link_created_idx
 on crawl_job (link, created_at desc, id desc);
-
-create table client_ip_ratelimit (
-    client_ip inet primary key,
-    expires_at timestamptz not null,
-    updated_at timestamptz not null default now()
-);
-
-create index if not exists client_ip_ratelimit_expires_at_idx
-on client_ip_ratelimit (expires_at asc, client_ip);

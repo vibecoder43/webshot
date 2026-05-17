@@ -134,10 +134,6 @@ struct [[nodiscard]] CreateCaptureJobResult final {
     bool created;
 };
 
-struct [[nodiscard]] ClientIpRatelimitRow final {
-    pg::TimePointTz expires_at;
-};
-
 [[nodiscard]] String MakeCaptureObjectKey(const String &bucket, Uuid id)
 {
     LOG_DEBUG() << text::Format("{}/{}", bucket, us::utils::ToString(id));
@@ -388,10 +384,6 @@ properties:
         type: integer
         minimum: 0
         description: 'Per-link minimum interval between capture jobs in seconds; 0 disables ratelimit'
-    ip_ratelimit_ms:
-        type: integer
-        minimum: 0
-        description: 'Per-client-IP minimum interval between HTTP CRUD operations in milliseconds; 0 disables ratelimit'
     crawl_job_retention_sec:
         type: integer
         minimum: 1
@@ -438,7 +430,6 @@ public:
     const chrono::milliseconds crawler_browser_stop_timeout;
     const chrono::milliseconds crawler_proxy_stop_timeout;
     const chrono::seconds link_ratelimit;
-    const chrono::milliseconds ip_ratelimit;
     const chrono::seconds crawl_job_retention;
     const chrono::seconds crawl_job_cleanup_interval;
     const bool s3_use_sts;
@@ -479,8 +470,6 @@ public:
     [[nodiscard]] Expected<dto::UuidWithTimeLink, errors::CaptureError>
     RunCrawlJob(Uuid id, Link link);
     [[nodiscard]] Expected<datetime::TimePointTz, PgError> InsertJob(Uuid id, String link);
-    [[nodiscard]] Expected<std::optional<ClientIpRatelimit>, PgError>
-    AcquireClientIpRatelimitLocked(const String &client_ip);
     [[nodiscard]] Expected<std::optional<dto::CaptureJob>, PgError>
     FindLatestJobForLink(const String &link);
     [[nodiscard]] Expected<CreateCaptureJobResult, PgError>
@@ -535,7 +524,6 @@ public:
           crawler_browser_stop_timeout(cfg["crawler_browser_stop_timeout_ms"].As<int64_t>() * 1ms),
           crawler_proxy_stop_timeout(cfg["crawler_proxy_stop_timeout_ms"].As<int64_t>() * 1ms),
           link_ratelimit(cfg["link_ratelimit_sec"].As<int64_t>() * 1s),
-          ip_ratelimit(cfg["ip_ratelimit_ms"].As<int64_t>() * 1ms),
           crawl_job_retention(cfg["crawl_job_retention_sec"].As<int64_t>() * 1s),
           crawl_job_cleanup_interval(cfg["crawl_job_cleanup_interval_sec"].As<int64_t>() * 1s),
           s3_use_sts(cfg["s3_use_sts"].As<bool>()),
@@ -755,50 +743,6 @@ Expected<datetime::TimePointTz, PgError> Crud::Impl::InsertJob(Uuid id, String l
         id, link
     ));
     return datetime::TimePointTz(row.created_at.GetUnderlying());
-}
-
-Expected<std::optional<ClientIpRatelimit>, PgError>
-Crud::Impl::AcquireClientIpRatelimitLocked(const String &client_ip)
-{
-    if (ip_ratelimit == 0ms)
-        return {};
-
-    auto ratelimit = pgx::ReadwriteTransaction(
-        shared_cluster, [&](auto &trx) -> std::optional<ClientIpRatelimit> {
-            trx.Execute(
-                sql::kLockClientIpRatelimit, text::Format("client_ip_ratelimit:{}", client_ip)
-            );
-
-            const auto now = datetime::Now();
-            auto row_opt = trx.Execute(sql::kSelectClientIpRatelimit, client_ip)
-                               .template AsOptionalSingleRow<ClientIpRatelimitRow>(pg::kRowTag);
-            if (row_opt) {
-                const auto expires_at = row_opt->expires_at.GetUnderlying();
-                if (now < expires_at) {
-                    trx.Commit();
-                    return ClientIpRatelimit{
-                        .retry_after = chrono::ceil<chrono::milliseconds>(expires_at - now),
-                    };
-                }
-            }
-
-            trx.Execute(
-                sql::kUpsertClientIpRatelimit, client_ip, pg::TimePointTz(now + ip_ratelimit)
-            );
-            trx.Commit();
-            return {};
-        }
-    );
-    if (!ratelimit) {
-        metrics.AccountError(Metrics::Error::kDbSharedStateWrite);
-        us::utils::AbortWithStacktrace(
-            std::format(
-                "Failed to acquire client IP ratelimit for {}: {}", client_ip,
-                ratelimit.Error().what
-            )
-        );
-    }
-    return ratelimit;
 }
 
 Expected<void, PgError> Crud::Impl::MarkJobRunning(Uuid id)
@@ -1032,17 +976,6 @@ void Crud::Impl::CleanupOldJobs()
     );
     if (!deleted) {
         LOG_ERROR() << std::format("Failed to delete old crawl jobs: {}", deleted.Error().what);
-    }
-
-    const auto ratelimit_deleted = SharedReadwrite(
-        [](auto &) {}, sql::kDeleteClientIpRatelimitsExpired, pg::TimePointTz(now)
-    );
-    if (!ratelimit_deleted) {
-        us::utils::AbortWithStacktrace(
-            std::format(
-                "Failed to delete expired client IP ratelimits: {}", ratelimit_deleted.Error().what
-            )
-        );
     }
 }
 
@@ -1384,22 +1317,6 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::MakeCaptureJob(Link link
     });
 
     return job;
-}
-
-Expected<std::optional<ClientIpRatelimit>, errors::CrudError>
-Crud::AcquireClientIpRatelimit(String client_ip)
-{
-    using enum errors::CrudError;
-
-    auto acquired = impl_->AcquireClientIpRatelimitLocked(client_ip);
-    if (!acquired) {
-        us::utils::AbortWithStacktrace(
-            std::format(
-                "Failed to acquire client IP ratelimit for {}: {}", client_ip, acquired.Error().what
-            )
-        );
-    }
-    return GrabValueOf(acquired);
 }
 
 Expected<std::optional<CaptureRecord>, errors::CrudError> Crud::FindCapture(Uuid uuid)

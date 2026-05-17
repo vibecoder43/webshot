@@ -23,10 +23,6 @@ namespace datetime = us::utils::datetime;
 enum class AccessPolicyError;
 class Config;
 
-struct [[nodiscard]] ClientIpRatelimit final {
-    std::chrono::milliseconds retry_after;
-};
-
 struct [[nodiscard]] CaptureRecord final {
     Uuid uuid;
     datetime::TimePointTz created_at;
@@ -66,9 +62,6 @@ public:
      * job status via findCaptureJob().
      */
     [[nodiscard]] Expected<dto::CaptureJob, errors::CreateJobError> MakeCaptureJob(Link link);
-    /** @brief Acquire per-IP ratelimit for an HTTP CRUD operation. */
-    [[nodiscard]] Expected<std::optional<ClientIpRatelimit>, errors::CrudError>
-    AcquireClientIpRatelimit(String client_ip);
     /** @brief Look up capture metadata by id. */
     [[nodiscard]] Expected<std::optional<CaptureRecord>, errors::CrudError> FindCapture(Uuid uuid);
 
