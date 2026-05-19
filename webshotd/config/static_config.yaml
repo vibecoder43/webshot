@@ -58,8 +58,12 @@ components_manager:
       s3_timeout_ms: 3000
     client_ip_ratelimiter:
       interval_ms: $interval_ms
-      cache_max_size: $cache_max_size
-      cache_max_size#fallback: 10000
+      size: $client_ip_ratelimiter.size
+      size#fallback: 10000
+      ways: 1
+      lifetime: "0"
+      background-update: false
+      config-settings: false
     dns-client:
       fs-task-processor: fs-task-processor
     server:
