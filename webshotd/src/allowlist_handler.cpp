@@ -51,8 +51,7 @@ std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
     const auto allowed = access_policy_.IsAllowlistedPrefix(prefix::MakePrefixKey(*link));
     if (!allowed) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
-        response.SetStatus(kInternalServerError);
-        return {};
+        return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
     }
     if (!*allowed) {
         response.SetStatus(kForbidden);

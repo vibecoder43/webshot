@@ -40,6 +40,10 @@ paths:
           description: Link is not allowlisted.
         '500':
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
   /v1/allowlist/add:
     post:
       operationId: addAllowlistPrefix
@@ -149,6 +153,10 @@ paths:
           description: Link is denylisted.
         '500':
           description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '../common/common.yaml#/components/schemas/ErrorEnvelope'
   /v1/denylist/deny-and-purge:
     post:
       operationId: denyAndPurgePrefix

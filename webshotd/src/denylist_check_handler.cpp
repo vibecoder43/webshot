@@ -9,6 +9,7 @@
 #include "http.hpp"
 #include "metrics.hpp"
 #include "prefix_utils.hpp"
+#include "text.hpp"
 
 #include <string>
 
@@ -24,6 +25,7 @@
 namespace ws {
 namespace us = userver;
 namespace server = us::server;
+using namespace text::literals;
 
 AccessPolicyCheckHandler::AccessPolicyCheckHandler(
     const us::components::ComponentConfig &config, const us::components::ComponentContext &context
@@ -49,8 +51,7 @@ std::string AccessPolicyCheckHandler::HandleRequestThrowDeadlined(
     const auto allowed = access_policy_.IsAllowedPrefix(prefix_key);
     if (!allowed) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
-        response.SetStatus(kInternalServerError);
-        return {};
+        return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
     }
     if (!*allowed) {
         response.SetStatus(kForbidden);
