@@ -57,10 +57,15 @@ constexpr auto kMaxHeaderBytes = 64_uz * 1024_uz;
 constexpr size_t kIoBufferBytes = 16UL * 1024UL;
 constexpr auto kMaxContentLengthBytes = 1024_i64 * 1024_i64 * 1024_i64;
 
-constexpr std::array kLocalFixtureHosts = {
-    std::string_view{"test-target"},
-    std::string_view{"asset.test-target"},
-    std::string_view{"untrusted.test-target"},
+const std::array<String, 3> kLocalFixtureHosts = {
+    "test-target"_t,
+    "asset.test-target"_t,
+    "untrusted.test-target"_t,
+};
+const std::array<String, 3> kTestsuiteLoopbackHosts = {
+    "127.0.0.1"_t,
+    "localhost"_t,
+    "::1"_t,
 };
 constexpr auto kLocalHttpPort = 18080_u16;
 constexpr auto kLocalHttpsPort = 18443_u16;
@@ -221,7 +226,7 @@ struct [[nodiscard]] Authority final {
 struct [[nodiscard]] ResolvedTcpAddress final {
     eng::io::Sockaddr sockaddr;
     Ip ip;
-    std::string label;
+    String label;
 };
 
 [[nodiscard]] std::optional<Authority>
@@ -312,43 +317,40 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
     return {};
 }
 
-[[nodiscard]] std::string DescribeSockaddr(const eng::io::Sockaddr &addr)
+[[nodiscard]] String DescribeSockaddr(const eng::io::Sockaddr &addr)
 {
     if (!addr.HasPort())
-        return addr.PrimaryAddressString();
+        return text::Format("{}", addr.PrimaryAddressString());
     if (addr.Domain() == eng::io::AddrDomain::kInet6)
-        return std::format("[{}]:{}", addr.PrimaryAddressString(), addr.Port());
-    return std::format("{}:{}", addr.PrimaryAddressString(), addr.Port());
+        return text::Format("[{}]:{}", addr.PrimaryAddressString(), addr.Port());
+    return text::Format("{}:{}", addr.PrimaryAddressString(), addr.Port());
 }
 
 [[nodiscard]] Expected<std::vector<ResolvedTcpAddress>, String> ResolveTcp(
-    dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadline deadline,
+    dns::Resolver &resolver, const String &host, u16 port, eng::Deadline deadline,
     bool allow_non_public_ip
 )
 {
-    const auto host_text = std::string(host);
-    if (auto host_string = String::FromBytes(host_text)) {
-        if (auto ip = ParseIp(*host_string)) {
-            if (!allow_non_public_ip && !IsPublicRoutable(*ip))
-                return Unex(text::Format("ip address not public-routable for {}", host_text));
+    if (auto ip = ParseIp(host)) {
+        if (!allow_non_public_ip && !IsPublicRoutable(*ip))
+            return Unex(text::Format("ip address not public-routable for {}", host));
 
-            auto addr = SockaddrFromIp(*ip, port);
-            return std::vector<ResolvedTcpAddress>{
-                ResolvedTcpAddress{
-                    .sockaddr = addr,
-                    .ip = *ip,
-                    .label = DescribeSockaddr(addr),
-                },
-            };
-        }
+        auto addr = SockaddrFromIp(*ip, port);
+        return {{
+            {
+                .sockaddr = addr,
+                .ip = *ip,
+                .label = DescribeSockaddr(addr),
+            },
+        }};
     }
 
     try {
-        auto addrs = resolver.Resolve(host_text, deadline);
+        auto addrs = resolver.Resolve(host.ToBytes(), deadline);
         if (addrs.empty())
-            return Unex(text::Format("dns resolve returned no addresses for {}", host_text));
+            return Unex(text::Format("dns resolve returned no addresses for {}", host));
 
-        std::vector<ResolvedTcpAddress> resolved{};
+        std::vector<ResolvedTcpAddress> resolved;
         resolved.reserve(addrs.size());
         for (auto &addr : addrs) {
             addr.SetPort(Raw(port));
@@ -366,62 +368,61 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
         }
         if (resolved.empty())
             return Unex(
-                text::Format("dns resolve returned no public-routable addresses for {}", host_text)
+                text::Format("dns resolve returned no public-routable addresses for {}", host)
             );
         return resolved;
     } catch (const dns::ResolverException &) {
-        return Unex(text::Format("dns resolve failed for {}", host_text));
+        return Unex(text::Format("dns resolve failed for {}", host));
     }
 }
 
 struct [[nodiscard]] UpstreamTarget final {
-    std::string connect_host;
+    String connect_host;
     u16 connect_port{0};
     bool allow_non_public_ip{false};
 };
 
 [[nodiscard]] UpstreamTarget
-RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host, u16 port)
+RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, const String &host, u16 port)
 {
     if (!cfg.enable_local_fixture_rewrite)
-        return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+        return {.connect_host = host, .connect_port = port};
 
-    const auto is_testsuite_loopback_host = host == "127.0.0.1" || host == "localhost" ||
-                                            host == "::1";
-    const auto is_testsuite_loopback_port =
+    const bool is_testsuite_loopback_host = std::ranges::contains(kTestsuiteLoopbackHosts, host);
+    const bool is_testsuite_loopback_port =
         port == kTestsuiteServicePort || port == kTestsuitePort ||
         std::ranges::contains(cfg.testsuite_loopback_ports, port);
     if (is_testsuite_loopback_host && is_testsuite_loopback_port) {
-        return UpstreamTarget{
-            .connect_host = std::string(host),
+        return {
+            .connect_host = host,
             .connect_port = port,
             .allow_non_public_ip = true,
         };
     }
 
-    const auto is_local_host = std::ranges::contains(kLocalFixtureHosts, host);
+    auto is_local_host = std::ranges::contains(kLocalFixtureHosts, host);
     if (!is_local_host)
-        return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+        return {.connect_host = host, .connect_port = port};
 
     if (port == 80_u16)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = kLocalHttpPort,
             .allow_non_public_ip = true,
         };
     if (port == 443_u16)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = kLocalHttpsPort,
             .allow_non_public_ip = true,
         };
     if (port == kLocalHttpPort || port == kLocalHttpsPort)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = port,
             .allow_non_public_ip = true,
         };
-    return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+    return {.connect_host = host, .connect_port = port};
 }
 
 [[nodiscard]] std::string MakeErrorResponse(std::string_view status, std::string_view message)
@@ -463,7 +464,7 @@ void AppendHeaderLine(std::string &out, std::string_view name, std::string_view 
 }
 
 struct [[nodiscard]] HttpRequestTarget final {
-    std::string_view host;
+    String host;
     u16 port{0};
     std::string_view path;
 };
@@ -473,30 +474,38 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 {
     if (req.target.starts_with(kHttpScheme)) {
         auto rest = req.target.substr(kHttpScheme.size());
-        const auto slash = rest.find('/');
-        const auto authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
-        const auto parsed_authority = ParseAuthority(authority, 80_u16, PortMode::kOptional);
+        auto slash = rest.find('/');
+        auto authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
+        auto parsed_authority = ParseAuthority(authority, 80_u16, PortMode::kOptional);
         if (!parsed_authority)
             return Unex(kUnsupportedRequestTarget);
 
+        auto host_text = TRY_MAP_ERR(String::FromBytes(parsed_authority->host), [&](auto &&) {
+            return kUnsupportedRequestTarget;
+        });
+
         return HttpRequestTarget{
-            .host = parsed_authority->host,
+            .host = std::move(host_text),
             .port = parsed_authority->port,
             .path = slash == std::string_view::npos ? kSlashPath : rest.substr(slash),
         };
     }
     if (!req.target.starts_with('/'))
         return Unex(kUnsupportedRequestTarget);
-    const auto host_header = FindHeaderValue(req.headers, "host");
+    auto host_header = FindHeaderValue(req.headers, "host");
     if (!host_header)
         return Unex(kMissingHostHeader);
 
-    const auto parsed_host = ParseAuthority(*host_header, 0_u16, PortMode::kOptional);
+    auto parsed_host = ParseAuthority(*host_header, 0_u16, PortMode::kOptional);
     if (!parsed_host)
         return Unex(kInvalidHostHeader);
 
+    auto host_text = TRY_MAP_ERR(String::FromBytes(parsed_host->host), [&](auto &&) {
+        return kInvalidHostHeader;
+    });
+
     return HttpRequestTarget{
-        .host = parsed_host->host,
+        .host = std::move(host_text),
         .port = parsed_host->port == 0_u16 ? 80_u16 : parsed_host->port,
         .path = req.target,
     };
@@ -665,9 +674,8 @@ struct EgressProxy::Impl final {
         static_cast<void>(::shutdown(sock.Fd(), SHUT_WR));
     }
 
-    [[nodiscard]] Expected<eng::io::Socket, String> ConnectUpstream(
-        dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadline deadline
-    )
+    [[nodiscard]] Expected<eng::io::Socket, String>
+    ConnectUpstream(dns::Resolver &resolver, const String &host, u16 port, eng::Deadline deadline)
     {
         const auto upstream = RewriteLocalFixtureIfNeeded(config, host, port);
         auto addrs = TRY(ResolveTcp(
@@ -675,7 +683,7 @@ struct EgressProxy::Impl final {
             upstream.allow_non_public_ip
         ));
 
-        std::vector<std::string> errors{};
+        std::vector<String> errors;
         errors.reserve(addrs.size());
         for (const auto &addr : addrs) {
             eng::io::Socket socket{addr.sockaddr.Domain(), eng::io::SocketType::kStream};
@@ -683,15 +691,15 @@ struct EgressProxy::Impl final {
                 socket.Connect(addr.sockaddr, deadline);
                 return socket;
             } catch (const std::exception &e) {
-                errors.push_back(std::format("{} ({})", addr.label, e.what()));
+                errors.push_back(text::Format("{} ({})", addr.label, e.what()));
             }
         }
 
-        std::string details{};
+        String details;
         for (const auto &cur : errors) {
-            if (!details.empty())
-                details.append("; ");
-            details.append(cur);
+            if (!details.Empty())
+                details += "; "_t;
+            details += cur;
         }
         return Unex(
             text::Format(
@@ -815,7 +823,13 @@ struct EgressProxy::Impl final {
             return;
         }
 
-        auto upstream = ConnectUpstream(resolver, authority->host, authority->port, deadline);
+        const auto host_text = String::FromBytes(authority->host);
+        if (!host_text) {
+            Send400(client, "invalid CONNECT target", deadline);
+            return;
+        }
+
+        auto upstream = ConnectUpstream(resolver, *host_text, authority->port, deadline);
         if (!upstream) {
             NoteError(upstream.Error());
             Send502(client, upstream.Error().View(), deadline);
