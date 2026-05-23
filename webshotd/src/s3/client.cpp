@@ -43,7 +43,7 @@ constexpr std::chrono::seconds kMaxPresignTtl = 604800s;
 
 EndpointParts ParseEndpoint(const String &ep)
 {
-    const auto url = ParseUrlWithDefaultHttpScheme(ep);
+    auto url = ParseUrlWithDefaultHttpScheme(ep);
     Invariant(url, " endpoint must parse"_t);
 
     Invariant(url->IsHttpOrHttps(), " endpoint must be http or https"_t);
@@ -79,8 +79,8 @@ std::string Client::PutObject(
 ) const
 {
     static_cast<void>(tags);
-    const auto path_text = *String::FromBytes(path);
-    const auto built = MakePathStyleUrl(path_text, {});
+    auto path_text = *String::FromBytes(path);
+    auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
     headers[us::http::headers::kContentType] = std::string(content_type);
     if (content_disposition)
@@ -104,10 +104,10 @@ std::string Client::PutObject(
 
 void Client::DeleteObject(std::string_view path) const
 {
-    const auto path_text = *String::FromBytes(path);
-    const auto built = MakePathStyleUrl(path_text, {});
+    auto path_text = *String::FromBytes(path);
+    auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
-    const auto payload_hash = Sha256Hex("");
+    auto payload_hash = Sha256Hex("");
     SignRequest("DELETE"_t, built.raw_path, built.host, headers, payload_hash);
 
     const std::string url{built.href.View()};
@@ -124,7 +124,7 @@ std::optional<s3::Client::HeadersDataResponse>
 Client::GetObjectHead(std::string_view path, const HeaderDataRequest &request) const
 {
     const auto path_text = *String::FromBytes(path);
-    const auto built = MakePathStyleUrl(path_text, {});
+    auto built = MakePathStyleUrl(path_text, {});
     httpc::Headers headers;
     const auto payload_hash = Sha256Hex("");
     SignRequest("HEAD"_t, built.raw_path, built.host, headers, payload_hash);
@@ -265,11 +265,11 @@ Client::ListMultipartUploads(const us::s3api::multipart_upload::ListMultipartUpl
 std::string
 Client::GenerateDownloadUrl(std::string_view path, time_t expires_epoch, bool use_ssl) const
 {
-    const auto expires_at = std::chrono::system_clock::from_time_t(expires_epoch);
-    const auto method = "GET"_t;
-    const auto path_text = *String::FromBytes(path);
-    const auto protocol_text = use_ssl ? "https"_t : "http"_t;
-    const auto url_text = PresignPathStyle(method, path_text, expires_at, protocol_text);
+    auto expires_at = std::chrono::system_clock::from_time_t(expires_epoch);
+    auto method = "GET"_t;
+    auto path_text = *String::FromBytes(path);
+    auto protocol_text = use_ssl ? "https"_t : "http"_t;
+    auto url_text = PresignPathStyle(method, path_text, expires_at, protocol_text);
     return std::string{url_text.View()};
 }
 
@@ -326,10 +326,10 @@ void Client::SignRequest(
     const String &payload_hash
 ) const
 {
-    const auto now = datetime::Now();
-    const auto params = MakeSigParams(now);
+    auto now = datetime::Now();
+    auto params = MakeSigParams(now);
     auto prepared = PrepareSignedHeaders(host.ToBytes(), headers);
-    const auto headers_text = *text::StringPairs(prepared);
+    auto headers_text = *text::StringPairs(prepared);
 
     auto signed_map = SignHeaders(params, method, canonical_uri, {}, headers_text, payload_hash);
     for (const auto &[name, value] : signed_map)
@@ -338,9 +338,9 @@ void Client::SignRequest(
 
 String Client::MakeRawPath(String path, IncludeBucket include_bucket) const
 {
-    const auto base_path = endpoint_.base_path.ToBytes();
-    const auto bucket = bucket_name_.ToBytes();
-    const auto path_bytes = path.ToBytes();
+    auto base_path = endpoint_.base_path.ToBytes();
+    auto bucket = bucket_name_.ToBytes();
+    auto path_bytes = path.ToBytes();
 
     std::string raw;
     raw.reserve(NumericCast<size_t>(ssize(base_path) + ssize(bucket) + ssize(path_bytes) + 2_i64));
@@ -380,11 +380,11 @@ Client::MakePathStyleUrl(String path, std::optional<String> protocol_override) c
 
 detail::BuiltUrl Client::MakeVirtualHostUrl(String path, String protocol) const
 {
-    const auto bucket_validated = detail::ValidateVirtualHostBucketName(bucket_name_);
+    auto bucket_validated = detail::ValidateVirtualHostBucketName(bucket_name_);
     Invariant(bucket_validated, "presign requires non-empty bucket"_t);
 
     auto raw_path = MakeRawPath(std::move(path), IncludeBucket::kNo);
-    const auto hostname = text::Format("{}.{}", bucket_name_, endpoint_.hostname);
+    auto hostname = text::Format("{}.{}", bucket_name_, endpoint_.hostname);
     auto url = endpoint_.url.WithProtocol(protocol).WithHostname(hostname).WithPort(endpoint_.port);
     url = url.WithPathname(raw_path).Stripped(Url::StripOptions::kHash | Url::StripOptions::kQuery);
     return {
@@ -399,14 +399,14 @@ String Client::PresignVirtualHost(
     String protocol, std::optional<httpc::Headers> extra_headers
 ) const
 {
-    const auto now = datetime::Now();
-    const auto built = MakeVirtualHostUrl(std::move(path), std::move(protocol));
+    auto now = datetime::Now();
+    auto built = MakeVirtualHostUrl(std::move(path), std::move(protocol));
 
     const SigParams params = MakeSigParams(now);
 
     httpc::Headers extra = extra_headers.value_or(httpc::Headers{});
     auto prepared = PrepareSignedHeaders(built.host.ToBytes(), extra);
-    const auto headers_text = *text::StringPairs(prepared);
+    auto headers_text = *text::StringPairs(prepared);
 
     return MakePresignedUrl(method, built, now, expires_at, params, headers_text);
 }
@@ -420,7 +420,7 @@ String Client::PresignPathStyle(
     auto built = MakePathStyleUrl(std::move(path), std::move(protocol));
     SigParams params = MakeSigParams(now);
     auto prepared = PrepareSignedHeaders(built.host.ToBytes(), httpc::Headers{});
-    const auto headers_text = *text::StringPairs(prepared);
+    auto headers_text = *text::StringPairs(prepared);
 
     return MakePresignedUrl(method, built, now, expires_at, params, headers_text);
 }
@@ -440,13 +440,13 @@ String Client::MakePresignedUrl(
     query.emplace_back("X-Amz-Date", params.amz_date);
     query.emplace_back("X-Amz-Expires", std::to_string(ComputePresignTtl(now, expires_at).count()));
 
-    const auto headers_utf8 = text::ToBytesPairs(headers);
+    auto headers_utf8 = text::ToBytesPairs(headers);
     const std::string signed_headers = MakeSignedHeaders(headers_utf8);
     query.emplace_back("X-Amz-SignedHeaders", signed_headers);
     if (params.session_token)
         query.emplace_back("X-Amz-Security-Token", params.session_token->GetUnderlying().ToBytes());
 
-    const auto cr = MakeCanonicalRequest(
+    auto cr = MakeCanonicalRequest(
         method.View(), built.raw_path.View(), query, headers_utf8, "UNSIGNED-PAYLOAD"
     );
     const std::string string_to_sign = std::format(

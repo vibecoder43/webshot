@@ -43,7 +43,7 @@ namespace {
 
 [[nodiscard]] std::optional<PrefixCursor> DecodePrefixCursor(const String &token)
 {
-    const auto cur = TRY(DecodeToken<dto::PaginationPrefixCursor>(token));
+    auto cur = TRY(DecodeToken<dto::PaginationPrefixCursor>(token));
     PrefixCursor out{};
     out.prefix = TRY(String::FromBytes(cur.p));
     out.link = TRY(String::FromBytes(cur.l));
@@ -67,7 +67,7 @@ EncodePrefixCursor(const String &prefix, const String &link, PageDirection direc
     PageDirection direction
 )
 {
-    const auto micros = TimePointToMicros(created_at);
+    auto micros = TimePointToMicros(created_at);
     dto::PaginationPrefixCursor cur(prefix.ToBytes(), link.ToBytes(), ToDto(direction), micros, id);
     return EncodeToken(cur);
 }
@@ -77,7 +77,7 @@ EncodePrefixCursor(const String &prefix, const String &link, PageDirection direc
     auto view = s.View();
     std::string bytes(view);
     for (i64 i = ssize(bytes) - 1_i64; i >= 0_i64; i--) {
-        const auto j = NumericCast<size_t>(i);
+        auto j = NumericCast<size_t>(i);
         unsigned char c = static_cast<unsigned char>(bytes[j]);
         if (c < 0xFF) {
             bytes[j] = static_cast<char>(c + 1);

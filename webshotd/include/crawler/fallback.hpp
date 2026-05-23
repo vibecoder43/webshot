@@ -45,7 +45,7 @@ struct [[nodiscard]] CrawlerError {
     if (!probe)
         return false;
 
-    const auto status = probe->status ? *probe->status : 0;
+    auto status = probe->status ? *probe->status : 0;
 
     if (status == 502)
         return true;

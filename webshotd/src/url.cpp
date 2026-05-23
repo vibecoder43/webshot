@@ -71,7 +71,7 @@ String Url::Surt() const
 
     std::vector<std::string> labels;
     for (size_t offset = 0; offset <= host_text.size();) {
-        const auto next = host_text.find('.', offset);
+        auto next = host_text.find('.', offset);
         if (next == std::string::npos) {
             labels.emplace_back(host_text.substr(offset));
             break;
@@ -106,7 +106,7 @@ bool Url::HasNonDefaultPort() const
     if (!HasPort())
         return false;
 
-    const auto default_port = ada::scheme::get_special_port(SchemeType());
+    auto default_port = ada::scheme::get_special_port(SchemeType());
     if (default_port == 0)
         return true;
 

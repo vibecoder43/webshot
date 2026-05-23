@@ -43,12 +43,12 @@ std::string AccessPolicyCheckHandler::HandleRequestThrowDeadlined(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    const auto link = ParseJsonLinkBody(request, config_);
+    auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
 
     auto prefix_key = prefix::MakePrefixKey(*link);
-    const auto allowed = access_policy_.IsAllowedPrefix(prefix_key);
+    auto allowed = access_policy_.IsAllowedPrefix(prefix_key);
     if (!allowed) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
         return httpu::RespondError(response, kInternalServerError, "internal server error"_t);

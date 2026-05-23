@@ -35,7 +35,7 @@ template <typename T>
 {
     using namespace text::literals;
 
-    const auto body = TRY_MAP_ERR(String::FromBytes(request.RequestBody()), [](const auto &) {
+    auto body = TRY_MAP_ERR(String::FromBytes(request.RequestBody()), [](const auto &) {
         return "invalid request body"_t;
     });
     return ws::json::Parse<T>(body, "invalid request body"_t);
@@ -46,8 +46,8 @@ ParseJsonLinkBody(const server::http::HttpRequest &request, const Config &config
 {
     using namespace text::literals;
 
-    const auto body = TRY(ParseJsonBodyRequest<::dto::LinkRequest>(request));
-    const auto text = TRY_ERR_AS(String::FromBytes(body.link), "invalid parameter"_t);
+    auto body = TRY(ParseJsonBodyRequest<::dto::LinkRequest>(request));
+    auto text = TRY_ERR_AS(String::FromBytes(body.link), "invalid parameter"_t);
     return TRY_ERR_AS(Link::FromText(text, config.UrlBytesMax()), "invalid parameter"_t);
 }
 
@@ -77,7 +77,7 @@ public:
     [[nodiscard]] Expected<Link, ParamError>
     ParseRequiredQueryLink(const server::http::HttpRequest &request, String param_name) const
     {
-        const auto text = TRY(ParseRequiredQueryText(request, param_name));
+        auto text = TRY(ParseRequiredQueryText(request, param_name));
         return ParseLinkText(text, param_name);
     }
 
@@ -98,16 +98,16 @@ public:
     [[nodiscard]] Expected<Link, ParamError>
     ParseLinkBytes(std::string_view bytes, String param_name) const
     {
-        const auto text = TRY_MAP_ERR(String::FromBytes(bytes), ([&](auto) {
-                                          return InvalidParamError(param_name);
-                                      }));
+        auto text = TRY_MAP_ERR(String::FromBytes(bytes), ([&](auto) {
+                                    return InvalidParamError(param_name);
+                                }));
         return ParseLinkText(text, param_name);
     }
 
     [[nodiscard]] Expected<ws::uuid::Uuid, ParamError>
     ParseRequiredPathParamUuid(const server::http::HttpRequest &request, String param_name) const
     {
-        const auto text = TRY(ParseRequiredPathText(request, param_name));
+        auto text = TRY(ParseRequiredPathText(request, param_name));
         return TRY_OK_OR(ws::uuid::Parse(text.View()), InvalidParamError(param_name));
     }
 
@@ -132,7 +132,7 @@ private:
     [[nodiscard]] static std::optional<String>
     RequestHeader(const server::http::HttpRequest &request, std::string_view name)
     {
-        const auto value = request.GetHeader(std::string{name});
+        auto value = request.GetHeader(std::string{name});
         if (value.empty())
             return {};
         return TRY(String::FromBytes(value));

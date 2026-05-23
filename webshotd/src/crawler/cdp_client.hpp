@@ -120,7 +120,7 @@ public:
     [[nodiscard]] Expected<T, CdpError>
     Send(const String &method, const Params &params, const std::optional<String> &session_id)
     {
-        const auto params_value = TRY(
+        auto params_value = TRY(
             ws::json::ValueOf(params, CdpError{.code = CdpErrorCode::kProtocol, .detail = {}})
         );
         return ws::json::As<T>(

@@ -35,14 +35,14 @@ using namespace text::literals;
 
 [[nodiscard]] std::string NormalizeKeyFromBytes(const std::vector<char> &bytes)
 {
-    const auto text = *String::FromBytes(std::string_view(bytes.data(), bytes.size()));
+    auto text = *String::FromBytes(std::string_view(bytes.data(), bytes.size()));
     return Link::FromText(text, kUrlBytesMax)->Normalized().ToBytes();
 }
 } // namespace
 
 UTEST(LinkFromText, AcceptsHttpsWithHostname)
 {
-    const auto link = ParseLink("https://example.com/");
+    auto link = ParseLink("https://example.com/");
     EXPECT_EQ(link.url.Hostname(), "example.com"_t);
     EXPECT_EQ(link.HttpUrl(), "http://example.com"_t);
     EXPECT_EQ(link.Normalized(), "example.com"_t);
@@ -73,8 +73,8 @@ UTEST(LinkFromText, RejectsUrlOverLimit)
 
 UTEST(LinkFromText, NormalizesScheme)
 {
-    const auto http_link = NormalizeKey("http://example.com/path");
-    const auto https_link = NormalizeKey("https://example.com/path");
+    auto http_link = NormalizeKey("http://example.com/path");
+    auto https_link = NormalizeKey("https://example.com/path");
     EXPECT_EQ(http_link, https_link);
     EXPECT_EQ(http_link, std::string{"example.com/path"});
 }
@@ -164,7 +164,7 @@ UTEST(LinkFromText, ResolvesDotSegments)
 
 UTEST(LinkMembers, HostAndHttpUrlNormalized)
 {
-    const auto link = ParseLink("https://Example.com:8081/Path/");
+    auto link = ParseLink("https://Example.com:8081/Path/");
     EXPECT_EQ(link.url.Hostname(), "example.com"_t);
     EXPECT_EQ(link.HttpUrl(), "http://example.com/Path"_t);
     EXPECT_EQ(link.Normalized(), "example.com/Path"_t);
@@ -172,26 +172,26 @@ UTEST(LinkMembers, HostAndHttpUrlNormalized)
 
 UTEST(LinkMembers, PreservesQueryAndStripsPort)
 {
-    const auto link = ParseLink("https://Example.com:8081/Path?a=1");
+    auto link = ParseLink("https://Example.com:8081/Path?a=1");
     EXPECT_EQ(link.url.Hostname(), "example.com"_t);
     EXPECT_EQ(link.Normalized(), "example.com/Path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesPortOnly)
 {
-    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort);
     EXPECT_EQ(stripped.Href(), "https://example.com/path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesQueryOnly)
 {
-    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kQuery);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com:8081/path"_t);
 }
 
 UTEST(UrlStrip, RemovesPortAndQuery)
 {
-    const auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort | kQuery);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort | kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com/path"_t);
 }
 
@@ -206,17 +206,17 @@ UTEST(PrefixKey, IgnoresPortAndQuery)
 UTEST(LinkFromTextBytes, MatchesUtf8Normalization)
 {
     const std::string url = "https://example.com/a?b=1";
-    const auto utf8_normalized = NormalizeKey(url);
+    auto utf8_normalized = NormalizeKey(url);
     const std::vector<char> bytes(std::begin(url), std::end(url));
-    const auto bytes_normalized = NormalizeKeyFromBytes(bytes);
+    auto bytes_normalized = NormalizeKeyFromBytes(bytes);
     EXPECT_EQ(utf8_normalized, bytes_normalized);
 }
 
 UTEST(LinkFromTextBytes, HandlesUtf8EuroSymbol)
 {
     const std::string url = "https://example.com/\xE2\x82\xAC";
-    const auto utf8_normalized = NormalizeKey(url);
+    auto utf8_normalized = NormalizeKey(url);
     const std::vector<char> bytes(std::begin(url), std::end(url));
-    const auto bytes_normalized = NormalizeKeyFromBytes(bytes);
+    auto bytes_normalized = NormalizeKeyFromBytes(bytes);
     EXPECT_EQ(utf8_normalized, bytes_normalized);
 }

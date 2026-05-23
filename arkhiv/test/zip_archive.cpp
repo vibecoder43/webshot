@@ -86,9 +86,7 @@ int CloseStringArchive(archive *, void *) { return ARCHIVE_OK; }
         if (archive_write_header(writer.get(), entry.get()) != ARCHIVE_OK)
             Fail("failed to write zip header");
         if (spec.file_type == AE_IFREG && !spec.body.empty()) {
-            const auto written = archive_write_data(
-                writer.get(), spec.body.data(), spec.body.size()
-            );
+            auto written = archive_write_data(writer.get(), spec.body.data(), spec.body.size());
             if (written != static_cast<la_ssize_t>(spec.body.size()))
                 Fail("failed to write zip body");
         }
@@ -174,7 +172,7 @@ TEST(ZipArchive, BuilderRejectsInvalidPaths)
 TEST(ZipArchive, RejectsDuplicateEntriesOnRead)
 {
     ZipArchiveError error;
-    const auto zip_bytes = MakeZip({
+    auto zip_bytes = MakeZip({
         ZipEntrySpec{.path = "logs/stdout.log", .body = "first"},
         ZipEntrySpec{.path = "logs/stdout.log", .body = "second"},
     });

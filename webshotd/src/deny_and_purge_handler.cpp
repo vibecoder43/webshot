@@ -48,7 +48,7 @@ std::string DenyPrefixAndPurgeHandler::HandleRequestThrowDeadlined(
 
     auto &response = request.GetHttpResponse();
 
-    const auto link = ParseJsonLinkBody(request, config_);
+    auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
 

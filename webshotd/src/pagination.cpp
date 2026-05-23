@@ -41,14 +41,14 @@ namespace {
 [[nodiscard]] String
 EncodeCursor(Clock::time_point created_at, const Uuid &id, PageDirection direction)
 {
-    const auto micros = TimePointToMicros(created_at);
+    auto micros = TimePointToMicros(created_at);
     dto::PaginationCursor cur(micros, id, ToDto(direction));
     return EncodeToken(cur);
 }
 
 [[nodiscard]] std::optional<Cursor> DecodeCursor(const String &token)
 {
-    const auto cur = TRY(DecodeToken<dto::PaginationCursor>(token));
+    auto cur = TRY(DecodeToken<dto::PaginationCursor>(token));
     return Cursor{
         .created_at = MicrosToTimePoint(cur.t),
         .id = cur.i,

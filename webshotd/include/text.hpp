@@ -121,7 +121,7 @@ public:
         auto utf32 = una::utf8to32u(data_);
         std::ranges::reverse(utf32);
 
-        const auto reversed_utf8 = una::utf32to8(utf32);
+        auto reversed_utf8 = una::utf32to8(utf32);
 
         String result;
         result.data_ = una::norm::to_nfc_utf8({reversed_utf8.data(), reversed_utf8.size()});

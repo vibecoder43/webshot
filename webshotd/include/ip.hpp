@@ -136,7 +136,7 @@ CanonicalIpTextFromBytes(int family, const void *source) noexcept
 
 [[nodiscard]] inline bool IsPublicRoutable(const Ip4 &addr) noexcept
 {
-    const auto ip = ip::detail::Ipv4HostOrder(addr);
+    auto ip = ip::detail::Ipv4HostOrder(addr);
 
     if (ip::detail::InIpv4Range(ip, 0x00000000u, 0xFF000000u)) // 0.0.0.0/8
         return false;

@@ -78,7 +78,7 @@ static_assert(CheckStringLiteralAndOps(), "String constexpr operations failed");
 
 UTEST(TextString, FromBytesAscii)
 {
-    const auto value = "hello"_t;
+    auto value = "hello"_t;
     EXPECT_FALSE(value.Empty());
     EXPECT_EQ(value, "hello"_t);
     EXPECT_TRUE(IsUtf8(value.View()));
@@ -97,8 +97,8 @@ UTEST(TextString, FromBytesNormalizesEquivalents)
     std::string precomposed("\xC3\xA9", 2);
     std::string decomposed("e\xCC\x81", 3);
 
-    const auto s1 = *String::FromBytes(precomposed);
-    const auto s2 = *String::FromBytes(decomposed);
+    auto s1 = *String::FromBytes(precomposed);
+    auto s2 = *String::FromBytes(decomposed);
     EXPECT_EQ(s1, s2);
     EXPECT_TRUE(IsUtf8(s1.View()));
     EXPECT_TRUE(IsStreamSafe(s1.View()));
@@ -110,7 +110,7 @@ UTEST(TextString, SizeAndEmptyConsistency)
     EXPECT_TRUE(empty.Empty());
     EXPECT_EQ(empty.SizeBytes(), NumericCast<size_t>(0));
 
-    const auto value = "xyz"_t;
+    auto value = "xyz"_t;
     EXPECT_FALSE(value.Empty());
     EXPECT_EQ(value.SizeBytes(), NumericCast<size_t>(3));
 }
@@ -123,7 +123,7 @@ UTEST(TextString, StartsWithEndsWithOverloads)
     EXPECT_TRUE(empty.StartsWith(""));
     EXPECT_TRUE(empty.EndsWith(""));
 
-    const auto value = "hello"_t;
+    auto value = "hello"_t;
     EXPECT_TRUE(value.StartsWith("he"));
     EXPECT_FALSE(value.StartsWith("ha"));
     EXPECT_TRUE(value.StartsWith('h'));
@@ -140,8 +140,8 @@ UTEST(TextString, StartsWithEndsWithOverloads)
 
 UTEST(TextString, PlusConcatenatesAscii)
 {
-    const auto lhs = "foo"_t;
-    const auto rhs = "bar"_t;
+    auto lhs = "foo"_t;
+    auto rhs = "bar"_t;
 
     auto sum = lhs + rhs;
     EXPECT_EQ(sum, "foobar"_t);
@@ -158,7 +158,7 @@ UTEST(TextString, PlusNormalizesCrossBoundary)
     auto combined = lhs + rhs;
 
     std::string precomposed("\xC3\xA9", 2);
-    const auto expected = *String::FromBytes(precomposed);
+    auto expected = *String::FromBytes(precomposed);
 
     EXPECT_EQ(combined, expected);
 }
@@ -177,9 +177,9 @@ UTEST(TextString, PlusEqualsEmptyRhsNoChange)
 
 UTEST(TextString, EqualityAndOrdering)
 {
-    const auto a1 = "abc"_t;
-    const auto a2 = "abc"_t;
-    const auto b = "abd"_t;
+    auto a1 = "abc"_t;
+    auto a2 = "abc"_t;
+    auto b = "abd"_t;
 
     EXPECT_TRUE(a1 == a2);
     EXPECT_FALSE(a1 == b);
@@ -220,9 +220,9 @@ UTEST(TextString, HandlesLongCombiningSequenceStreamSafe)
 UTEST(TextString, Idempotence)
 {
     std::string raw = "e\xCC\x81"; // e + combining acute
-    const auto value = *String::FromBytes(raw);
+    auto value = *String::FromBytes(raw);
 
-    const auto value2 = *String::FromBytes(std::string{value.View()});
+    auto value2 = *String::FromBytes(std::string{value.View()});
     EXPECT_EQ(value, value2);
 }
 
@@ -245,13 +245,13 @@ UTEST(TextString, HandlesNonBmpCharacters)
 {
     std::string emoji("\xF0\x9F\x98\x80\xF0\x9F\x92\xA9", 8); // U+1F600 U+1F4A9
 
-    const auto value = *String::FromBytes(emoji);
+    auto value = *String::FromBytes(emoji);
     EXPECT_TRUE(IsUtf8(value.View()));
     EXPECT_TRUE(IsStreamSafe(value.View()));
     EXPECT_EQ(value, *String::FromBytes(emoji));
 
-    const auto prefix = "prefix-"_t;
-    const auto suffix = "-suffix"_t;
+    auto prefix = "prefix-"_t;
+    auto suffix = "-suffix"_t;
 
     auto combined = prefix + value + suffix;
     EXPECT_TRUE(IsUtf8(combined.View()));

@@ -202,7 +202,7 @@ CloseWebSocket(us::websocket::WebSocketConnection &connection)
 {
     using enum CdpErrorCode;
     Invariant(error.IsObject(), "cdp error payload must be object"_t);
-    const auto parsed = TRY(
+    auto parsed = TRY(
         ws::json::As<dto::CdpError, CdpError>(error, [](const json::Exception &e) -> CdpError {
             Invariant(
                 text::Format("cdp error payload does not match dto::CdpError ({})", e.what())
@@ -219,10 +219,10 @@ CloseWebSocket(us::websocket::WebSocketConnection &connection)
 {
     auto remaining = value;
     while (true) {
-        const auto comma_pos = remaining.find(',');
-        const auto part = comma_pos == std::string_view::npos ? remaining
-                                                              : remaining.substr(0, comma_pos);
-        const auto trimmed_part = utext::TrimView(part);
+        auto comma_pos = remaining.find(',');
+        auto part = comma_pos == std::string_view::npos ? remaining
+                                                        : remaining.substr(0, comma_pos);
+        auto trimmed_part = utext::TrimView(part);
         if (ICaseEqual(trimmed_part, token))
             return true;
         if (comma_pos == std::string_view::npos)
@@ -245,7 +245,7 @@ ReadHandshakeResponse(eng::io::Socket &socket, eng::Deadline deadline)
             return Unex(CdpError{.code = kHandshakeResponseTooLarge, .detail = {}});
 
         char ch = '\0';
-        const auto bytes_read = TRY(ReadHandshakeByte(socket, ch, deadline));
+        auto bytes_read = TRY(ReadHandshakeByte(socket, ch, deadline));
         if (bytes_read == 0)
             return Unex(CdpError{.code = kHandshakeUnexpectedEof, .detail = {}});
         response.push_back(ch);
@@ -261,13 +261,13 @@ ParseHandshakeHeaders(std::string_view headers_block)
 
     auto remaining = headers_block;
     while (!remaining.empty()) {
-        const auto line_end = remaining.find("\r\n");
-        const auto line = line_end == std::string::npos ? remaining : remaining.substr(0, line_end);
+        auto line_end = remaining.find("\r\n");
+        auto line = line_end == std::string::npos ? remaining : remaining.substr(0, line_end);
         if (line.empty())
             break;
-        const auto colon_pos = line.find(':');
+        auto colon_pos = line.find(':');
         if (colon_pos != std::string::npos) {
-            const auto trimmed = utext::TrimView(line.substr(colon_pos + 1));
+            auto trimmed = utext::TrimView(line.substr(colon_pos + 1));
             headers.emplace(absl::AsciiStrToLower(line.substr(0, colon_pos)), std::string(trimmed));
         }
 
@@ -282,14 +282,14 @@ ParseHandshakeHeaders(std::string_view headers_block)
 [[nodiscard]] Expected<HandshakeResponse, CdpError>
 ParseHandshakeResponse(std::string_view response)
 {
-    const auto headers_end = response.find("\r\n\r\n");
+    auto headers_end = response.find("\r\n\r\n");
     if (headers_end == std::string::npos)
         return Unex(CdpError{.code = CdpErrorCode::kHandshakeMalformedResponse, .detail = {}});
 
     HandshakeResponse parsed;
     parsed.raw_headers = std::string(response.substr(0, headers_end + 4));
 
-    const auto status_line_end = response.find("\r\n");
+    auto status_line_end = response.find("\r\n");
     if (status_line_end == std::string::npos)
         return Unex(CdpError{.code = CdpErrorCode::kHandshakeMalformedResponse, .detail = {}});
 
@@ -392,7 +392,7 @@ ExtractRoutingSessionId(const dto::CdpEventMessage &event_message)
         return *text::OptionalString(event_message.sessionId);
     if (!event_message.params)
         return {};
-    const auto session_id_value = event_message.params->extra["sessionId"];
+    auto session_id_value = event_message.params->extra["sessionId"];
     if (session_id_value.IsMissing())
         return {};
     return TRY(String::FromBytes(session_id_value.As<std::string>()));
@@ -403,7 +403,7 @@ ExtractRoutingTargetId(const dto::CdpEventMessage &event_message)
 {
     if (!event_message.params)
         return {};
-    const auto target_id_value = event_message.params->extra["targetId"];
+    auto target_id_value = event_message.params->extra["targetId"];
     if (target_id_value.IsMissing())
         return {};
     return TRY(String::FromBytes(target_id_value.As<std::string>()));
@@ -521,7 +521,7 @@ Expected<json::Value, CdpError> CdpClient::SendRaw(
     );
     Expected<void, std::string> sent;
     {
-        const auto send_lock = send_state_.Lock();
+        auto send_lock = send_state_.Lock();
         static_cast<void>(send_lock);
         sent = SendWebSocketText(*connection_, request_bytes);
     }
@@ -580,7 +580,7 @@ Expected<void, CdpError> CdpClient::Stop()
     TraceStop("out"_t, NumericCast<int>(us::websocket::CloseStatus::kNormal));
     Expected<void, std::string> closed_connection;
     {
-        const auto send_lock = send_state_.Lock();
+        auto send_lock = send_state_.Lock();
         static_cast<void>(send_lock);
         closed_connection = connection_ ? CloseWebSocket(*connection_)
                                         : Expected<void, std::string>{};
@@ -633,7 +633,7 @@ void CdpClient::ReaderLoop()
             return;
         }
         if (message.close_status) {
-            const auto close_code = us::utils::UnderlyingValue(*message.close_status);
+            auto close_code = us::utils::UnderlyingValue(*message.close_status);
             TraceStop("in"_t, close_code);
             SetFatalError(
                 CdpError{
@@ -754,7 +754,7 @@ Expected<void, CdpError> CdpClient::HandleMessage(const std::string &payload)
                                         };
                                     }));
     const auto routing_session_id = ExtractRoutingSessionId(event_message);
-    const auto routing_target_id = ExtractRoutingTargetId(event_message);
+    auto routing_target_id = ExtractRoutingTargetId(event_message);
     TraceEvent(method, session_id);
 
     CdpEvent event{
@@ -767,14 +767,14 @@ Expected<void, CdpError> CdpClient::HandleMessage(const std::string &payload)
     {
         auto state = shared_state_.Lock();
         if (routing_session_id) {
-            if (const auto it = state->sessions_by_id.find(*routing_session_id);
+            if (auto it = state->sessions_by_id.find(*routing_session_id);
                 it != std::end(state->sessions_by_id)) {
                 session_state = it->second;
             }
         }
         if (!session_state) {
             if (routing_target_id) {
-                if (const auto it = state->sessions_by_target_id.find(*routing_target_id);
+                if (auto it = state->sessions_by_target_id.find(*routing_target_id);
                     it != std::end(state->sessions_by_target_id)) {
                     session_state = it->second;
                 }
@@ -798,7 +798,7 @@ Expected<CdpEvent, CdpError> CdpClient::WaitForSessionEvent(
 )
 {
     auto session_data = session_state->data.UniqueLock();
-    const auto ready = [&session_data]() {
+    auto ready = [&session_data]() {
         return !session_data->events.empty() || session_data->error || session_data->stopped;
     };
     if (!ready() && !session_data->cv.WaitUntil(session_data.GetLock(), deadline, ready))
@@ -833,11 +833,11 @@ void CdpClient::UnregisterSession(
 {
     {
         auto state = shared_state_.Lock();
-        if (const auto it = state->sessions_by_id.find(session_id);
+        if (auto it = state->sessions_by_id.find(session_id);
             it != std::end(state->sessions_by_id) && it->second == session_state) {
             state->sessions_by_id.erase(it);
         }
-        if (const auto it = state->sessions_by_target_id.find(target_id);
+        if (auto it = state->sessions_by_target_id.find(target_id);
             it != std::end(state->sessions_by_target_id) && it->second == session_state) {
             state->sessions_by_target_id.erase(it);
         }
@@ -932,7 +932,7 @@ Expected<void, CdpError> CdpClient::WriteTraceLine(const json::Value &value)
 
 void CdpClient::WriteTraceLineBestEffort(const json::Value &value)
 {
-    const auto written = WriteTraceLine(value);
+    auto written = WriteTraceLine(value);
     if (written)
         return;
     LOG_WARNING() << std::format(

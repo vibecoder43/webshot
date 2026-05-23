@@ -22,8 +22,8 @@ using StatMap = std::unordered_map<std::string, int64_t>;
 
 [[nodiscard]] Expected<int64_t, String> ParseStatValue(std::string_view value)
 {
-    const auto trimmed = us::utils::text::TrimView(value);
-    const auto parsed = integers::Parse<int64_t>(trimmed);
+    auto trimmed = us::utils::text::TrimView(value);
+    auto parsed = integers::Parse<int64_t>(trimmed);
     if (!parsed)
         return Unex(text::Format("invalid cgroup integer '{}'", value));
     return *parsed;
@@ -32,8 +32,8 @@ using StatMap = std::unordered_map<std::string, int64_t>;
 template <typename F> Expected<void, String> ForEachLine(std::string_view text, F &&handle_line)
 {
     while (true) {
-        const auto next = text.find('\n');
-        const auto line = us::utils::text::TrimView(
+        auto next = text.find('\n');
+        auto line = us::utils::text::TrimView(
             next == std::string_view::npos ? text : text.substr(0, next)
         );
         if (!line.empty())
@@ -46,7 +46,7 @@ template <typename F> Expected<void, String> ForEachLine(std::string_view text, 
 
 [[nodiscard]] int64_t ValueOrZero(const StatMap &stats, const std::string &key)
 {
-    const auto it = stats.find(key);
+    auto it = stats.find(key);
     if (it == std::end(stats))
         return 0;
     return it->second;
@@ -54,10 +54,10 @@ template <typename F> Expected<void, String> ForEachLine(std::string_view text, 
 
 Expected<void, String> ParseFlatStatLine(StatMap &stats, std::string_view line)
 {
-    const auto split = line.find(' ');
+    auto split = line.find(' ');
     if (split == std::string_view::npos)
         return {};
-    const auto key = std::string(line.substr(0, split));
+    auto key = std::string(line.substr(0, split));
     stats[key] = TRY(ParseStatValue(line.substr(split + 1)));
     return {};
 }
@@ -73,12 +73,12 @@ Expected<void, String> ParseFlatStatLine(StatMap &stats, std::string_view line)
 
 Expected<void, String> ParseIoStatLine(StatMap &stats, std::string_view line)
 {
-    const auto tokens = us::utils::text::SplitIntoStringViewVector(line, " ");
+    auto tokens = us::utils::text::SplitIntoStringViewVector(line, " ");
     for (size_t i = 1; i < tokens.size(); i++) {
-        const auto token = tokens[i];
-        const auto colon = token.find(':');
+        auto token = tokens[i];
+        auto colon = token.find(':');
         if (colon != std::string_view::npos) {
-            const auto key = std::string(token.substr(0, colon));
+            auto key = std::string(token.substr(0, colon));
             stats[key] += TRY(ParseStatValue(token.substr(colon + 1)));
         }
     }

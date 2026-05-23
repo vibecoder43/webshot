@@ -99,7 +99,7 @@ std::optional<std::string> GzipCompressMember(std::string_view body, GzipError &
     }
 
     if (!body.empty()) {
-        const auto written = archive_write_data(
+        auto written = archive_write_data(
             writer_ptr.get(), body.data(), static_cast<size_t>(body.size())
         );
         if (written != static_cast<la_ssize_t>(body.size())) {

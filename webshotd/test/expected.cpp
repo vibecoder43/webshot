@@ -27,7 +27,7 @@ enum class TestError {
 
 [[nodiscard]] ws::Expected<void, TestError> PropagateValueError(bool ok)
 {
-    const auto value = MakeValue(ok);
+    auto value = MakeValue(ok);
     if (!value)
         return ws::Unex(value.Error());
     return {};
@@ -35,7 +35,7 @@ enum class TestError {
 
 [[nodiscard]] ws::Expected<int, TestError> PropagateVoidError(bool ok)
 {
-    const auto result = MakeVoid(ok);
+    auto result = MakeVoid(ok);
     if (!result)
         return ws::Unex(result.Error());
     return 7;
@@ -45,41 +45,41 @@ enum class TestError {
 
 UTEST(Expected, UnexBuildsValueExpectedError)
 {
-    const auto value = MakeValue(false);
+    auto value = MakeValue(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
 
 UTEST(Expected, UnexBuildsVoidExpectedError)
 {
-    const auto value = MakeVoid(false);
+    auto value = MakeVoid(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kBeta);
 }
 
 UTEST(Expected, ExplicitErrorPropagationFromValueExpected)
 {
-    const auto value = PropagateValueError(false);
+    auto value = PropagateValueError(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
 
 UTEST(Expected, ExplicitErrorPropagationFromVoidExpected)
 {
-    const auto value = PropagateVoidError(false);
+    auto value = PropagateVoidError(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kBeta);
 }
 
 UTEST(Expected, TransformAndThenAndTransformErrorStillWork)
 {
-    const auto transformed = MakeValue(true).Transform(
-                                                [](int value) { return value + 1; }
+    auto transformed = MakeValue(true).Transform(
+                                          [](int value) { return value + 1; }
     ).AndThen([](int value) -> ws::Expected<int, TestError> { return value * 2; });
     ASSERT_TRUE(transformed);
     EXPECT_EQ(*transformed, 86);
 
-    const auto mapped_error = MakeValue(false).TransformError([](TestError error) {
+    auto mapped_error = MakeValue(false).TransformError([](TestError error) {
         return error == TestError::kAlpha;
     });
     ASSERT_FALSE(mapped_error);

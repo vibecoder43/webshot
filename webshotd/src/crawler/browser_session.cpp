@@ -107,11 +107,11 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
 
 [[nodiscard]] std::string ReadSelfCgroupV2Path(eng::TaskProcessor &fs_task_processor)
 {
-    const auto raw = us::fs::ReadFileContents(fs_task_processor, "/proc/self/cgroup");
+    auto raw = us::fs::ReadFileContents(fs_task_processor, "/proc/self/cgroup");
     std::string_view remaining{raw};
     while (true) {
-        const auto next = remaining.find('\n');
-        const auto line = next == std::string::npos ? remaining : remaining.substr(0, next);
+        auto next = remaining.find('\n');
+        auto line = next == std::string::npos ? remaining : remaining.substr(0, next);
         if (line.starts_with("0::")) {
             auto path = NormalizeDirPath(std::string(line.substr(3)));
             if (path.empty() || path.front() != '/')
@@ -132,7 +132,7 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
     if (path == "/")
         AbortCgroupConfig("webshotd must run inside the managed cgroup subgroup");
 
-    const auto slash_pos = path.find_last_of('/');
+    auto slash_pos = path.find_last_of('/');
     if (slash_pos == std::string::npos)
         AbortCgroupConfig("failed to locate parent cgroup path");
     if (slash_pos == 0)
@@ -156,13 +156,13 @@ constexpr std::string_view kBrowserSandboxFontconfigFile{WEBSHOT_BROWSER_SANDBOX
         );
     }
 
-    const auto managed_root_path = ParentCgroupPath(path);
-    const auto managed_root_name_pos = managed_root_path.find_last_of('/');
-    const auto managed_root_name = managed_root_name_pos == std::string::npos
-                                       ? std::string_view{managed_root_path}
-                                       : std::string_view{managed_root_path}.substr(
-                                             managed_root_name_pos + 1
-                                         );
+    auto managed_root_path = ParentCgroupPath(path);
+    auto managed_root_name_pos = managed_root_path.find_last_of('/');
+    auto managed_root_name = managed_root_name_pos == std::string::npos
+                                 ? std::string_view{managed_root_path}
+                                 : std::string_view{managed_root_path}.substr(
+                                       managed_root_name_pos + 1
+                                   );
     if (!IsManagedCgroupRootName(managed_root_name)) {
         AbortCgroupConfig(
             std::format("webshotd is not running inside a managed cgroup root: {}", path)
@@ -254,10 +254,10 @@ private:
 
 void DenyBrowserSyscall(SeccompFilter &filter, const char *name)
 {
-    const auto syscall = seccomp_syscall_resolve_name(name);
+    auto syscall = seccomp_syscall_resolve_name(name);
     Invariant(syscall >= 0, text::Format("browser seccomp syscall is unknown: {}", name));
 
-    const auto rc = seccomp_rule_add(filter.Get(), SCMP_ACT_ERRNO(EPERM), syscall, 0);
+    auto rc = seccomp_rule_add(filter.Get(), SCMP_ACT_ERRNO(EPERM), syscall, 0);
     Invariant(rc == 0, text::Format("failed to deny browser syscall {}: {}", name, rc));
 }
 
@@ -285,7 +285,7 @@ void WriteBrowserSeccompPolicy(eng::TaskProcessor &fs_task_processor, const std:
                       us::fs::blocking::OpenFlag::kTruncate,
                   }
         );
-        const auto rc = seccomp_export_bpf(filter.Get(), fd.GetNative());
+        auto rc = seccomp_export_bpf(filter.Get(), fd.GetNative());
         Invariant(rc == 0, text::Format("failed to export browser seccomp policy: {}", rc));
     }).Get();
 }
@@ -326,7 +326,7 @@ MakeBrowserPaths(eng::TaskProcessor &fs_task_processor, std::string_view browser
     us::fs::CreateDirectories(fs_task_processor, temp_root);
 
     const auto run_id = us::utils::ToString(us::utils::generators::GenerateBoostUuid());
-    const auto root_dir = std::format("{}/browser_{}", temp_root, run_id);
+    auto root_dir = std::format("{}/browser_{}", temp_root, run_id);
     BrowserPaths paths{
         .root_dir = root_dir,
         .run_id = run_id,
@@ -543,10 +543,10 @@ RemoveBrowserRunDir(eng::TaskProcessor &fs_task_processor, const std::string &pa
 [[nodiscard]] std::optional<String>
 ReadRetainedLogText(eng::TaskProcessor &fs_task_processor, const std::string &path)
 {
-    const auto bytes = ReadBrowserFileIfExists(fs_task_processor, path);
+    auto bytes = ReadBrowserFileIfExists(fs_task_processor, path);
     if (!bytes)
         return {};
-    const auto text = RetainProcessOutputText(*bytes);
+    auto text = RetainProcessOutputText(*bytes);
     if (!text.Empty())
         return text;
     return {};
@@ -792,7 +792,7 @@ struct BrowserSession::Impl final {
         TRY(StageLocalFixtureTrustDbIfNeeded(fs_task_processor, paths, config));
 
         MarkPhase("start_browser");
-        const auto devtools_deadline = eng::Deadline::FromDuration(config.devtools_startup_timeout);
+        auto devtools_deadline = eng::Deadline::FromDuration(config.devtools_startup_timeout);
         proxy = TRY(
             StartBrowserProxy(dns_resolver, fs_task_processor, paths, config, devtools_deadline)
         );
@@ -883,12 +883,12 @@ struct BrowserSession::Impl final {
             AppendDiagnosticField(diagnostics, "cdp_trace_tail"_t, *cdp_trace);
         if (const auto raw_cgroup_stats =
                 ReadBrowserFileIfExists(fs_task_processor, paths.cgroup_stats_path)) {
-            const auto parsed = ParseCgroupStatsSnapshot(*raw_cgroup_stats);
+            auto parsed = ParseCgroupStatsSnapshot(*raw_cgroup_stats);
             if (parsed) {
                 AppendDiagnosticField(diagnostics, "cgroup"_t, FormatCgroupStats(*parsed));
                 if (HasBrowserOomKill(*parsed))
                     AppendDiagnosticField(diagnostics, "browser_resource_error"_t, "oom_kill"_t);
-            } else if (const auto cgroup_stats =
+            } else if (auto cgroup_stats =
                            ReadRetainedLogText(fs_task_processor, paths.cgroup_stats_path)) {
                 AppendDiagnosticField(diagnostics, "cgroup_raw"_t, *cgroup_stats);
             }
@@ -917,7 +917,7 @@ struct BrowserSession::Impl final {
             AppendDiagnosticField(
                 diagnostics, "proxy_down_bytes"_t, text::Format("{}", proxy->DownBytes())
             );
-            if (const auto proxy_error = proxy->ErrorReason())
+            if (auto proxy_error = proxy->ErrorReason())
                 AppendDiagnosticField(diagnostics, "proxy_error"_t, *proxy_error);
         }
 
@@ -1086,7 +1086,7 @@ BrowserPageSession::BrowserPageSession(CdpClient &cdp_client) : cdp_client_(cdp_
 
 Expected<void, String> BrowserPageSession::MakeBrowserContext()
 {
-    const auto browser_context = TRY(
+    auto browser_context = TRY(
         SendCdp<dto::TargetCreateBrowserContextResult>(cdp_client_, "Target.createBrowserContext"_t)
     );
     browser_context_id_ = *String::FromBytes(browser_context.browserContextId);
@@ -1105,7 +1105,7 @@ Expected<void, String> BrowserPageSession::MakeBlankTarget()
         .url = "about:blank",
         .browserContextId = browser_context_id_->ToBytes(),
     };
-    const auto target = TRY(
+    auto target = TRY(
         SendCdp<dto::TargetCreateTargetResult>(cdp_client_, "Target.createTarget"_t, target_params)
     );
     target_id_ = *String::FromBytes(target.targetId);
@@ -1124,7 +1124,7 @@ Expected<void, String> BrowserPageSession::AttachToTarget()
         .targetId = target_id_->ToBytes(),
         .flatten = true,
     };
-    const auto attached = TRY(
+    auto attached = TRY(
         SendCdp<dto::TargetAttachToTargetResult>(
             cdp_client_, "Target.attachToTarget"_t, attach_params
         )
@@ -1268,7 +1268,7 @@ std::string MakeBrowserRunsRoot(std::string state_dir)
 
 std::string ResolveDelegatedCgroupRootPath(eng::TaskProcessor &fs_task_processor)
 {
-    const auto current_path = ReadSelfCgroupV2Path(fs_task_processor);
+    auto current_path = ReadSelfCgroupV2Path(fs_task_processor);
     return std::format("/sys/fs/cgroup{}", ManagedCgroupRootPathFromServiceSubgroup(current_path));
 }
 

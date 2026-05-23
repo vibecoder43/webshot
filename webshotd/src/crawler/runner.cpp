@@ -107,7 +107,7 @@ NormalizeHeaders(const dto::CdpHeaders &headers)
 
 [[nodiscard]] String CanonicalizeCapturedUrl(const String &url_text)
 {
-    const auto maybe_url = Url::FromText(url_text);
+    auto maybe_url = Url::FromText(url_text);
     if (!maybe_url)
         return url_text;
     if (!maybe_url->IsHttpOrHttps())
@@ -117,9 +117,9 @@ NormalizeHeaders(const dto::CdpHeaders &headers)
     if (!IsLocalFixtureHost(maybe_url->Hostname()))
         return url_text;
 
-    const auto port = maybe_url->Port();
-    const auto matches_fixture_port = (maybe_url->IsHttp() && port == kLocalFixtureHttpPort) ||
-                                      (maybe_url->IsHttps() && port == kLocalFixtureHttpsPort);
+    auto port = maybe_url->Port();
+    auto matches_fixture_port = (maybe_url->IsHttp() && port == kLocalFixtureHttpPort) ||
+                                (maybe_url->IsHttps() && port == kLocalFixtureHttpsPort);
     if (!matches_fixture_port)
         return url_text;
 
@@ -137,9 +137,9 @@ CanonicalizeCapturedLocationHeader(const String &response_url, std::string_view 
         return location->ToBytes();
     }
 
-    const auto canonical_location = CanonicalizeCapturedUrl(*location);
-    const auto maybe_canonical_url = Url::FromText(canonical_location);
-    const auto maybe_response_url = Url::FromText(response_url);
+    auto canonical_location = CanonicalizeCapturedUrl(*location);
+    auto maybe_canonical_url = Url::FromText(canonical_location);
+    auto maybe_response_url = Url::FromText(response_url);
     if (!maybe_canonical_url || !maybe_response_url)
         return canonical_location.ToBytes();
 
@@ -164,7 +164,7 @@ NormalizeHeadersOrEmpty(const std::optional<dto::CdpHeaders> &headers)
 )
 {
     auto normalized = NormalizeHeadersOrEmpty(headers);
-    if (const auto it = normalized.find("location"); it != std::end(normalized))
+    if (auto it = normalized.find("location"); it != std::end(normalized))
         it->second = CanonicalizeCapturedLocationHeader(response_url, it->second);
     return normalized;
 }
@@ -212,7 +212,7 @@ struct [[nodiscard]] CaptureWithNetwork final {
 [[nodiscard]] Expected<std::string, String>
 RetainBody(const std::string &body, RetainedBodyBudget &budget)
 {
-    const auto next_retained_bytes = budget.retained_bytes + ssize(body);
+    auto next_retained_bytes = budget.retained_bytes + ssize(body);
     if (next_retained_bytes > budget.max_bytes)
         return Unex(
             text::Format(
@@ -230,7 +230,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
     if (!body.base64Encoded)
         return body.body;
 
-    const auto decoded = ws::crypto::Base64Decode(body.body, false);
+    auto decoded = ws::crypto::Base64Decode(body.body, false);
     if (!decoded)
         return {};
     return *decoded;
@@ -251,7 +251,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 
 [[nodiscard]] std::optional<String> MakeUrlOrigin(const String &url_text)
 {
-    const auto maybe_url = TRY(Url::FromText(url_text));
+    auto maybe_url = TRY(Url::FromText(url_text));
     if (!maybe_url.IsHttpOrHttps())
         return {};
 
@@ -267,7 +267,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
         return CanonicalizeCapturedUrl(request_text);
 
     const auto headers = NormalizeHeadersForCapture(redirect_response->headers, base_text);
-    const auto location_it = headers.find("location");
+    auto location_it = headers.find("location");
     if (location_it == std::end(headers) || location_it->second.empty())
         return CanonicalizeCapturedUrl(request_text);
 
@@ -282,7 +282,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
         return CanonicalizeCapturedUrl(request_text);
 
     if (location->StartsWith("//")) {
-        const auto maybe_base_url = Url::FromText(base_text);
+        auto maybe_base_url = Url::FromText(base_text);
         if (!maybe_base_url)
             return CanonicalizeCapturedUrl(request_text);
         return CanonicalizeCapturedUrl(
@@ -294,7 +294,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
         return CanonicalizeCapturedUrl(text::Format("{}{}", *origin, *location));
 
     if (location->StartsWith('?')) {
-        const auto maybe_base_url = Url::FromText(base_text);
+        auto maybe_base_url = Url::FromText(base_text);
         if (!maybe_base_url)
             return CanonicalizeCapturedUrl(request_text);
         return CanonicalizeCapturedUrl(
@@ -309,7 +309,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 
 [[nodiscard]] Expected<Link, String> LinkFromInterceptionUrl(const Config &config, const Url &url)
 {
-    const auto href = url.Href();
+    auto href = url.Href();
     if (href.StartsWith("ws://"))
         return TRY_MAP_ERR(
             Link::FromText(url.WithProtocol("http"_t).Href(), config.UrlBytesMax()),
@@ -335,7 +335,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 [[nodiscard]] std::optional<Url> AccessPolicyUrlFromText(const String &text)
 {
     auto url = TRY(Url::FromText(text));
-    const auto href = url.Href();
+    auto href = url.Href();
     if (url.IsHttpOrHttps() || href.StartsWith("ws://") || href.StartsWith("wss://"))
         return url;
     return {};
@@ -346,11 +346,11 @@ EvaluateAccessPolicy(AccessPolicyStore &access_policy, const Config &config, con
 {
     using enum AccessDecisionReason;
 
-    const auto href = url.Href();
+    auto href = url.Href();
     if (config.HttpsOnly() && (url.IsHttp() || href.StartsWith("ws://")))
         return AccessDecision{.allowed = false, .reason = kNonHttps};
 
-    const auto link = TRY(LinkFromInterceptionUrl(config, url));
+    auto link = TRY(LinkFromInterceptionUrl(config, url));
     return TRY_ERR_AS(
         access_policy.EvaluatePrefix(
             prefix::MakePrefixKey(link),
@@ -435,7 +435,7 @@ public:
         const auto method = event.method.View();
         if (method == "Target.targetCrashed") {
             if (event.params) {
-                const auto crashed = event.params->extra.As<dto::TargetTargetCrashedEvent>();
+                auto crashed = event.params->extra.As<dto::TargetTargetCrashedEvent>();
                 if (crashed.targetId && state->target_id.View() == *crashed.targetId)
                     state->main_request_error = "page target crashed"_t;
             }
@@ -443,7 +443,7 @@ public:
         }
         if (method == "Target.detachedFromTarget") {
             if (event.params) {
-                const auto detached_session_id = event.params->extra["sessionId"];
+                auto detached_session_id = event.params->extra["sessionId"];
                 if (!detached_session_id.IsMissing() &&
                     detached_session_id.As<std::string>() == state->session_id.View()) {
                     state->main_request_error = "target session detached"_t;
@@ -453,7 +453,7 @@ public:
         }
         if (method == "Target.targetDestroyed") {
             if (event.params) {
-                const auto destroyed_target_id = event.params->extra["targetId"];
+                auto destroyed_target_id = event.params->extra["targetId"];
                 if (!destroyed_target_id.IsMissing() &&
                     destroyed_target_id.As<std::string>() == state->target_id.View()) {
                     state->main_request_error = "page target destroyed"_t;
@@ -466,7 +466,7 @@ public:
                 return;
 
             if (event.params) {
-                const auto reason = event.params->extra["reason"];
+                auto reason = event.params->extra["reason"];
                 if (!reason.IsMissing()) {
                     state->main_request_error = text::Format(
                         "inspector detached: {}", reason.As<std::string>()
@@ -520,13 +520,13 @@ public:
 
     [[nodiscard]] bool IsLoadedOrFailed() const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         return state->loaded || state->main_request_error;
     }
 
     [[nodiscard]] bool HasMainDocumentOrError() const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         const auto *request = ActiveMainRequest(*state);
         return state->main_request_error ||
                (state->completed_main_request && state->completed_main_request->loaded &&
@@ -536,19 +536,19 @@ public:
 
     [[nodiscard]] bool IsIdleFor(chrono::seconds idle) const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         return state->inflight.empty() && datetime::SteadyNow() - state->last_network_at >= idle;
     }
 
     [[nodiscard]] datetime::SteadyClock::time_point IdleDeadline(chrono::seconds idle) const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         return state->last_network_at + idle;
     }
 
     [[nodiscard]] std::optional<crawler::SeedProbe> CurrentSeedProbe() const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         if (const auto *request = ResolvedMainRequest(*state);
             request != nullptr && request->status_code) {
             const i64 load_state{request->loaded && !state->main_request_error ? 2_i64 : 0_i64};
@@ -566,7 +566,7 @@ public:
 
     [[nodiscard]] std::optional<String> ErrorReason() const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         return state->main_request_error;
     }
 
@@ -585,7 +585,7 @@ public:
             return RetainBody(fallback_body, budget);
         std::optional<String> body_request_id;
         {
-            const auto state = data_.Lock();
+            auto state = data_.Lock();
             if (state->main_response_request_id)
                 body_request_id = state->main_response_request_id;
             else if (state->main_request_id)
@@ -596,12 +596,12 @@ public:
 
         dto::NetworkGetResponseBodyParams params;
         params.requestId = body_request_id->ToBytes();
-        const auto body = cdp_session.Send<dto::NetworkGetResponseBodyResult>(
+        auto body = cdp_session.Send<dto::NetworkGetResponseBodyResult>(
             "Network.getResponseBody"_t, params
         );
         if (!body)
             return RetainBody(fallback_body, budget);
-        const auto decoded_body = DecodeCdpBody(*body);
+        auto decoded_body = DecodeCdpBody(*body);
         if (!decoded_body)
             return RetainBody(fallback_body, budget);
         return RetainBody(*decoded_body, budget);
@@ -613,7 +613,7 @@ public:
         std::vector<crawler::CapturedResource> resources{};
         std::vector<std::pair<String, TrackedRequest>> requests{};
         {
-            const auto state = data_.Lock();
+            auto state = data_.Lock();
             resources = state->redirected_resources;
             requests.reserve(state->active_requests.size());
             for (const auto &[request_id, request] : state->active_requests)
@@ -684,7 +684,7 @@ public:
         std::vector<crawler::CapturedResource> resources
     ) const
     {
-        const auto state = data_.Lock();
+        auto state = data_.Lock();
         crawler::CapturedExchange exchange{};
         exchange.seed_url = state->seed_navigation_url ? *state->seed_navigation_url : final_url;
         exchange.page_id = state->page_id;
@@ -732,7 +732,7 @@ private:
         const Data &state, crawler::CapturedExchange &exchange, const String &final_url
     )
     {
-        const auto response = SelectMainResponse(state, final_url);
+        auto response = SelectMainResponse(state, final_url);
         Invariant(response, "missing main response while building exchange"_t);
         exchange.status_code = response->status_code;
         exchange.status_message = response->status_message;
@@ -770,7 +770,7 @@ private:
     {
         if (!state.main_request_id)
             return nullptr;
-        if (const auto it = state.active_requests.find(*state.main_request_id);
+        if (auto it = state.active_requests.find(*state.main_request_id);
             it != std::end(state.active_requests)) {
             return &it->second;
         }
@@ -781,7 +781,7 @@ private:
     {
         if (!state.main_request_id)
             return nullptr;
-        if (const auto it = state.active_requests.find(*state.main_request_id);
+        if (auto it = state.active_requests.find(*state.main_request_id);
             it != std::end(state.active_requests)) {
             return &it->second;
         }
@@ -840,8 +840,8 @@ private:
             return;
 
         const auto request_id_text = *String::FromBytes(request_will_be_sent.requestId);
-        const auto raw_request_url = *String::FromBytes(request_will_be_sent.request.url);
-        const auto request_method = *String::FromBytes(request_will_be_sent.request.method);
+        auto raw_request_url = *String::FromBytes(request_will_be_sent.request.url);
+        auto request_method = *String::FromBytes(request_will_be_sent.request.method);
 
         state.inflight.insert(request_id_text);
         state.last_network_at = datetime::SteadyNow();
@@ -857,8 +857,8 @@ private:
                 return;
             }
             if (!state.main_loader_id && !state.main_request_id && state.seed_navigation_url) {
-                const auto matches_exact = raw_request_url == *state.seed_navigation_url;
-                const auto matches_trailing_slash =
+                auto matches_exact = raw_request_url == *state.seed_navigation_url;
+                auto matches_trailing_slash =
                     !state.seed_navigation_url->EndsWith('/') &&
                     raw_request_url.SizeBytes() == state.seed_navigation_url->SizeBytes() + 1 &&
                     raw_request_url.StartsWith(*state.seed_navigation_url) &&
@@ -914,7 +914,7 @@ private:
     HandleResponseReceived(Data &state, dto::NetworkResponseReceivedEvent response_received)
     {
         const auto request_id_text = *String::FromBytes(response_received.requestId);
-        const auto request_it = state.active_requests.find(request_id_text);
+        auto request_it = state.active_requests.find(request_id_text);
         if (request_it == std::end(state.active_requests)) {
             if (state.main_request_id && *state.main_request_id == request_id_text) {
                 state.main_request_error = text::Format(
@@ -949,10 +949,10 @@ private:
     static void
     HandleLoadingFinished(Data &state, dto::NetworkLoadingFinishedEvent loading_finished)
     {
-        const auto request_id_text = *String::FromBytes(loading_finished.requestId);
+        auto request_id_text = *String::FromBytes(loading_finished.requestId);
         state.inflight.erase(request_id_text);
         state.last_network_at = datetime::SteadyNow();
-        if (const auto it = state.active_requests.find(request_id_text);
+        if (auto it = state.active_requests.find(request_id_text);
             it != std::end(state.active_requests)) {
             it->second.loaded = true;
             if (it->second.is_tracked_main_document && HasResponse(it->second)) {
@@ -968,11 +968,11 @@ private:
 
     static void HandleLoadingFailed(Data &state, dto::NetworkLoadingFailedEvent loading_failed)
     {
-        const auto request_id_text = *String::FromBytes(loading_failed.requestId);
+        auto request_id_text = *String::FromBytes(loading_failed.requestId);
         state.inflight.erase(request_id_text);
         state.last_network_at = datetime::SteadyNow();
 
-        const auto request_it = state.active_requests.find(request_id_text);
+        auto request_it = state.active_requests.find(request_id_text);
         if (request_it == std::end(state.active_requests)) {
             if (state.main_request_id && *state.main_request_id == request_id_text) {
                 state.main_request_error = text::Format(
@@ -1100,13 +1100,13 @@ struct [[nodiscard]] DomState {
         .awaitPromise = false,
     };
 
-    const auto result = TRY_MAP_ERR(
+    auto result = TRY_MAP_ERR(
         cdp_session.Send<dto::RuntimeEvaluateDomStateResult>("Runtime.evaluate"_t, params),
         [](auto error) { return FormatCdpError("failed to read dom state"_t, std::move(error)); }
     );
     const auto &value = result.result.value;
-    const auto title = text::OptionalString(value.title).ValueOr(std::nullopt);
-    const auto final_url = TRY_ERR_AS(
+    auto title = text::OptionalString(value.title).ValueOr(std::nullopt);
+    auto final_url = TRY_ERR_AS(
         String::FromBytes(value.finalUrl).Transform([](String url) {
             return CanonicalizeCapturedUrl(url);
         }),
@@ -1122,7 +1122,7 @@ struct [[nodiscard]] DomState {
 Expected<void, String> RunSiteBehavior(crawler::CdpSession &cdp_session, eng::Deadline deadline)
 {
     Invariant(deadline.IsReachable(), "site behavior deadline must be reachable"_t);
-    const auto budget = TRY_ERR_AS(TimeLeftMs(deadline), "timed out running site behavior"_t);
+    auto budget = TRY_ERR_AS(TimeLeftMs(deadline), "timed out running site behavior"_t);
 
     dto::RuntimeEvaluateParams params;
     params.expression = std::format(
@@ -1172,13 +1172,13 @@ public:
         if (!captured) {
             auto error_detail = browser_->MakeErrorDetail(captured.Error());
             if (tracker_) {
-                const auto tracker_error = tracker_->ErrorReason();
+                auto tracker_error = tracker_->ErrorReason();
                 if (tracker_error)
                     error_detail = text::Format(
                         "{}, tracker_error={}", error_detail, *tracker_error
                     );
             }
-            if (const auto proxy_error = browser_->ProxyErrorReason())
+            if (auto proxy_error = browser_->ProxyErrorReason())
                 error_detail = text::Format("{}, proxy_error={}", error_detail, *proxy_error);
             auto seed_probe = CurrentSeedProbe();
             StopCdpForError();
@@ -1216,12 +1216,12 @@ private:
     [[nodiscard]] std::optional<String> CurrentWaitError() const
     {
         {
-            const auto error = interception_error_.Lock();
+            auto error = interception_error_.Lock();
             if (*error)
                 return *error;
         }
         if (tracker_) {
-            if (const auto tracker_error = tracker_->ErrorReason())
+            if (auto tracker_error = tracker_->ErrorReason())
                 return tracker_error;
         }
         return {};
@@ -1232,14 +1232,14 @@ private:
     WaitForPredicate(Predicate &&predicate, String timeout_message)
     {
         while (!std::invoke(predicate)) {
-            if (const auto error = CurrentWaitError())
+            if (auto error = CurrentWaitError())
                 return Unex(*error);
             auto progress = event_progress_.UniqueLock();
-            const auto version = progress->version;
+            auto version = progress->version;
             progress.GetLock().unlock();
             if (std::invoke(predicate))
                 return {};
-            if (const auto error = CurrentWaitError())
+            if (auto error = CurrentWaitError())
                 return Unex(*error);
             progress.GetLock().lock();
             if (progress->version != version)
@@ -1250,12 +1250,12 @@ private:
                 progress.GetLock().unlock();
                 if (std::invoke(predicate))
                     return {};
-                if (const auto error = CurrentWaitError())
+                if (auto error = CurrentWaitError())
                     return Unex(*error);
                 return Unex(timeout_message);
             }
         }
-        if (const auto error = CurrentWaitError())
+        if (auto error = CurrentWaitError())
             return Unex(*error);
         return {};
     }
@@ -1263,18 +1263,16 @@ private:
     [[nodiscard]] Expected<void, String> WaitForIdle(chrono::seconds idle)
     {
         while (!GetPageTracker().IsIdleFor(idle)) {
-            if (const auto error = CurrentWaitError())
+            if (auto error = CurrentWaitError())
                 return Unex(*error);
             auto progress = event_progress_.UniqueLock();
-            const auto version = progress->version;
-            const auto idle_deadline = eng::Deadline::FromTimePoint(
-                GetPageTracker().IdleDeadline(idle)
-            );
-            const auto wait_deadline = PickEarlierDeadline(deadline_, idle_deadline);
+            auto version = progress->version;
+            auto idle_deadline = eng::Deadline::FromTimePoint(GetPageTracker().IdleDeadline(idle));
+            auto wait_deadline = PickEarlierDeadline(deadline_, idle_deadline);
             progress.GetLock().unlock();
             if (GetPageTracker().IsIdleFor(idle))
                 return {};
-            if (const auto error = CurrentWaitError())
+            if (auto error = CurrentWaitError())
                 return Unex(*error);
             progress.GetLock().lock();
             if (progress->version != version)
@@ -1285,7 +1283,7 @@ private:
                 progress.GetLock().unlock();
                 if (GetPageTracker().IsIdleFor(idle))
                     return {};
-                if (const auto error = CurrentWaitError())
+                if (auto error = CurrentWaitError())
                     return Unex(*error);
                 if (deadline_.IsReached())
                     return Unex("timed out waiting for network idle"_t);
@@ -1401,7 +1399,7 @@ private:
         ));
         if (timings_.post_load_delay > 0s) {
             browser_->MarkPhase("post_load_delay");
-            const auto phase_deadline = PickEarlierDeadline(
+            auto phase_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.post_load_delay)
             );
             TRY_ERR_AS(
@@ -1412,7 +1410,7 @@ private:
         if (timings_.behavior_timeout > 0s) {
             browser_->MarkPhase("run_site_behavior");
             browser_->MarkPhase("run_site_behavior_runtime_evaluate");
-            const auto behavior_deadline = PickEarlierDeadline(
+            auto behavior_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.behavior_timeout)
             );
             TRY(RunSiteBehavior(GetSession(), behavior_deadline));
@@ -1426,7 +1424,7 @@ private:
         }
         if (timings_.page_extra_delay > 0s) {
             browser_->MarkPhase("page_extra_delay");
-            const auto phase_deadline = PickEarlierDeadline(
+            auto phase_deadline = PickEarlierDeadline(
                 deadline_, eng::Deadline::FromDuration(timings_.page_extra_delay)
             );
             TRY_ERR_AS(
@@ -1492,7 +1490,7 @@ private:
     {
         StopEventLoop();
         if (page_session_) {
-            if (const auto stopped_page = page_session_->Stop(); !stopped_page) {
+            if (auto stopped_page = page_session_->Stop(); !stopped_page) {
                 LOG_WARNING() << std::format(
                     "Suppressing page session stop error during capture cleanup: {}",
                     stopped_page.Error()
@@ -1568,7 +1566,7 @@ private:
 
     void HandleFetchAuthRequired(const crawler::CdpEvent &event)
     {
-        const auto auth_required = ParseEventParams<dto::FetchAuthRequiredEvent>(event);
+        auto auth_required = ParseEventParams<dto::FetchAuthRequiredEvent>(event);
         if (!auth_required) {
             NoteInterceptionError(auth_required.Error());
             return;
@@ -1578,8 +1576,8 @@ private:
         params.requestId = auth_required->requestId;
 
         dto::FetchAuthChallengeResponse auth_challenge_response;
-        const auto is_proxy_challenge = !auth_required->authChallenge.source ||
-                                        *auth_required->authChallenge.source == "Proxy";
+        auto is_proxy_challenge = !auth_required->authChallenge.source ||
+                                  *auth_required->authChallenge.source == "Proxy";
         if (is_proxy_challenge) {
             auth_challenge_response.response = "ProvideCredentials";
             auth_challenge_response.username = browser_->RunId();
@@ -1589,7 +1587,7 @@ private:
         }
         params.authChallengeResponse = std::move(auth_challenge_response);
 
-        const auto continued = GetSession().SendVoid("Fetch.continueWithAuth"_t, params);
+        auto continued = GetSession().SendVoid("Fetch.continueWithAuth"_t, params);
         if (!continued)
             NoteInterceptionError(
                 FormatCdpError("Fetch.continueWithAuth failed"_t, continued.Error())
@@ -1614,7 +1612,7 @@ private:
         if (!url) {
             dto::FetchContinueRequestParams params;
             params.requestId = paused->requestId;
-            const auto continued = GetSession().SendVoid("Fetch.continueRequest"_t, params);
+            auto continued = GetSession().SendVoid("Fetch.continueRequest"_t, params);
             if (!continued)
                 NoteInterceptionError(
                     FormatCdpError("Fetch.continueRequest failed"_t, continued.Error())
@@ -1631,7 +1629,7 @@ private:
         if (decision->allowed) {
             dto::FetchContinueRequestParams params;
             params.requestId = paused->requestId;
-            const auto continued = GetSession().SendVoid("Fetch.continueRequest"_t, params);
+            auto continued = GetSession().SendVoid("Fetch.continueRequest"_t, params);
             if (!continued)
                 NoteInterceptionError(
                     FormatCdpError("Fetch.continueRequest failed"_t, continued.Error())
@@ -1759,9 +1757,9 @@ private:
         };
 
         const auto max_down_bytes = [&]() -> i64 {
-            const auto max = max_archive_bytes;
-            const auto ratio = network_down_bytes_ratio_max;
-            const auto max_i64 = std::numeric_limits<i64>::max();
+            auto max = max_archive_bytes;
+            auto ratio = network_down_bytes_ratio_max;
+            auto max_i64 = std::numeric_limits<i64>::max();
             if (ratio > max_i64 / max)
                 return max_i64;
             return ratio * max;
@@ -1838,8 +1836,8 @@ private:
 
         const auto wacz_bytes = ssize(*wacz);
         if (wacz_bytes > max_archive_bytes) {
-            const auto max_archive_mi_b = max_archive_bytes / (1024_i64 * 1024_i64);
-            const auto detail = text::Format(
+            auto max_archive_mi_b = max_archive_bytes / (1024_i64 * 1024_i64);
+            auto detail = text::Format(
                 "archive bytes {} exceeded size limit {} MiB", wacz_bytes, max_archive_mi_b
             );
             out.error = crawler::CrawlerError{
@@ -1862,8 +1860,8 @@ private:
         }
 
         const auto max_down_by_final = [&]() -> i64 {
-            const auto ratio = network_down_bytes_ratio_max;
-            const auto max_i64 = std::numeric_limits<i64>::max();
+            auto ratio = network_down_bytes_ratio_max;
+            auto max_i64 = std::numeric_limits<i64>::max();
             if (wacz_bytes <= 0_i64)
                 return 0_i64;
             if (ratio > max_i64 / wacz_bytes)
@@ -1871,7 +1869,7 @@ private:
             return ratio * wacz_bytes;
         }();
         if (proxy_down_bytes > max_down_by_final) {
-            const auto detail = text::Format(
+            auto detail = text::Format(
                 "net_limit: proxy downstream bytes {} exceeded post-run limit {}", proxy_down_bytes,
                 max_down_by_final
             );
@@ -1966,7 +1964,7 @@ CrawlerRunner::CrawlerRunner(
 
 CrawlerRunArtifacts CrawlerRunner::Run(const String &seed_url) const
 {
-    const auto deadline = eng::Deadline::FromDuration(run_timeout_);
+    auto deadline = eng::Deadline::FromDuration(run_timeout_);
     return ExecuteRun(
         access_policy_, config_, dns_resolver_, process_starter_, fs_task_processor_,
         browser_runs_root_, cgroup_root_path_, cgroup_limits_, timings_, tunables_,

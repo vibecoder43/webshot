@@ -59,7 +59,7 @@ FailBool(ZipArchiveError &error_out, ZipArchiveErrorCode code, std::string detai
     size_t component_start = 0;
     for (size_t index = 0; index <= path.size(); index++) {
         if (index < path.size()) {
-            const auto ch = path[index];
+            auto ch = path[index];
             if (ch == '\\')
                 return false;
             if (static_cast<unsigned char>(ch) < 0x20U || ch == 0x7f)
@@ -68,11 +68,11 @@ FailBool(ZipArchiveError &error_out, ZipArchiveErrorCode code, std::string detai
                 continue;
         }
 
-        const auto component_size = index - component_start;
+        auto component_size = index - component_start;
         if (component_size == 0)
             return false;
 
-        const auto component = path.substr(component_start, component_size);
+        auto component = path.substr(component_start, component_size);
         if (component == "." || component == "..")
             return false;
         component_start = index + 1;
@@ -91,7 +91,7 @@ MakeRegularFileEntry(std::string_view path, ZipArchiveError &error_out, std::str
         return {nullptr, &archive_entry_free};
     }
 
-    const auto path_text = std::string(path);
+    auto path_text = std::string(path);
     archive_entry_set_pathname(entry.get(), path_text.c_str());
     archive_entry_set_filetype(entry.get(), AE_IFREG);
     archive_entry_set_perm(entry.get(), 0644);
@@ -175,7 +175,7 @@ ReadEntryBytes(archive *reader, archive_entry *entry, ZipArchiveError &error_out
     size_t copied = 0;
 
     while (copied < data.size()) {
-        const auto rc = archive_read_data(reader, data.data() + copied, data.size() - copied);
+        auto rc = archive_read_data(reader, data.data() + copied, data.size() - copied);
         if (rc < 0) {
             return Fail<std::string>(
                 error_out, ZipArchiveErrorCode::kReadDataFailed,
@@ -211,7 +211,7 @@ bool ZipArchiveBuilder::AddStoredFile(
         );
     }
 
-    const auto path_text = std::string(path);
+    auto path_text = std::string(path);
     if (entry_paths_.contains(path_text)) {
         return FailBool(
             error_out, ZipArchiveErrorCode::kDuplicateEntry, "duplicate zip entry: " + path_text
@@ -255,7 +255,7 @@ std::optional<std::string> ZipArchiveBuilder::Finish(ZipArchiveError &error_out)
             );
         }
         if (!entry_spec.body.empty()) {
-            const auto written = archive_write_data(
+            auto written = archive_write_data(
                 writer->get(), entry_spec.body.data(), entry_spec.body.size()
             );
             if (written != static_cast<la_ssize_t>(entry_spec.body.size())) {
@@ -367,7 +367,7 @@ std::optional<ZipArchive> ZipArchive::FromBytes(std::string_view bytes, ZipArchi
 
 std::optional<std::string_view> ZipArchive::FindFile(std::string_view path) const noexcept
 {
-    const auto it = files_.find(path);
+    auto it = files_.find(path);
     if (it == files_.end())
         return {};
     return std::string_view{it->second.data(), it->second.size()};

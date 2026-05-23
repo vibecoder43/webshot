@@ -153,9 +153,9 @@ CanonicalRequestParts MakeCanonicalRequest(
 )
 {
     // Canonical URI must be URI-encoded with slash preserved
-    const auto canonical_uri_encoded = PercentEncodeBytes(canonical_uri, EncodeSlash::kNo);
+    auto canonical_uri_encoded = PercentEncodeBytes(canonical_uri, EncodeSlash::kNo);
 
-    const auto canonical_query = CanonicalizeQueryImpl(query);
+    auto canonical_query = CanonicalizeQueryImpl(query);
 
     std::string canonical_headers;
     for (const auto &[k, v] : headers_lowercase_trimmed_sorted) {

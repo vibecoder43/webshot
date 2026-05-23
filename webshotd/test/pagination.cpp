@@ -29,8 +29,8 @@ UTEST(Pagination, CursorRoundTrip)
         PageDirection::kPrevious,
     };
 
-    const auto token = EncodeCursor(cursor.created_at, cursor.id, cursor.direction);
-    const auto decoded = DecodeCursor(token);
+    auto token = EncodeCursor(cursor.created_at, cursor.id, cursor.direction);
+    auto decoded = DecodeCursor(token);
     ASSERT_TRUE(decoded);
     if (!decoded)
         return;
@@ -41,6 +41,6 @@ UTEST(Pagination, CursorRoundTrip)
 
 UTEST(Pagination, DecodeCursorInvalidReturnsNullopt)
 {
-    const auto decoded = DecodeCursor("invalid-token"_t);
+    auto decoded = DecodeCursor("invalid-token"_t);
     EXPECT_FALSE(decoded);
 }

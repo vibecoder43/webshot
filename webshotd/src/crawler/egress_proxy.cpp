@@ -109,11 +109,11 @@ FindHeaderValue(const std::vector<HeaderLine> &headers, std::string_view name) n
 
 [[nodiscard]] std::optional<std::string_view> TakeCrlfLine(std::string_view &remaining) noexcept
 {
-    const auto next = remaining.find("\r\n");
+    auto next = remaining.find("\r\n");
     if (next == std::string_view::npos)
         return {};
 
-    const auto line = remaining.substr(0, next);
+    auto line = remaining.substr(0, next);
     remaining.remove_prefix(next + 2);
     return line;
 }
@@ -141,10 +141,10 @@ struct [[nodiscard]] ParsedRequest final {
     ParsedRequest out;
     out.header_bytes = unsize(header_part);
     {
-        const auto first_sp = request_line->find(' ');
+        auto first_sp = request_line->find(' ');
         if (first_sp == std::string_view::npos)
             return {};
-        const auto second_sp = request_line->find(' ', first_sp + 1);
+        auto second_sp = request_line->find(' ', first_sp + 1);
         if (second_sp == std::string_view::npos)
             return {};
         out.method = request_line->substr(0, first_sp);
@@ -155,16 +155,16 @@ struct [[nodiscard]] ParsedRequest final {
     }
 
     while (!remaining.empty()) {
-        const auto line = TakeCrlfLine(remaining);
+        auto line = TakeCrlfLine(remaining);
         if (!line)
             return {};
         if (line->empty())
             break;
 
-        const auto colon = line->find(':');
+        auto colon = line->find(':');
         if (colon == std::string_view::npos)
             continue;
-        const auto name = line->substr(0, colon);
+        auto name = line->substr(0, colon);
         auto value = line->substr(colon + 1);
         value = utext::TrimView(value);
         if (name.empty())
@@ -183,10 +183,10 @@ struct [[nodiscard]] ParsedRequest final {
 ParseBasicAuthUser(std::string_view header_value)
 {
     auto value = header_value;
-    const auto sp = value.find(' ');
+    auto sp = value.find(' ');
     if (sp == std::string_view::npos)
         return {};
-    const auto scheme = value.substr(0, sp);
+    auto scheme = value.substr(0, sp);
     if (!ICaseEqual(scheme, "basic"))
         return {};
     value.remove_prefix(sp + 1);
@@ -210,7 +210,7 @@ ParseBasicAuthUser(std::string_view header_value)
     if (port_text.empty())
         return {};
 
-    const auto port = integers::Parse<u16>(port_text);
+    auto port = integers::Parse<u16>(port_text);
     if (!port || *port == 0_u16)
         return {};
     return port;
@@ -240,14 +240,14 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
     std::string_view remainder{};
 
     if (authority.front() == '[') {
-        const auto close = authority.find(']');
+        auto close = authority.find(']');
         if (close == std::string_view::npos)
             return {};
         host = authority.substr(1, close - 1);
         remainder = authority.substr(close + 1);
     } else {
-        const auto first_colon = authority.find(':');
-        const auto last_colon = authority.rfind(':');
+        auto first_colon = authority.find(':');
+        auto last_colon = authority.rfind(':');
         if (first_colon != last_colon)
             return {};
         if (last_colon == std::string_view::npos) {
@@ -427,7 +427,7 @@ RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, const String &host, u1
 
 [[nodiscard]] std::string MakeErrorResponse(std::string_view status, std::string_view message)
 {
-    const auto body = std::string(message) + "\n";
+    auto body = std::string(message) + "\n";
     return std::format(
         "{}\r\n"
         "Content-Type: text/plain; charset=utf-8\r\n"
@@ -513,11 +513,11 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 
 [[nodiscard]] Expected<i64, String> ParseContentLength(std::string_view header_value)
 {
-    const auto digits = utext::TrimView(header_value);
+    auto digits = utext::TrimView(header_value);
     if (digits.empty())
         return Unex("invalid Content-Length"_t);
 
-    const auto content_length = integers::Parse<int64_t>(digits);
+    auto content_length = integers::Parse<int64_t>(digits);
     if (!content_length)
         return Unex("invalid Content-Length"_t);
     if (*content_length < 0 || *content_length > Raw(kMaxContentLengthBytes))
@@ -607,8 +607,8 @@ struct EgressProxy::Impl final {
         }
 
         try {
-            const auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(max_claim), deadline);
-            const auto unused = max_claim - i64{sent};
+            auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(max_claim), deadline);
+            auto unused = max_claim - i64{sent};
             if (unused > 0_i64) {
                 auto counter = down_bytes_.Lock();
                 *counter -= unused;
@@ -643,13 +643,13 @@ struct EgressProxy::Impl final {
 
     void Send400(eng::io::Socket &client, std::string_view message, eng::Deadline deadline)
     {
-        const auto response = Make400Response(message);
+        auto response = Make400Response(message);
         static_cast<void>(SendBudgeted(client, response, deadline));
     }
 
     void Send502(eng::io::Socket &client, std::string_view message, eng::Deadline deadline)
     {
-        const auto response = Make502Response(message);
+        auto response = Make502Response(message);
         static_cast<void>(SendBudgeted(client, response, deadline));
     }
 
@@ -750,7 +750,7 @@ struct EgressProxy::Impl final {
 
                 std::span<const char> pending{buffer.data(), Raw(received)};
                 while (!pending.empty() && !IsStopped()) {
-                    const auto sent = SendBudgeted(client, pending, deadline);
+                    auto sent = SendBudgeted(client, pending, deadline);
                     if (sent == 0_uz)
                         return;
                     pending = pending.subspan(Raw(sent));
@@ -771,9 +771,7 @@ struct EgressProxy::Impl final {
             CopyUpstreamToClientBudgeted(upstream, client, deadline);
         });
 
-        const auto status = eng::WaitAllCheckedUntil(
-            deadline, client_to_upstream, upstream_to_client
-        );
+        auto status = eng::WaitAllCheckedUntil(deadline, client_to_upstream, upstream_to_client);
         if (status != eng::FutureStatus::kReady) {
             client_to_upstream.RequestCancel();
             upstream_to_client.RequestCancel();
@@ -787,7 +785,7 @@ struct EgressProxy::Impl final {
         i64 remaining_body, eng::Deadline deadline
     )
     {
-        const auto already_buffered = buffered_body.substr(
+        auto already_buffered = buffered_body.substr(
             0, NumericCast<size_t>(std::max(0_i64, std::min(remaining_body, ssize(buffered_body))))
         );
         if (!SendAll(upstream, already_buffered, deadline))
@@ -797,7 +795,7 @@ struct EgressProxy::Impl final {
         std::array<char, kIoBufferBytes> storage{};
         std::span<char> buffer{storage};
         while (remaining_body > 0_i64 && !IsStopped()) {
-            const auto want = NumericCast<size_t>(std::min(remaining_body, ssize(buffer)));
+            auto want = NumericCast<size_t>(std::min(remaining_body, ssize(buffer)));
             auto received = 0_uz;
             try {
                 received = usize{client.RecvSome(buffer.data(), want, deadline)};
@@ -817,13 +815,13 @@ struct EgressProxy::Impl final {
         eng::Deadline deadline
     )
     {
-        const auto authority = ParseAuthority(req.target, 0_u16, PortMode::kRequired);
+        auto authority = ParseAuthority(req.target, 0_u16, PortMode::kRequired);
         if (!authority) {
             Send400(client, "invalid CONNECT target", deadline);
             return;
         }
 
-        const auto host_text = String::FromBytes(authority->host);
+        auto host_text = String::FromBytes(authority->host);
         if (!host_text) {
             Send400(client, "invalid CONNECT target", deadline);
             return;
@@ -928,9 +926,9 @@ struct EgressProxy::Impl final {
         }
 
         if (config.require_auth) {
-            const auto auth = FindHeaderValue(parsed->headers, "proxy-authorization");
-            const auto user = auth ? ParseBasicAuthUser(*auth)
-                                   : std::optional<std::pair<std::string, std::string>>{};
+            auto auth = FindHeaderValue(parsed->headers, "proxy-authorization");
+            auto user = auth ? ParseBasicAuthUser(*auth)
+                             : std::optional<std::pair<std::string, std::string>>{};
             if (!user || user->first != config.run_id) {
                 Send407(client, deadline);
                 return;

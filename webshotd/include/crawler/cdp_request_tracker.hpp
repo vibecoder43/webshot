@@ -47,7 +47,7 @@ public:
 
     [[nodiscard]] CdpPendingRequest *Find(i64 id) noexcept
     {
-        const auto it = requests_.find(id);
+        auto it = requests_.find(id);
         if (it == std::end(requests_))
             return nullptr;
         return &it->second;
@@ -55,7 +55,7 @@ public:
 
     [[nodiscard]] const CdpPendingRequest *Find(i64 id) const noexcept
     {
-        const auto it = requests_.find(id);
+        auto it = requests_.find(id);
         if (it == std::end(requests_))
             return nullptr;
         return &it->second;
@@ -77,7 +77,7 @@ public:
 private:
     void Insert(i64 id, CdpPendingRequest request)
     {
-        const auto [_, inserted] = requests_.emplace(id, std::move(request));
+        auto [_, inserted] = requests_.emplace(id, std::move(request));
         Invariant(inserted, "duplicate cdp request id"_t);
     }
 

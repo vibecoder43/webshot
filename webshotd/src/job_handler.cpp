@@ -54,7 +54,7 @@ std::string JobHandler::HandleRequestThrowDeadlined(
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{config_};
 
-    const auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
+    auto uuid = request_support.ParseRequiredPathParamUuid(request, "uuid"_t);
     if (!uuid)
         return httpu::RespondParamError(
             response, kBadRequest, uuid.Error().name, uuid.Error().message

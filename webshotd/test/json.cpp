@@ -17,20 +17,20 @@ using namespace text::literals;
 
 UTEST(Json, ParsesJsonIntoExpected)
 {
-    const auto json_text = String::FromBytes("7");
+    auto json_text = String::FromBytes("7");
     ASSERT_TRUE(json_text);
 
-    const auto parsed = ws::json::Parse<int>(*json_text, "parse failed"_t);
+    auto parsed = ws::json::Parse<int>(*json_text, "parse failed"_t);
     ASSERT_TRUE(parsed);
     EXPECT_EQ(*parsed, 7);
 }
 
 UTEST(Json, MapsJsonParseError)
 {
-    const auto json_text = String::FromBytes(R"("bad")");
+    auto json_text = String::FromBytes(R"("bad")");
     ASSERT_TRUE(json_text);
 
-    const auto parsed = ws::json::Parse<int>(*json_text, "parse failed"_t);
+    auto parsed = ws::json::Parse<int>(*json_text, "parse failed"_t);
     ASSERT_FALSE(parsed);
     EXPECT_EQ(parsed.Error(), "parse failed"_t);
 }

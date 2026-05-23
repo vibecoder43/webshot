@@ -64,7 +64,7 @@ namespace {
 )
 {
     // Replay redirect is used behind a reverse proxy; respect forwarded origin when present.
-    const auto download_url = TRY(MakeCaptureDownloadUrl(
+    auto download_url = TRY(MakeCaptureDownloadUrl(
         capture.uuid, config.S3Mode(), config.S3PublicBaseUrl(), request_host, forwarded_host,
         forwarded_proto, config.HttpsOnly()
     ));
