@@ -310,24 +310,28 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
 [[nodiscard]] Expected<Link, String> LinkFromInterceptionUrl(const Config &config, const Url &url)
 {
     auto href = url.Href();
+
+    const auto map_error = [&](const LinkError &error) -> String {
+        using enum LinkError::Code;
+        if (error.code == kInputTooLong || error.code == kNormalizedHrefTooLong)
+            return "url too long"_t;
+        return text::Format("failed to normalize intercepted request url {}", href);
+    };
+
     if (href.StartsWith("ws://"))
         return TRY_MAP_ERR(
-            Link::FromUrl(url.WithProtocol("http"_t), config.UrlBytesMax()), ([&](const auto &) {
-                return text::Format("failed to normalize intercepted request url {}", href);
-            })
+            Link::FromUrl(url.WithProtocol("http"_t), config.UrlBytesMax()),
+            ([&](const LinkError &error) { return map_error(error); })
         );
     if (href.StartsWith("wss://"))
         return TRY_MAP_ERR(
-            Link::FromUrl(url.WithProtocol("https"_t), config.UrlBytesMax()), ([&](const auto &) {
-                return text::Format("failed to normalize intercepted request url {}", href);
-            })
+            Link::FromUrl(url.WithProtocol("https"_t), config.UrlBytesMax()),
+            ([&](const LinkError &error) { return map_error(error); })
         );
 
-    return TRY_MAP_ERR(
-        Link::FromUrl(url, config.UrlBytesMax()), ([&](const auto &) {
-            return text::Format("failed to normalize intercepted request url {}", href);
-        })
-    );
+    return TRY_MAP_ERR(Link::FromUrl(url, config.UrlBytesMax()), ([&](const LinkError &error) {
+                           return map_error(error);
+                       }));
 }
 
 [[nodiscard]] std::optional<Url> AccessPolicyUrlFromText(const String &text)

@@ -44,7 +44,8 @@ components_manager:
           .yml: application/yaml
           __default__: text/plain
     config:
-      url_bytes_max: 32768
+      url_bytes_max: $url_bytes_max
+      url_bytes_max#fallback: 32768
       allowlist_only: $allowlist_only
       https_only: $https_only
       state_dir: $state_dir
