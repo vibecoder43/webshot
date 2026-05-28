@@ -5,7 +5,7 @@
  */
 #include "prefix_utils.hpp"
 #include "shared_state_repo.hpp"
-#include "text_postgres_formatter.hpp"
+#include "text_postgres_formatter.hpp" // IWYU pragma: keep
 #include "try.hpp"
 
 #include <format>
