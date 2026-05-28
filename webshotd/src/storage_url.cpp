@@ -102,7 +102,7 @@ Expected<Url, StorageUrlError> MakeCaptureDownloadUrl(
     ENSURE(base_url.IsHttpOrHttps(), kInvalidPublicBaseUrl);
 
     auto download_url = base_url.WithPathname(AppendCaptureFilename(base_url, uuid))
-                            .Stripped(Url::StripOptions::kQuery | Url::StripOptions::kHash);
+                            .Without(Url::StripOptions::kQuery | Url::StripOptions::kHash);
 
     const auto header_host =
         forwarded_host
@@ -115,7 +115,7 @@ Expected<Url, StorageUrlError> MakeCaptureDownloadUrl(
         if (header_host.port) {
             download_url = download_url.WithPort(*header_host.port);
         } else {
-            download_url = download_url.Stripped(Url::StripOptions::kPort);
+            download_url = download_url.Without(Url::StripOptions::kPort);
         }
     }
 

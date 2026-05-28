@@ -653,7 +653,7 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
 
     auto id_str = us::utils::ToString(id);
     LOG_INFO() << std::format(
-        "RunCrawlJob starting crawler for job {} ({})", id_str, ctx.link.Normalized()
+        "RunCrawlJob starting crawler for job {} ({})", id_str, ctx.link.ToKey()
     );
     {
         auto crawler_result = RunCrawlerForContext(ctx);
@@ -662,15 +662,15 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
         TRY(std::move(crawler_result));
     }
     LOG_INFO() << std::format(
-        "RunCrawlJob finished crawler for job {} ({})", id_str, ctx.link.Normalized()
+        "RunCrawlJob finished crawler for job {} ({})", id_str, ctx.link.ToKey()
     );
 
-    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id_str, ctx.link.Normalized());
+    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id_str, ctx.link.ToKey());
     auto stored = PersistMetadataForContext(ctx);
     if (!stored)
         return Unex(errors::CaptureError{.kind = kPersistMetadataFailed, .detail = {}});
-    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id_str, ctx.link.Normalized());
-    return dto::UuidWithTimeLink{stored->id, stored->created_at, ctx.link.Normalized().ToBytes()};
+    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id_str, ctx.link.ToKey());
+    return dto::UuidWithTimeLink{stored->id, stored->created_at, ctx.link.ToKey().ToBytes()};
 }
 
 Expected<datetime::TimePointTz, PgError> Crud::Impl::InsertJob(Uuid id, String link)
@@ -897,12 +897,12 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
         return {};
     Invariant(https_run.error, "unsuccessful crawler run must include error"_t);
     if (svc_cfg.HttpsOnly()) {
-        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
         LOG_INFO() << ctx.error_message;
         return Unex(MakeCaptureError(*https_run.error));
     }
     if (!crawler::ShouldRetryWithHttp(*https_run.error)) {
-        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
         LOG_INFO() << ctx.error_message;
         return Unex(MakeCaptureError(*https_run.error));
     }
@@ -921,7 +921,7 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
         return {};
     }
     Invariant(http_run.error, "unsuccessful HTTP fallback must include error"_t);
-    ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+    ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
     LOG_INFO() << ctx.error_message;
     return Unex(MakeCaptureError(*http_run.error));
 }
@@ -950,12 +950,11 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
     Invariant(ssize(*ctx.content_sha256) == 32_i64, "content hash must be 32 bytes"_t);
 
     auto existing = capture_meta_repo.FindCaptureByLinkHash(
-        ctx.link.Normalized(), std::string_view{*ctx.content_sha256}
+        ctx.link.ToKey(), std::string_view{*ctx.content_sha256}
     );
     if (!existing) {
         LOG_ERROR() << std::format(
-            "DB select capture-by-hash failed for {}: {}", ctx.link.Normalized(),
-            existing.Error().what
+            "DB select capture-by-hash failed for {}: {}", ctx.link.ToKey(), existing.Error().what
         );
         return {};
     }
@@ -975,8 +974,8 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
     }
 
     auto row = capture_meta_repo.InsertCapture(
-        ctx.id, ctx.link.Normalized(), prefix_key, prefix_tree,
-        std::string_view{*ctx.content_sha256}, ctx.replay_url->Href()
+        ctx.id, ctx.link.ToKey(), prefix_key, prefix_tree, std::string_view{*ctx.content_sha256},
+        ctx.replay_url->Href()
     );
     if (!row) {
         auto deleted = DeleteCaptureObject(ctx.s3_key);
@@ -1052,7 +1051,7 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::MakeCaptureJob(Link link
     using enum errors::CreateJobError;
 
     auto *impl_ptr = impl_.get();
-    const auto normalized_link = link.Normalized();
+    const auto normalized_link = link.ToKey();
     dto::CaptureJob job;
     Uuid id;
 
@@ -1217,15 +1216,15 @@ Crud::FindCapturesByLinkPage(const Link &link, String page_token)
 
     Expected<std::vector<CaptureMetaIdRow>, PgError> rows = [&]() {
         if (!cur) {
-            return impl_->capture_meta_repo.GetCapturesByLinkFirst(link.Normalized(), limit);
+            return impl_->capture_meta_repo.GetCapturesByLinkFirst(link.ToKey(), limit);
         }
         if (cur->direction == crud::PageDirection::kPrevious) {
             return impl_->capture_meta_repo.GetCapturesByLinkPrev(
-                link.Normalized(), limit, pg::TimePointTz{cur->created_at}, cur->id
+                link.ToKey(), limit, pg::TimePointTz{cur->created_at}, cur->id
             );
         }
         return impl_->capture_meta_repo.GetCapturesByLinkNext(
-            link.Normalized(), limit, pg::TimePointTz{cur->created_at}, cur->id
+            link.ToKey(), limit, pg::TimePointTz{cur->created_at}, cur->id
         );
     }();
 

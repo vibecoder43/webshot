@@ -123,7 +123,7 @@ NormalizeHeaders(const dto::CdpHeaders &headers)
     if (!matches_fixture_port)
         return url_text;
 
-    return maybe_url->Stripped(Url::StripOptions::kPort).Href();
+    return maybe_url->Without(Url::StripOptions::kPort).Href();
 }
 
 [[nodiscard]] std::string
@@ -298,7 +298,7 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
         if (!maybe_base_url)
             return CanonicalizeCapturedUrl(request_text);
         return CanonicalizeCapturedUrl(
-            maybe_base_url->Stripped(Url::StripOptions::kHash | Url::StripOptions::kQuery)
+            maybe_base_url->Without(Url::StripOptions::kHash | Url::StripOptions::kQuery)
                 .WithSearch(*location)
                 .Href()
         );
@@ -312,21 +312,19 @@ DecodeCdpBody(const dto::NetworkGetResponseBodyResult &body)
     auto href = url.Href();
     if (href.StartsWith("ws://"))
         return TRY_MAP_ERR(
-            Link::FromText(url.WithProtocol("http"_t).Href(), config.UrlBytesMax()),
-            ([&](const auto &) {
+            Link::FromUrl(url.WithProtocol("http"_t), config.UrlBytesMax()), ([&](const auto &) {
                 return text::Format("failed to normalize intercepted request url {}", href);
             })
         );
     if (href.StartsWith("wss://"))
         return TRY_MAP_ERR(
-            Link::FromText(url.WithProtocol("https"_t).Href(), config.UrlBytesMax()),
-            ([&](const auto &) {
+            Link::FromUrl(url.WithProtocol("https"_t), config.UrlBytesMax()), ([&](const auto &) {
                 return text::Format("failed to normalize intercepted request url {}", href);
             })
         );
 
     return TRY_MAP_ERR(
-        Link::FromText(href, config.UrlBytesMax()), ([&](const auto &) {
+        Link::FromUrl(url, config.UrlBytesMax()), ([&](const auto &) {
             return text::Format("failed to normalize intercepted request url {}", href);
         })
     );
@@ -1383,7 +1381,12 @@ private:
 
         browser_->MarkPhase("navigate");
         dto::PageNavigateParams navigate_params;
-        navigate_params.url = run_.seed_url.ToBytes();
+        {
+            auto url_bytes = run_.seed_url.ToBytes();
+            if (usize{url_bytes.size()} > config_.UrlBytesMax())
+                return Unex{"url too long"_t};
+            navigate_params.url = std::move(url_bytes);
+        }
         GetPageTracker().BeginSeedNavigation(run_.seed_url);
         const auto navigate_result = TRY_MAP_ERR(
             GetSession().Send<dto::PageNavigateResult>("Page.navigate"_t, navigate_params),

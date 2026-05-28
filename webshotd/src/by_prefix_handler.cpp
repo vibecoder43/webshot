@@ -62,7 +62,7 @@ std::string ByPrefixHandler::HandleRequestThrowDeadlined(
             response, kBadRequest, token.Error().name, token.Error().message
         );
 
-    auto page = crud_.FindCapturesByPrefixPage(prefix->Normalized(), *token);
+    auto page = crud_.FindCapturesByPrefixPage(prefix->ToKey(), *token);
     if (!page) {
         using enum errors::CapturePageError;
         if (page.Error() == kDbError)

@@ -30,22 +30,22 @@ using namespace text::literals;
 
 [[nodiscard]] std::string NormalizeKey(std::string_view input)
 {
-    return ParseLink(input).Normalized().ToBytes();
+    return ParseLink(input).ToKey().ToBytes();
 }
 
 [[nodiscard]] std::string NormalizeKeyFromBytes(const std::vector<char> &bytes)
 {
     auto text = *String::FromBytes(std::string_view(bytes.data(), bytes.size()));
-    return Link::FromText(text, kUrlBytesMax)->Normalized().ToBytes();
+    return Link::FromText(text, kUrlBytesMax)->ToKey().ToBytes();
 }
 } // namespace
 
 UTEST(LinkFromText, AcceptsHttpsWithHostname)
 {
     auto link = ParseLink("https://example.com/");
-    EXPECT_EQ(link.url.Hostname(), "example.com"_t);
+    EXPECT_EQ(link.Hostname(), "example.com"_t);
     EXPECT_EQ(link.HttpUrl(), "http://example.com"_t);
-    EXPECT_EQ(link.Normalized(), "example.com"_t);
+    EXPECT_EQ(link.ToKey(), "example.com"_t);
 }
 
 UTEST(LinkFromText, RejectsUnsupportedScheme) { EXPECT_FALSE(CanParseLink("ftp://example.com/")); }
@@ -162,36 +162,36 @@ UTEST(LinkFromText, ResolvesDotSegments)
     EXPECT_EQ(NormalizeKey("https://example.com/a/./b/../c"), std::string{"example.com/a/c"});
 }
 
-UTEST(LinkMembers, HostAndHttpUrlNormalized)
+UTEST(LinkMembers, HostAndHttpUrlToKey)
 {
     auto link = ParseLink("https://Example.com:8081/Path/");
-    EXPECT_EQ(link.url.Hostname(), "example.com"_t);
+    EXPECT_EQ(link.Hostname(), "example.com"_t);
     EXPECT_EQ(link.HttpUrl(), "http://example.com/Path"_t);
-    EXPECT_EQ(link.Normalized(), "example.com/Path"_t);
+    EXPECT_EQ(link.ToKey(), "example.com/Path"_t);
 }
 
 UTEST(LinkMembers, PreservesQueryAndStripsPort)
 {
     auto link = ParseLink("https://Example.com:8081/Path?a=1");
-    EXPECT_EQ(link.url.Hostname(), "example.com"_t);
-    EXPECT_EQ(link.Normalized(), "example.com/Path?a=1"_t);
+    EXPECT_EQ(link.Hostname(), "example.com"_t);
+    EXPECT_EQ(link.ToKey(), "example.com/Path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesPortOnly)
 {
-    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Without(kPort);
     EXPECT_EQ(stripped.Href(), "https://example.com/path?a=1"_t);
 }
 
 UTEST(UrlStrip, RemovesQueryOnly)
 {
-    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kQuery);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Without(kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com:8081/path"_t);
 }
 
 UTEST(UrlStrip, RemovesPortAndQuery)
 {
-    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Stripped(kPort | kQuery);
+    auto stripped = ParseUrl("https://example.com:8081/path?a=1").Without(kPort | kQuery);
     EXPECT_EQ(stripped.Href(), "https://example.com/path"_t);
 }
 
