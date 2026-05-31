@@ -83,7 +83,7 @@ PrepareSignedHeaders(std::string host, const httpc::Headers &extra);
     const std::vector<std::pair<std::string, std::string>>
         &query, // already key/value, will encode/sort
     const std::vector<std::pair<std::string, std::string>> &headers_lowercase_trimmed_sorted,
-    std::string_view payload_Sha256Hex
+    std::string_view payload_sha256_hex
 );
 
 /**
@@ -96,7 +96,7 @@ PrepareSignedHeaders(std::string host, const httpc::Headers &extra);
     const std::vector<std::pair<String, String>> &query,
     // input headers to be signed: key must be lowercase and trimmed; host must be present
     const std::vector<std::pair<String, String>> &headers_lower_trimmed,
-    const String &payload_Sha256Hex
+    const String &payload_sha256_hex
 );
 
 } // namespace ws::s3

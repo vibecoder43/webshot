@@ -1,5 +1,7 @@
 #pragma once
 
+#include "expected.hpp"
+#include "integers.hpp"
 #include "text.hpp"
 
 #include <optional>
@@ -9,6 +11,14 @@
 #include <ada/url_aggregator.h>
 
 namespace ws {
+
+struct [[nodiscard]] UrlError final {
+    enum class Code {
+        kInputTooLong,
+        kFailedToParse,
+    };
+    Code code;
+};
 
 class [[nodiscard]] Url final {
 public:
@@ -32,6 +42,8 @@ public:
     }
 
     [[nodiscard]] static std::optional<Url> FromText(const String &text);
+    [[nodiscard]] static Expected<Url, UrlError>
+    FromBoundedSizeText(const String &text, usize max_bytes);
     [[nodiscard]] static Url FromParsed(ada::url_aggregator url);
 
     [[nodiscard]] String Host() const;
@@ -53,7 +65,7 @@ public:
     [[nodiscard]] bool IsHttp() const;
     [[nodiscard]] bool IsHttps() const;
     [[nodiscard]] bool IsHttpOrHttps() const;
-    [[nodiscard]] Url Stripped(StripOptions options) const;
+    [[nodiscard]] Url Without(StripOptions options) const;
     [[nodiscard]] Url WithProtocol(const String &protocol) const;
     [[nodiscard]] Url WithHostname(const String &hostname) const;
     [[nodiscard]] Url WithPort(const String &port) const;

@@ -14,9 +14,16 @@ from helper.capture_flow import (
     _wacz_entries,
     _wacz_zip_compress_type,
 )
+from helper.config_hooks import set_url_bytes_max
 from helper.constants import TEST_HOST
 from helper.prefix import prefix_key_from_link
 from helper.waiters import wait_for_job_status, wait_for_purge
+
+_CDP_URL_BYTES_MAX_SMALL = 64
+
+
+def _patch_url_bytes_max_small(config_yaml, config_vars):
+    set_url_bytes_max(config_yaml, config_vars, _CDP_URL_BYTES_MAX_SMALL)
 
 
 @pytest.mark.asyncio
@@ -266,3 +273,33 @@ async def test_capture_records_main_document_redirect_in_wacz(
     assert "location: /redirect-final" in archive_text
     assert "WARC-Target-URI: https://test-target/redirect-final" in archive_text
     assert "redirect final" in archive_text
+
+
+@pytest.mark.uservice_oneshot(config_hooks=[_patch_url_bytes_max_small])
+@pytest.mark.asyncio
+async def test_cdp_ingest_caps_url_bytes_max(service_client, pgsql):
+    # This test validates the real capture pipeline (CDP + Fetch interception), not browser-probe.
+    link = f"https://{TEST_HOST}/with-long-subresource"
+    job_id, job = await _capture_and_wait(
+        service_client,
+        link,
+        expected_status="failed",
+        timeout=45.0,
+    )
+
+    assert job["error"]["error"]["message"] == "capture failed"
+
+    # The public API error is intentionally generic; validate the specific failure reason in DB.
+    shared_state_db = pgsql["shared_state_db"]
+    with shared_state_db.cursor() as cur:
+        cur.execute(
+            "select error_message from crawl_job where id = %s",
+            (uuid.UUID(job_id),),
+        )
+        (error_message,) = cur.fetchone()
+    assert "url too long" in error_message
+
+    capture_meta_db = pgsql["capture_meta_db"]
+    with capture_meta_db.cursor() as cur:
+        cur.execute("select 1 from capture where id = %s", (uuid.UUID(job_id),))
+        assert cur.fetchone() is None

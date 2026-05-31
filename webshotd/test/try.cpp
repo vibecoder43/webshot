@@ -55,7 +55,7 @@ struct MoveOnly final {
 {
     if (!ok)
         return ws::Unex(TestError::kBeta);
-    return MoveOnly{33};
+    return {33};
 }
 
 [[nodiscard]] ws::Expected<int, TestError> DoubleExpected(bool ok)
@@ -204,108 +204,108 @@ MapErrorSingleEvaluation(int &expr_calls, int &mapper_calls, bool ok)
 
 UTEST(Try, PropagatesExpectedValueErrors)
 {
-    const auto value = DoubleExpected(false);
+    auto value = DoubleExpected(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
 
 UTEST(Try, UnwrapsExpectedValueInExpressionPosition)
 {
-    const auto value = DoubleExpected(true);
+    auto value = DoubleExpected(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 42);
 }
 
 UTEST(Try, PropagatesExpectedVoidErrors)
 {
-    const auto value = PropagateVoid(false);
+    auto value = PropagateVoid(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kBeta);
 }
 
 UTEST(Try, SupportsExpectedVoidStatements)
 {
-    const auto value = PropagateVoid(true);
+    auto value = PropagateVoid(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 9);
 }
 
 UTEST(Try, PropagatesEmptyOptional)
 {
-    const auto value = DoubleOptional(false);
+    auto value = DoubleOptional(false);
     ASSERT_FALSE(value);
 }
 
 UTEST(Try, UnwrapsOptionalInExpressionPosition)
 {
-    const auto value = DoubleOptional(true);
+    auto value = DoubleOptional(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 14);
 }
 
 UTEST(Try, ConvertsExpectedErrorToEmptyOptional)
 {
-    const auto value = OptionalFromExpected(false);
+    auto value = OptionalFromExpected(false);
     ASSERT_FALSE(value);
 }
 
 UTEST(Try, UnwrapsExpectedIntoOptional)
 {
-    const auto value = OptionalFromExpected(true);
+    auto value = OptionalFromExpected(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 42);
 }
 
 UTEST(Try, ConvertsExpectedVoidErrorToEmptyOptional)
 {
-    const auto value = OptionalFromExpectedVoid(false);
+    auto value = OptionalFromExpectedVoid(false);
     ASSERT_FALSE(value);
 }
 
 UTEST(Try, UnwrapsExpectedVoidIntoOptional)
 {
-    const auto value = OptionalFromExpectedVoid(true);
+    auto value = OptionalFromExpectedVoid(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 9);
 }
 
 UTEST(Try, SupportsLvalueOptional)
 {
-    const auto value = LvalueOptional(true);
+    auto value = LvalueOptional(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 8);
 }
 
 UTEST(Try, SupportsExpectedLvalueInOptionalReturn)
 {
-    const auto value = LvalueOptionalFromExpected(true);
+    auto value = LvalueOptionalFromExpected(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 22);
 }
 
 UTEST(Try, ConvertsExpectedLvalueErrorToEmptyOptional)
 {
-    const auto value = LvalueOptionalFromExpected(false);
+    auto value = LvalueOptionalFromExpected(false);
     ASSERT_FALSE(value);
 }
 
 UTEST(Try, PropagatesLvalueExpectedErrors)
 {
-    const auto value = LvalueExpected(false);
+    auto value = LvalueExpected(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
 
 UTEST(Try, SupportsMultipleExpressionUses)
 {
-    const auto value = TwoTrys(true, true);
+    auto value = TwoTrys(true, true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 42);
 }
 
 UTEST(Try, StopsAtFirstError)
 {
-    const auto value = TwoTrys(false, true);
+    auto value = TwoTrys(false, true);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
@@ -313,7 +313,7 @@ UTEST(Try, StopsAtFirstError)
 UTEST(Try, EvaluatesExpressionOnceOnSuccess)
 {
     int calls = 0;
-    const auto value = SingleEvaluation(calls, true);
+    auto value = SingleEvaluation(calls, true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 5);
     EXPECT_EQ(calls, 1);
@@ -322,7 +322,7 @@ UTEST(Try, EvaluatesExpressionOnceOnSuccess)
 UTEST(Try, EvaluatesExpressionOnceOnError)
 {
     int calls = 0;
-    const auto value = SingleEvaluation(calls, false);
+    auto value = SingleEvaluation(calls, false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kBeta);
     EXPECT_EQ(calls, 1);
@@ -330,55 +330,55 @@ UTEST(Try, EvaluatesExpressionOnceOnError)
 
 UTEST(Try, UnwrapsMoveOnlyExpectedValues)
 {
-    const auto value = UnwrapMoveOnly(true);
+    auto value = UnwrapMoveOnly(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 33);
 }
 
 UTEST(Try, UnwrapsMoveOnlyOptionalValues)
 {
-    const auto value = UnwrapOptionalMoveOnly(true);
+    auto value = UnwrapOptionalMoveOnly(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 13);
 }
 
 UTEST(Try, PropagatesEmptyOptionalForMoveOnlyValues)
 {
-    const auto value = UnwrapOptionalMoveOnly(false);
+    auto value = UnwrapOptionalMoveOnly(false);
     ASSERT_FALSE(value);
 }
 
 UTEST(Try, MapPreservesExpectedError)
 {
-    const auto value = MapExpectedValue(false);
+    auto value = MapExpectedValue(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), TestError::kAlpha);
 }
 
 UTEST(Try, MapTransformsExpectedSuccessValue)
 {
-    const auto value = MapExpectedValue(true);
+    auto value = MapExpectedValue(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 43);
 }
 
 UTEST(Try, MapErrPreservesExpectedSuccessValue)
 {
-    const auto value = MapExpectedError(true);
+    auto value = MapExpectedError(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 42);
 }
 
 UTEST(Try, MapErrMapsExpectedError)
 {
-    const auto value = MapExpectedError(false);
+    auto value = MapExpectedError(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 10);
 }
 
 UTEST(Try, MapErrSupportsExpectedVoid)
 {
-    const auto value = MapVoidError(false);
+    auto value = MapVoidError(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 30);
 }
@@ -386,7 +386,7 @@ UTEST(Try, MapErrSupportsExpectedVoid)
 UTEST(Try, ErrAsPreservesExpectedSuccessValue)
 {
     int err_calls = 0;
-    const auto value = ReplaceExpectedError(true, err_calls);
+    auto value = ReplaceExpectedError(true, err_calls);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 22);
     EXPECT_EQ(err_calls, 0);
@@ -395,7 +395,7 @@ UTEST(Try, ErrAsPreservesExpectedSuccessValue)
 UTEST(Try, ErrAsReplacesExpectedError)
 {
     int err_calls = 0;
-    const auto value = ReplaceExpectedError(false, err_calls);
+    auto value = ReplaceExpectedError(false, err_calls);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 95);
     EXPECT_EQ(err_calls, 1);
@@ -403,7 +403,7 @@ UTEST(Try, ErrAsReplacesExpectedError)
 
 UTEST(Try, ErrAsSupportsExpectedVoid)
 {
-    const auto value = ReplaceVoidError(false);
+    auto value = ReplaceVoidError(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 96);
 }
@@ -412,7 +412,7 @@ UTEST(Try, MapErrEvaluatesExpressionOnceOnSuccess)
 {
     int expr_calls = 0;
     int mapper_calls = 0;
-    const auto value = MapErrorSingleEvaluation(expr_calls, mapper_calls, true);
+    auto value = MapErrorSingleEvaluation(expr_calls, mapper_calls, true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 5);
     EXPECT_EQ(expr_calls, 1);
@@ -423,7 +423,7 @@ UTEST(Try, MapErrEvaluatesExpressionAndMapperOnceOnError)
 {
     int expr_calls = 0;
     int mapper_calls = 0;
-    const auto value = MapErrorSingleEvaluation(expr_calls, mapper_calls, false);
+    auto value = MapErrorSingleEvaluation(expr_calls, mapper_calls, false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 50);
     EXPECT_EQ(expr_calls, 1);
@@ -432,14 +432,14 @@ UTEST(Try, MapErrEvaluatesExpressionAndMapperOnceOnError)
 
 UTEST(Try, OkOrUnwrapsOptionalSuccess)
 {
-    const auto value = OkOrOptional(true);
+    auto value = OkOrOptional(true);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 8);
 }
 
 UTEST(Try, OkOrMapsOptionalError)
 {
-    const auto value = OkOrOptional(false);
+    auto value = OkOrOptional(false);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 70);
 }
@@ -447,7 +447,7 @@ UTEST(Try, OkOrMapsOptionalError)
 UTEST(Try, OkOrElseBuildsErrorOnceOnError)
 {
     int err_calls = 0;
-    const auto value = OkOrElseOptional(false, err_calls);
+    auto value = OkOrElseOptional(false, err_calls);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 80);
     EXPECT_EQ(err_calls, 1);
@@ -456,7 +456,7 @@ UTEST(Try, OkOrElseBuildsErrorOnceOnError)
 UTEST(Try, OkOrElseSkipsErrorFactoryOnSuccess)
 {
     int err_calls = 0;
-    const auto value = OkOrElseOptional(true, err_calls);
+    auto value = OkOrElseOptional(true, err_calls);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 8);
     EXPECT_EQ(err_calls, 0);
@@ -465,7 +465,7 @@ UTEST(Try, OkOrElseSkipsErrorFactoryOnSuccess)
 UTEST(Try, EnsureReturnsSuccessWhenConditionMatches)
 {
     int err_calls = 0;
-    const auto value = EnsureValue(true, err_calls);
+    auto value = EnsureValue(true, err_calls);
     ASSERT_TRUE(value);
     EXPECT_EQ(*value, 3);
     EXPECT_EQ(err_calls, 0);
@@ -474,7 +474,7 @@ UTEST(Try, EnsureReturnsSuccessWhenConditionMatches)
 UTEST(Try, EnsureReturnsMappedErrorWhenConditionFails)
 {
     int err_calls = 0;
-    const auto value = EnsureValue(false, err_calls);
+    auto value = EnsureValue(false, err_calls);
     ASSERT_FALSE(value);
     EXPECT_EQ(value.Error(), 90);
     EXPECT_EQ(err_calls, 1);

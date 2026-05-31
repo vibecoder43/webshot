@@ -50,19 +50,19 @@ std::string ByPrefixHandler::HandleRequestThrowDeadlined(
     auto &response = request.GetHttpResponse();
     HandlerRequestSupport request_support{config_};
 
-    const auto prefix = request_support.ParseRequiredQueryLink(request, "prefix"_t);
+    auto prefix = request_support.ParseRequiredQueryLink(request, "prefix"_t);
     if (!prefix)
         return httpu::RespondParamError(
             response, kBadRequest, prefix.Error().name, prefix.Error().message
         );
 
-    const auto token = request_support.ParseQueryText(request, "page_token"_t);
+    auto token = request_support.ParseQueryText(request, "page_token"_t);
     if (!token)
         return httpu::RespondParamError(
             response, kBadRequest, token.Error().name, token.Error().message
         );
 
-    auto page = crud_.FindCapturesByPrefixPage(prefix->Normalized(), *token);
+    auto page = crud_.FindCapturesByPrefixPage(prefix->ToKey(), *token);
     if (!page) {
         using enum errors::CapturePageError;
         if (page.Error() == kDbError)

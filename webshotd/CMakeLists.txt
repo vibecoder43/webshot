@@ -62,6 +62,7 @@ set(${PROJECT_NAME}_headers
     src/capture_meta_repo.hpp
     src/shared_state_repo.hpp
     include/integers.hpp
+    include/character_type.hpp
     include/s3/credentials_types.hpp
     include/s3/sts_client.hpp
     include/s3/client.hpp

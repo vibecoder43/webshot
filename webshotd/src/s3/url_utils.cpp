@@ -1,9 +1,8 @@
 #include "s3/url_utils.hpp"
 
+#include "character_type.hpp"
 #include "try.hpp"
 
-#include <cctype>
-#include <expected>
 #include <stddef.h>
 #include <string>
 
@@ -17,13 +16,13 @@ namespace {
 
 [[nodiscard]] bool HasExplicitScheme(std::string_view text)
 {
-    const auto scheme_pos = text.find("://");
+    auto scheme_pos = text.find("://");
     if (scheme_pos == std::string_view::npos || scheme_pos == 0)
         return false;
-    if (!std::isalpha(static_cast<unsigned char>(text.front())))
+    if (!ctype::IsAsciiAlpha(text.front()))
         return false;
     for (const char c : text.substr(1, scheme_pos - 1)) {
-        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' || c == '.'))
+        if (!(ctype::IsAsciiAlnum(c) || c == '+' || c == '-' || c == '.'))
             return false;
     }
     return true;
@@ -33,11 +32,11 @@ namespace {
 
 std::optional<Url> ParseUrlWithDefaultHttpScheme(const String &text)
 {
-    if (const auto url = Url::FromText(text))
+    if (auto url = Url::FromText(text))
         return url;
     if (HasExplicitScheme(text.View()))
         return {};
-    const auto with_scheme = "http://"_t + text;
+    auto with_scheme = "http://"_t + text;
     return Url::FromText(with_scheme);
 }
 
@@ -69,10 +68,8 @@ Expected<std::vector<std::pair<String, String>>, QueryStringError> DecodeQuerySt
         std::string value = ada::unicode::percent_decode(
             val_part, val_percent == std::string::npos ? std::string::npos : val_percent
         );
-        const auto key_text = TRY_ERR_AS(String::FromBytes(key), QueryStringError::kInvalidUtf8Key);
-        const auto value_text = TRY_ERR_AS(
-            String::FromBytes(value), QueryStringError::kInvalidUtf8Value
-        );
+        auto key_text = TRY_ERR_AS(String::FromBytes(key), QueryStringError::kInvalidUtf8Key);
+        auto value_text = TRY_ERR_AS(String::FromBytes(value), QueryStringError::kInvalidUtf8Value);
         query.emplace_back(key_text, value_text);
         if (amp == std::string::npos)
             break;

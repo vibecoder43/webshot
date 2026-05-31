@@ -8,14 +8,14 @@ BufferFormatter<String>::BufferFormatter(const String &value) : value(value) {}
 
 void BufferFormatter<String>::operator()(const UserTypes &, std::vector<char> &buf) const
 {
-    const auto sv = value.View();
+    auto sv = value.View();
     using CharFormatter = BufferFormatter<const char *>;
     CharFormatter::WriteN(buf, sv.data(), sv.size());
 }
 
 void BufferFormatter<String>::operator()(const UserTypes &, std::string &buf) const
 {
-    const auto sv = value.View();
+    auto sv = value.View();
     using CharFormatter = BufferFormatter<const char *>;
     CharFormatter::WriteN(buf, sv.data(), sv.size());
 }
@@ -24,7 +24,7 @@ BufferParser<String>::BufferParser(String &value) : value(value) {}
 
 void BufferParser<String>::operator()(const FieldBuffer &buffer)
 {
-    const auto tmp = buffer.ToString();
+    auto tmp = buffer.ToString();
     auto parsed = String::FromBytes(tmp);
     if (!parsed)
         throw ::userver::storages::postgres::InvalidInputFormat(

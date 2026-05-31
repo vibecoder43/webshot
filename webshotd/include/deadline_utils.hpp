@@ -46,8 +46,8 @@ enum class DeadlineError {
 {
     using eng::Deadline;
 
-    const auto config_deadline = Deadline::FromTimePoint(request.GetStartTime() + handler_timeout);
-    const auto inherited_deadline = server::request::GetTaskInheritedDeadline();
+    auto config_deadline = Deadline::FromTimePoint(request.GetStartTime() + handler_timeout);
+    auto inherited_deadline = server::request::GetTaskInheritedDeadline();
 
     return PickEarlierDeadline(config_deadline, inherited_deadline);
 }
@@ -60,11 +60,11 @@ enum class DeadlineError {
     if (!deadline.IsReachable())
         return Ms::max();
 
-    const auto left = deadline.TimeLeft();
+    auto left = deadline.TimeLeft();
     if (left <= decltype(left)::zero())
         return 0ms;
 
-    const auto left_ms = std::chrono::duration_cast<Ms>(left);
+    auto left_ms = std::chrono::duration_cast<Ms>(left);
     if (left_ms <= 0ms)
         return 0ms;
     return left_ms;
@@ -86,7 +86,7 @@ SleepWithinDeadline(eng::Deadline deadline, std::chrono::milliseconds delay)
     if (delay <= 0ms)
         return {};
 
-    const auto sleep_for = std::min(delay, TRY(TimeLeftMs(deadline)));
+    auto sleep_for = std::min(delay, TRY(TimeLeftMs(deadline)));
     eng::SleepFor(sleep_for);
     if (sleep_for != delay)
         return Unex(DeadlineError::kTimeout);
@@ -100,7 +100,7 @@ SleepWithinDeadline(eng::Deadline deadline, std::chrono::milliseconds delay)
 
     Invariant(deadline.IsReachable(), "sleepUntilDeadline requires a reachable deadline"_t);
 
-    const auto remaining = TRY(TimeLeftMs(deadline));
+    auto remaining = TRY(TimeLeftMs(deadline));
     ENSURE(remaining > 0ms, DeadlineError::kTimeout);
 
     eng::SleepFor(remaining);

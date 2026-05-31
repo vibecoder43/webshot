@@ -31,6 +31,20 @@ std::optional<Url> Url::FromText(const String &text)
     return Url(std::move(*parsed));
 }
 
+Expected<Url, UrlError> Url::FromBoundedSizeText(const String &text, usize max_bytes)
+{
+    using enum UrlError::Code;
+
+    if (usize{text.SizeBytes()} > max_bytes)
+        return Unex{UrlError{.code = kInputTooLong}};
+
+    auto parsed = ada::parse<ada::url_aggregator>(text.View());
+    if (!parsed)
+        return Unex{UrlError{.code = kFailedToParse}};
+
+    return Url(std::move(*parsed));
+}
+
 Url Url::FromParsed(ada::url_aggregator url) { return Url(std::move(url)); }
 
 String Url::Host() const { return *String::FromBytes(ada_url_.get_host()); }
@@ -71,7 +85,7 @@ String Url::Surt() const
 
     std::vector<std::string> labels;
     for (size_t offset = 0; offset <= host_text.size();) {
-        const auto next = host_text.find('.', offset);
+        auto next = host_text.find('.', offset);
         if (next == std::string::npos) {
             labels.emplace_back(host_text.substr(offset));
             break;
@@ -106,7 +120,7 @@ bool Url::HasNonDefaultPort() const
     if (!HasPort())
         return false;
 
-    const auto default_port = ada::scheme::get_special_port(SchemeType());
+    auto default_port = ada::scheme::get_special_port(SchemeType());
     if (default_port == 0)
         return true;
 
@@ -125,7 +139,7 @@ bool Url::IsHttps() const { return ada_url_.type == ada::scheme::type::HTTPS; }
 
 bool Url::IsHttpOrHttps() const { return IsHttp() || IsHttps(); }
 
-Url Url::Stripped(StripOptions options) const
+Url Url::Without(StripOptions options) const
 {
     auto parsed = CopyParsed();
     if (HasStripOption(options, StripOptions::kPort))

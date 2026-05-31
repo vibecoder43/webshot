@@ -21,7 +21,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
         return;
     }
     for (size_t pos = 0; pos < bytes.size(); pos += max_bytes_per_label) {
-        const auto chunk = bytes.substr(pos, std::min(max_bytes_per_label, bytes.size() - pos));
+        auto chunk = bytes.substr(pos, std::min(max_bytes_per_label, bytes.size() - pos));
         out.push_back('.');
         out.push_back('x');
         out.append(us::utils::encoding::ToHex(chunk));
@@ -32,11 +32,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
 
 [[nodiscard]] String MakePrefixKey(const Link &link)
 {
-    const auto normalized_url = link.url.Stripped(
-        Url::StripOptions::kPort | Url::StripOptions::kQuery
-    );
-
-    auto host = normalized_url.Hostname();
+    auto host = link.Hostname();
     auto host_view = host.View();
     std::string host_str{host_view};
     std::vector<std::string> labels;
@@ -56,7 +52,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
             host_rev.push_back('.');
         host_rev += labels[i];
     }
-    auto path = normalized_url.Pathname().ToBytes();
+    auto path = link.Pathname().ToBytes();
     if (path == "/")
         path.clear();
     else if (!path.empty() && path.back() == '/')
@@ -70,16 +66,16 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
 {
     auto view = prefix_key.View();
     std::string out("h");
-    const auto first_slash = view.find('/');
-    const auto host_part = first_slash == std::string_view::npos
-                               ? std::string_view(view)
-                               : std::string_view(view).substr(0, first_slash);
+    auto first_slash = view.find('/');
+    auto host_part = first_slash == std::string_view::npos
+                         ? std::string_view(view)
+                         : std::string_view(view).substr(0, first_slash);
 
-    const auto append_split_segments = [&out](std::string_view input, const char sep) {
+    auto append_split_segments = [&out](std::string_view input, const char sep) {
         for (size_t start = 0;;) {
-            const auto next = input.find(sep, start);
-            const auto seg = next == std::string_view::npos ? input.substr(start)
-                                                            : input.substr(start, next - start);
+            auto next = input.find(sep, start);
+            auto seg = next == std::string_view::npos ? input.substr(start)
+                                                      : input.substr(start, next - start);
             AppendEncodedSegment(out, seg);
             if (next == std::string_view::npos)
                 break;
@@ -93,7 +89,7 @@ void AppendEncodedSegment(std::string &out, std::string_view bytes)
         return out;
 
     out.append(".p");
-    const auto path = std::string_view(view).substr(first_slash + 1);
+    auto path = std::string_view(view).substr(first_slash + 1);
     append_split_segments(path, '/');
     return out;
 }

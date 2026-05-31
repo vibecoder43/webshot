@@ -74,9 +74,7 @@ struct [[nodiscard]] ProbeConfig final {
 
 [[nodiscard]] Expected<dto::BrowserProbeRequest, String> ParseProbeRequest(const String &body)
 {
-    const auto request = TRY(
-        ws::json::Parse<dto::BrowserProbeRequest>(body, "invalid request body"_t)
-    );
+    auto request = TRY(ws::json::Parse<dto::BrowserProbeRequest>(body, "invalid request body"_t));
     ENSURE(
         !request.url.empty() && !request.wait_expression.empty() && request.timeout_ms > 0,
         "invalid request body"_t
@@ -88,7 +86,7 @@ struct [[nodiscard]] ProbeConfig final {
 ParseTestsuiteLoopbackPorts(const us::components::ComponentConfig &config)
 {
     std::vector<u16> ports;
-    for (const auto port : config["testsuite_loopback_ports"].As<std::vector<int64_t>>()) {
+    for (auto port : config["testsuite_loopback_ports"].As<std::vector<int64_t>>()) {
         ports.emplace_back(NumericCast<uint16_t>(port));
     }
     return ports;
@@ -177,7 +175,7 @@ void CleanupProbeSession(
 )
 {
     if (page_session) {
-        if (const auto stopped_page = page_session->Stop(); !stopped_page) {
+        if (auto stopped_page = page_session->Stop(); !stopped_page) {
             LOG_WARNING() << std::format(
                 "Suppressing page session stop error during probe cleanup: {}", stopped_page.Error()
             );
@@ -185,7 +183,7 @@ void CleanupProbeSession(
         page_session.reset();
     }
     if (cdp) {
-        if (const auto stopped = cdp->Stop(); !stopped) {
+        if (auto stopped = cdp->Stop(); !stopped) {
             LOG_WARNING() << std::format(
                 "Suppressing CDP stop error during probe cleanup: code={}{}",
                 NumericCast<int>(stopped.Error().code),
@@ -236,7 +234,7 @@ void CleanupProbeSession(
     std::optional<String> last_error;
 
     const auto update_match_state = [&]() -> Expected<bool, String> {
-        const auto matched = EvaluateBoolExpression(cdp_session, expression);
+        auto matched = EvaluateBoolExpression(cdp_session, expression);
         if (matched)
             return *matched;
         last_error = matched.Error();
@@ -251,7 +249,7 @@ void CleanupProbeSession(
         if (TRY(update_match_state()))
             return {};
 
-        const auto event_deadline = eng::Deadline::FromDuration(
+        auto event_deadline = eng::Deadline::FromDuration(
             std::min(
                 chrono::duration_cast<chrono::milliseconds>(deadline.TimeLeft()), recheck_interval
             )
@@ -275,15 +273,15 @@ void CleanupProbeSession(
     std::vector<String> &console, std::vector<String> &page_errors
 )
 {
-    const auto settle_window = std::max(recheck_interval * 2, kMinProbeSettleWindow);
-    const auto settle_deadline = PickEarlierDeadline(
+    auto settle_window = std::max(recheck_interval * 2, kMinProbeSettleWindow);
+    auto settle_deadline = PickEarlierDeadline(
         deadline, eng::Deadline::FromDuration(settle_window)
     );
 
     while (!settle_deadline.IsReached()) {
         TRY(DrainProbeEvents(cdp_session, console, page_errors));
 
-        const auto event_deadline = eng::Deadline::FromDuration(
+        auto event_deadline = eng::Deadline::FromDuration(
             std::min(
                 chrono::duration_cast<chrono::milliseconds>(settle_deadline.TimeLeft()),
                 recheck_interval
@@ -326,7 +324,7 @@ void CleanupProbeSession(
         if (auto frame = TRY(update_frame_state()))
             return *frame;
 
-        const auto event_deadline = eng::Deadline::FromDuration(
+        auto event_deadline = eng::Deadline::FromDuration(
             std::min(
                 chrono::duration_cast<chrono::milliseconds>(deadline.TimeLeft()), recheck_interval
             )
@@ -387,9 +385,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         return ptr->MakeErrorDetail(std::move(detail));
     };
     const auto result = [&]() -> Expected<dto::BrowserProbeResponse, String> {
-        const auto mark_phase = [ptr = browser.get()](std::string_view phase) {
-            ptr->MarkPhase(phase);
-        };
+        auto mark_phase = [ptr = browser.get()](std::string_view phase) { ptr->MarkPhase(phase); };
 
         browser->MarkPhase("connect_cdp");
         cdp = TRY(browser->ConnectCdp(deadline));
@@ -434,7 +430,7 @@ RunProbe(const dto::BrowserProbeRequest &request, const ProbeConfig &config, eng
         probe_result.text = state.text;
 
         if (request.frame_expression) {
-            const auto frame_expression = *String::FromBytes(*request.frame_expression);
+            auto frame_expression = *String::FromBytes(*request.frame_expression);
             probe_result.frame = TRY_MAP_ERR(
                 WaitForFrameExpression(
                     cdp_session, frame_expression, deadline, config.devtools_poll_interval, console,
@@ -554,21 +550,21 @@ std::string BrowserProbeHandler::HandleRequestThrow(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    const auto body = String::FromBytes(request.RequestBody());
+    auto body = String::FromBytes(request.RequestBody());
     if (!body)
         return httpu::RespondError(response, kBadRequest, "invalid request body"_t);
 
-    const auto probe_request = ParseProbeRequest(*body);
+    auto probe_request = ParseProbeRequest(*body);
     if (!probe_request)
         return httpu::RespondError(response, kBadRequest, probe_request.Error());
 
-    const auto timeout_budget = std::min(
+    auto timeout_budget = std::min(
         impl_->probe_config.request_timeout, probe_request->timeout_ms * 1ms
     );
     auto final_deadline = ComputeHandlerDeadline(request, timeout_budget);
     eng::current_task::SetDeadline(final_deadline);
 
-    const auto result = RunProbe(*probe_request, impl_->probe_config, final_deadline);
+    auto result = RunProbe(*probe_request, impl_->probe_config, final_deadline);
     if (!result)
         return httpu::RespondError(response, kInternalServerError, result.Error());
     return httpu::RespondJson(response, kOk, *result);

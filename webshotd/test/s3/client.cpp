@@ -121,14 +121,14 @@ namespace {
 std::map<std::string, std::string> ParseQuery(const std::string &url)
 {
     std::map<std::string, std::string> out;
-    const auto pos = url.find('?');
+    auto pos = url.find('?');
     if (pos == std::string::npos)
         return out;
     const std::string query = url.substr(pos + 1);
     std::size_t start = 0;
     while (start < query.size()) {
-        const auto amp = query.find('&', start);
-        const auto eq = query.find('=', start);
+        auto amp = query.find('&', start);
+        auto eq = query.find('=', start);
         if (eq == std::string::npos)
             break;
         const std::string key = query.substr(start, eq - start);
@@ -170,12 +170,12 @@ UTEST(SigClient, PresignPathStyleClampsShortTtl)
     auto creds = MakeCreds();
     auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
-    const auto expired = datetime::Now() - 1h;
+    auto expired = datetime::Now() - 1h;
     const std::string url = client->GenerateDownloadUrl(
         "test.txt", std::chrono::system_clock::to_time_t(expired), true
     );
 
-    const auto params = ParseQuery(url);
+    auto params = ParseQuery(url);
     auto it = params.find("X-Amz-Expires");
     ASSERT_NE(it, params.end());
     const auto &[expires_name, expires_value] = *it;
@@ -190,12 +190,12 @@ UTEST(SigClient, PresignPathStyleClampsLongTtl)
     auto creds = MakeCreds();
     auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
-    const auto far_future = datetime::Now() + 14 * 24h;
+    auto far_future = datetime::Now() + 14 * 24h;
     const std::string url = client->GenerateDownloadUrl(
         "test.txt", std::chrono::system_clock::to_time_t(far_future), true
     );
 
-    const auto params = ParseQuery(url);
+    auto params = ParseQuery(url);
     auto it = params.find("X-Amz-Expires");
     ASSERT_NE(it, params.end());
     const auto &[expires_name, expires_value] = *it;
@@ -210,16 +210,16 @@ UTEST(SigClient, PresignPathStyleEncodesObjectKey)
     auto creds = MakeCreds();
     auto client = std::make_shared<Client>(*http_client, cfg, creds, "examplebucket"_t);
 
-    const auto soon = datetime::Now() + 120s;
+    auto soon = datetime::Now() + 120s;
     const std::string url = client->GenerateDownloadUrl(
         "folder/file with space.txt", std::chrono::system_clock::to_time_t(soon), true
     );
 
-    const auto scheme_pos = url.find("://");
+    auto scheme_pos = url.find("://");
     ASSERT_NE(scheme_pos, std::string::npos);
-    const auto path_start = url.find('/', scheme_pos + 3);
+    auto path_start = url.find('/', scheme_pos + 3);
     ASSERT_NE(path_start, std::string::npos);
-    const auto query_pos = url.find('?', path_start);
+    auto query_pos = url.find('?', path_start);
     const std::string path = url.substr(
         path_start, query_pos == std::string::npos ? std::string::npos : query_pos - path_start
     );
@@ -229,7 +229,7 @@ UTEST(SigClient, PresignPathStyleEncodesObjectKey)
 
 UTEST(SigClient, ValidateVirtualHostBucketNameRequiresBucket)
 {
-    const auto result = ws::s3::detail::ValidateVirtualHostBucketName(String{});
+    auto result = ws::s3::detail::ValidateVirtualHostBucketName(String{});
     ASSERT_FALSE(result);
     EXPECT_EQ(result.Error(), ws::s3::detail::VirtualHostPresignError::kMissingBucket);
 }
@@ -242,15 +242,15 @@ UTEST(SigClient, VirtualHostUsesBucketInHost)
     auto creds = MakeCreds();
     auto client = std::make_shared<Client>(*http_client, cfg, creds, "bucket-name"_t);
 
-    const auto expires_at = datetime::Now() + 60s;
+    auto expires_at = datetime::Now() + 60s;
     const std::string url = client->GenerateDownloadUrlVirtualHostAddressing(
         "path/object", expires_at, "https"
     );
 
-    const auto scheme_pos = url.find("://");
+    auto scheme_pos = url.find("://");
     ASSERT_NE(scheme_pos, std::string::npos);
-    const auto host_start = scheme_pos + 3;
-    const auto path_start = url.find('/', host_start);
+    auto host_start = scheme_pos + 3;
+    auto path_start = url.find('/', host_start);
     ASSERT_NE(path_start, std::string::npos);
     const std::string host = url.substr(host_start, path_start - host_start);
 
@@ -277,12 +277,12 @@ UTEST(SigClient, UploadPresignIncludesContentType)
     auto creds = MakeCreds();
     auto client = std::make_shared<Client>(*http_client, cfg, creds, "bucket-name"_t);
 
-    const auto expires_at = datetime::Now() + 120s;
+    auto expires_at = datetime::Now() + 120s;
     const std::string url = client->GenerateUploadUrlVirtualHostAddressing(
         "ignored-body", "text/plain", "path/file.txt", expires_at, "http"
     );
 
-    const auto params = ParseQuery(url);
+    auto params = ParseQuery(url);
     auto sh_it = params.find("X-Amz-SignedHeaders");
     ASSERT_NE(sh_it, params.end());
     const auto &[signed_headers_name, signed_headers_value] = *sh_it;

@@ -19,7 +19,7 @@ template <typename Credential>
 [[nodiscard]] std::optional<Credential>
 CredentialTextField(const userver::formats::json::Value &creds, std::string_view field_name)
 {
-    const auto value = creds[std::string{field_name}];
+    auto value = creds[std::string{field_name}];
     if (value.IsMissing())
         return {};
     return Credential(*String::FromBytes(value.As<std::string>()));
@@ -41,7 +41,7 @@ struct CredentialsSecdist {
 
     explicit CredentialsSecdist(const userver::formats::json::Value &secdist_doc)
     {
-        const auto creds = secdist_doc["s3_credentials"];
+        auto creds = secdist_doc["s3_credentials"];
         if (!creds.IsMissing()) {
             access_key_id = detail::CredentialTextField<s3::AccessKeyId>(creds, "access_key_id");
             secret_access_key = detail::CredentialTextField<s3::SecretAccessKey>(

@@ -57,10 +57,15 @@ constexpr auto kMaxHeaderBytes = 64_uz * 1024_uz;
 constexpr size_t kIoBufferBytes = 16UL * 1024UL;
 constexpr auto kMaxContentLengthBytes = 1024_i64 * 1024_i64 * 1024_i64;
 
-constexpr std::array kLocalFixtureHosts = {
-    std::string_view{"test-target"},
-    std::string_view{"asset.test-target"},
-    std::string_view{"untrusted.test-target"},
+const std::array<String, 3> kLocalFixtureHosts = {
+    "test-target"_t,
+    "asset.test-target"_t,
+    "untrusted.test-target"_t,
+};
+const std::array<String, 3> kTestsuiteLoopbackHosts = {
+    "127.0.0.1"_t,
+    "localhost"_t,
+    "::1"_t,
 };
 constexpr auto kLocalHttpPort = 18080_u16;
 constexpr auto kLocalHttpsPort = 18443_u16;
@@ -104,11 +109,11 @@ FindHeaderValue(const std::vector<HeaderLine> &headers, std::string_view name) n
 
 [[nodiscard]] std::optional<std::string_view> TakeCrlfLine(std::string_view &remaining) noexcept
 {
-    const auto next = remaining.find("\r\n");
+    auto next = remaining.find("\r\n");
     if (next == std::string_view::npos)
         return {};
 
-    const auto line = remaining.substr(0, next);
+    auto line = remaining.substr(0, next);
     remaining.remove_prefix(next + 2);
     return line;
 }
@@ -136,10 +141,10 @@ struct [[nodiscard]] ParsedRequest final {
     ParsedRequest out;
     out.header_bytes = unsize(header_part);
     {
-        const auto first_sp = request_line->find(' ');
+        auto first_sp = request_line->find(' ');
         if (first_sp == std::string_view::npos)
             return {};
-        const auto second_sp = request_line->find(' ', first_sp + 1);
+        auto second_sp = request_line->find(' ', first_sp + 1);
         if (second_sp == std::string_view::npos)
             return {};
         out.method = request_line->substr(0, first_sp);
@@ -150,16 +155,16 @@ struct [[nodiscard]] ParsedRequest final {
     }
 
     while (!remaining.empty()) {
-        const auto line = TakeCrlfLine(remaining);
+        auto line = TakeCrlfLine(remaining);
         if (!line)
             return {};
         if (line->empty())
             break;
 
-        const auto colon = line->find(':');
+        auto colon = line->find(':');
         if (colon == std::string_view::npos)
             continue;
-        const auto name = line->substr(0, colon);
+        auto name = line->substr(0, colon);
         auto value = line->substr(colon + 1);
         value = utext::TrimView(value);
         if (name.empty())
@@ -178,10 +183,10 @@ struct [[nodiscard]] ParsedRequest final {
 ParseBasicAuthUser(std::string_view header_value)
 {
     auto value = header_value;
-    const auto sp = value.find(' ');
+    auto sp = value.find(' ');
     if (sp == std::string_view::npos)
         return {};
-    const auto scheme = value.substr(0, sp);
+    auto scheme = value.substr(0, sp);
     if (!ICaseEqual(scheme, "basic"))
         return {};
     value.remove_prefix(sp + 1);
@@ -205,7 +210,7 @@ ParseBasicAuthUser(std::string_view header_value)
     if (port_text.empty())
         return {};
 
-    const auto port = integers::Parse<u16>(port_text);
+    auto port = integers::Parse<u16>(port_text);
     if (!port || *port == 0_u16)
         return {};
     return port;
@@ -221,7 +226,7 @@ struct [[nodiscard]] Authority final {
 struct [[nodiscard]] ResolvedTcpAddress final {
     eng::io::Sockaddr sockaddr;
     Ip ip;
-    std::string label;
+    String label;
 };
 
 [[nodiscard]] std::optional<Authority>
@@ -235,14 +240,14 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
     std::string_view remainder{};
 
     if (authority.front() == '[') {
-        const auto close = authority.find(']');
+        auto close = authority.find(']');
         if (close == std::string_view::npos)
             return {};
         host = authority.substr(1, close - 1);
         remainder = authority.substr(close + 1);
     } else {
-        const auto first_colon = authority.find(':');
-        const auto last_colon = authority.rfind(':');
+        auto first_colon = authority.find(':');
+        auto last_colon = authority.rfind(':');
         if (first_colon != last_colon)
             return {};
         if (last_colon == std::string_view::npos) {
@@ -302,53 +307,50 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
     if (addr.Domain() == eng::io::AddrDomain::kInet) {
         Ip4::BytesType bytes{};
         std::memcpy(bytes.data(), &addr.As<sockaddr_in>()->sin_addr.s_addr, bytes.size());
-        return Ip{Ip4{bytes}};
+        return Ip4{bytes};
     }
     if (addr.Domain() == eng::io::AddrDomain::kInet6) {
         Ip6::BytesType bytes{};
         std::memcpy(bytes.data(), addr.As<sockaddr_in6>()->sin6_addr.s6_addr, bytes.size());
-        return Ip{Ip6{bytes}};
+        return Ip6{bytes};
     }
     return {};
 }
 
-[[nodiscard]] std::string DescribeSockaddr(const eng::io::Sockaddr &addr)
+[[nodiscard]] String DescribeSockaddr(const eng::io::Sockaddr &addr)
 {
     if (!addr.HasPort())
-        return addr.PrimaryAddressString();
+        return text::Format("{}", addr.PrimaryAddressString());
     if (addr.Domain() == eng::io::AddrDomain::kInet6)
-        return std::format("[{}]:{}", addr.PrimaryAddressString(), addr.Port());
-    return std::format("{}:{}", addr.PrimaryAddressString(), addr.Port());
+        return text::Format("[{}]:{}", addr.PrimaryAddressString(), addr.Port());
+    return text::Format("{}:{}", addr.PrimaryAddressString(), addr.Port());
 }
 
 [[nodiscard]] Expected<std::vector<ResolvedTcpAddress>, String> ResolveTcp(
-    dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadline deadline,
+    dns::Resolver &resolver, const String &host, u16 port, eng::Deadline deadline,
     bool allow_non_public_ip
 )
 {
-    const auto host_text = std::string(host);
-    if (auto host_string = String::FromBytes(host_text)) {
-        if (auto ip = ParseIp(*host_string)) {
-            if (!allow_non_public_ip && !IsPublicRoutable(*ip))
-                return Unex(text::Format("ip address not public-routable for {}", host_text));
+    if (auto ip = ParseIp(host)) {
+        if (!allow_non_public_ip && !IsPublicRoutable(*ip))
+            return Unex(text::Format("ip address not public-routable for {}", host));
 
-            auto addr = SockaddrFromIp(*ip, port);
-            return std::vector<ResolvedTcpAddress>{
-                ResolvedTcpAddress{
-                    .sockaddr = addr,
-                    .ip = *ip,
-                    .label = DescribeSockaddr(addr),
-                },
-            };
-        }
+        auto addr = SockaddrFromIp(*ip, port);
+        return {{
+            {
+                .sockaddr = addr,
+                .ip = *ip,
+                .label = DescribeSockaddr(addr),
+            },
+        }};
     }
 
     try {
-        auto addrs = resolver.Resolve(host_text, deadline);
+        auto addrs = resolver.Resolve(host.ToBytes(), deadline);
         if (addrs.empty())
-            return Unex(text::Format("dns resolve returned no addresses for {}", host_text));
+            return Unex(text::Format("dns resolve returned no addresses for {}", host));
 
-        std::vector<ResolvedTcpAddress> resolved{};
+        std::vector<ResolvedTcpAddress> resolved;
         resolved.reserve(addrs.size());
         for (auto &addr : addrs) {
             addr.SetPort(Raw(port));
@@ -366,67 +368,66 @@ ParseAuthority(std::string_view authority, u16 default_port, PortMode port_mode)
         }
         if (resolved.empty())
             return Unex(
-                text::Format("dns resolve returned no public-routable addresses for {}", host_text)
+                text::Format("dns resolve returned no public-routable addresses for {}", host)
             );
         return resolved;
     } catch (const dns::ResolverException &) {
-        return Unex(text::Format("dns resolve failed for {}", host_text));
+        return Unex(text::Format("dns resolve failed for {}", host));
     }
 }
 
 struct [[nodiscard]] UpstreamTarget final {
-    std::string connect_host;
+    String connect_host;
     u16 connect_port{0};
     bool allow_non_public_ip{false};
 };
 
 [[nodiscard]] UpstreamTarget
-RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, std::string_view host, u16 port)
+RewriteLocalFixtureIfNeeded(const EgressProxyConfig &cfg, const String &host, u16 port)
 {
     if (!cfg.enable_local_fixture_rewrite)
-        return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+        return {.connect_host = host, .connect_port = port};
 
-    const auto is_testsuite_loopback_host = host == "127.0.0.1" || host == "localhost" ||
-                                            host == "::1";
-    const auto is_testsuite_loopback_port =
+    const bool is_testsuite_loopback_host = std::ranges::contains(kTestsuiteLoopbackHosts, host);
+    const bool is_testsuite_loopback_port =
         port == kTestsuiteServicePort || port == kTestsuitePort ||
         std::ranges::contains(cfg.testsuite_loopback_ports, port);
     if (is_testsuite_loopback_host && is_testsuite_loopback_port) {
-        return UpstreamTarget{
-            .connect_host = std::string(host),
+        return {
+            .connect_host = host,
             .connect_port = port,
             .allow_non_public_ip = true,
         };
     }
 
-    const auto is_local_host = std::ranges::contains(kLocalFixtureHosts, host);
+    auto is_local_host = std::ranges::contains(kLocalFixtureHosts, host);
     if (!is_local_host)
-        return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+        return {.connect_host = host, .connect_port = port};
 
     if (port == 80_u16)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = kLocalHttpPort,
             .allow_non_public_ip = true,
         };
     if (port == 443_u16)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = kLocalHttpsPort,
             .allow_non_public_ip = true,
         };
     if (port == kLocalHttpPort || port == kLocalHttpsPort)
-        return UpstreamTarget{
-            .connect_host = "127.0.0.1",
+        return {
+            .connect_host = "127.0.0.1"_t,
             .connect_port = port,
             .allow_non_public_ip = true,
         };
-    return UpstreamTarget{.connect_host = std::string(host), .connect_port = port};
+    return {.connect_host = host, .connect_port = port};
 }
 
 [[nodiscard]] std::string MakeErrorResponse(std::string_view status, std::string_view message)
 {
-    const auto body = std::string(message) + "\n";
+    auto body = std::string(message) + "\n";
     return std::format(
         "{}\r\n"
         "Content-Type: text/plain; charset=utf-8\r\n"
@@ -463,7 +464,7 @@ void AppendHeaderLine(std::string &out, std::string_view name, std::string_view 
 }
 
 struct [[nodiscard]] HttpRequestTarget final {
-    std::string_view host;
+    String host;
     u16 port{0};
     std::string_view path;
 };
@@ -473,30 +474,38 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 {
     if (req.target.starts_with(kHttpScheme)) {
         auto rest = req.target.substr(kHttpScheme.size());
-        const auto slash = rest.find('/');
-        const auto authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
-        const auto parsed_authority = ParseAuthority(authority, 80_u16, PortMode::kOptional);
+        auto slash = rest.find('/');
+        auto authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
+        auto parsed_authority = ParseAuthority(authority, 80_u16, PortMode::kOptional);
         if (!parsed_authority)
             return Unex(kUnsupportedRequestTarget);
 
+        auto host_text = TRY_MAP_ERR(String::FromBytes(parsed_authority->host), [&](auto &&) {
+            return kUnsupportedRequestTarget;
+        });
+
         return HttpRequestTarget{
-            .host = parsed_authority->host,
+            .host = std::move(host_text),
             .port = parsed_authority->port,
             .path = slash == std::string_view::npos ? kSlashPath : rest.substr(slash),
         };
     }
     if (!req.target.starts_with('/'))
         return Unex(kUnsupportedRequestTarget);
-    const auto host_header = FindHeaderValue(req.headers, "host");
+    auto host_header = FindHeaderValue(req.headers, "host");
     if (!host_header)
         return Unex(kMissingHostHeader);
 
-    const auto parsed_host = ParseAuthority(*host_header, 0_u16, PortMode::kOptional);
+    auto parsed_host = ParseAuthority(*host_header, 0_u16, PortMode::kOptional);
     if (!parsed_host)
         return Unex(kInvalidHostHeader);
 
+    auto host_text = TRY_MAP_ERR(String::FromBytes(parsed_host->host), [&](auto &&) {
+        return kInvalidHostHeader;
+    });
+
     return HttpRequestTarget{
-        .host = parsed_host->host,
+        .host = std::move(host_text),
         .port = parsed_host->port == 0_u16 ? 80_u16 : parsed_host->port,
         .path = req.target,
     };
@@ -504,11 +513,11 @@ ParseHttpRequestTarget(const ParsedRequest &req)
 
 [[nodiscard]] Expected<i64, String> ParseContentLength(std::string_view header_value)
 {
-    const auto digits = utext::TrimView(header_value);
+    auto digits = utext::TrimView(header_value);
     if (digits.empty())
         return Unex("invalid Content-Length"_t);
 
-    const auto content_length = integers::Parse<int64_t>(digits);
+    auto content_length = integers::Parse<int64_t>(digits);
     if (!content_length)
         return Unex("invalid Content-Length"_t);
     if (*content_length < 0 || *content_length > Raw(kMaxContentLengthBytes))
@@ -598,13 +607,13 @@ struct EgressProxy::Impl final {
         }
 
         try {
-            const auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(max_claim), deadline);
-            const auto unused = max_claim - i64{sent};
+            auto sent = sock.SendAll(bytes.data(), NumericCast<size_t>(max_claim), deadline);
+            auto unused = max_claim - i64{sent};
             if (unused > 0_i64) {
                 auto counter = down_bytes_.Lock();
                 *counter -= unused;
             }
-            return usize{sent};
+            return {sent};
         } catch (const std::exception &) {
             auto counter = down_bytes_.Lock();
             *counter -= max_claim;
@@ -634,13 +643,13 @@ struct EgressProxy::Impl final {
 
     void Send400(eng::io::Socket &client, std::string_view message, eng::Deadline deadline)
     {
-        const auto response = Make400Response(message);
+        auto response = Make400Response(message);
         static_cast<void>(SendBudgeted(client, response, deadline));
     }
 
     void Send502(eng::io::Socket &client, std::string_view message, eng::Deadline deadline)
     {
-        const auto response = Make502Response(message);
+        auto response = Make502Response(message);
         static_cast<void>(SendBudgeted(client, response, deadline));
     }
 
@@ -665,9 +674,8 @@ struct EgressProxy::Impl final {
         static_cast<void>(::shutdown(sock.Fd(), SHUT_WR));
     }
 
-    [[nodiscard]] Expected<eng::io::Socket, String> ConnectUpstream(
-        dns::Resolver &resolver, std::string_view host, u16 port, eng::Deadline deadline
-    )
+    [[nodiscard]] Expected<eng::io::Socket, String>
+    ConnectUpstream(dns::Resolver &resolver, const String &host, u16 port, eng::Deadline deadline)
     {
         const auto upstream = RewriteLocalFixtureIfNeeded(config, host, port);
         auto addrs = TRY(ResolveTcp(
@@ -675,7 +683,7 @@ struct EgressProxy::Impl final {
             upstream.allow_non_public_ip
         ));
 
-        std::vector<std::string> errors{};
+        std::vector<String> errors;
         errors.reserve(addrs.size());
         for (const auto &addr : addrs) {
             eng::io::Socket socket{addr.sockaddr.Domain(), eng::io::SocketType::kStream};
@@ -683,15 +691,15 @@ struct EgressProxy::Impl final {
                 socket.Connect(addr.sockaddr, deadline);
                 return socket;
             } catch (const std::exception &e) {
-                errors.push_back(std::format("{} ({})", addr.label, e.what()));
+                errors.push_back(text::Format("{} ({})", addr.label, e.what()));
             }
         }
 
-        std::string details{};
+        String details;
         for (const auto &cur : errors) {
-            if (!details.empty())
-                details.append("; ");
-            details.append(cur);
+            if (!details.Empty())
+                details += "; "_t;
+            details += cur;
         }
         return Unex(
             text::Format(
@@ -742,7 +750,7 @@ struct EgressProxy::Impl final {
 
                 std::span<const char> pending{buffer.data(), Raw(received)};
                 while (!pending.empty() && !IsStopped()) {
-                    const auto sent = SendBudgeted(client, pending, deadline);
+                    auto sent = SendBudgeted(client, pending, deadline);
                     if (sent == 0_uz)
                         return;
                     pending = pending.subspan(Raw(sent));
@@ -763,9 +771,7 @@ struct EgressProxy::Impl final {
             CopyUpstreamToClientBudgeted(upstream, client, deadline);
         });
 
-        const auto status = eng::WaitAllCheckedUntil(
-            deadline, client_to_upstream, upstream_to_client
-        );
+        auto status = eng::WaitAllCheckedUntil(deadline, client_to_upstream, upstream_to_client);
         if (status != eng::FutureStatus::kReady) {
             client_to_upstream.RequestCancel();
             upstream_to_client.RequestCancel();
@@ -779,7 +785,7 @@ struct EgressProxy::Impl final {
         i64 remaining_body, eng::Deadline deadline
     )
     {
-        const auto already_buffered = buffered_body.substr(
+        auto already_buffered = buffered_body.substr(
             0, NumericCast<size_t>(std::max(0_i64, std::min(remaining_body, ssize(buffered_body))))
         );
         if (!SendAll(upstream, already_buffered, deadline))
@@ -789,7 +795,7 @@ struct EgressProxy::Impl final {
         std::array<char, kIoBufferBytes> storage{};
         std::span<char> buffer{storage};
         while (remaining_body > 0_i64 && !IsStopped()) {
-            const auto want = NumericCast<size_t>(std::min(remaining_body, ssize(buffer)));
+            auto want = NumericCast<size_t>(std::min(remaining_body, ssize(buffer)));
             auto received = 0_uz;
             try {
                 received = usize{client.RecvSome(buffer.data(), want, deadline)};
@@ -809,13 +815,19 @@ struct EgressProxy::Impl final {
         eng::Deadline deadline
     )
     {
-        const auto authority = ParseAuthority(req.target, 0_u16, PortMode::kRequired);
+        auto authority = ParseAuthority(req.target, 0_u16, PortMode::kRequired);
         if (!authority) {
             Send400(client, "invalid CONNECT target", deadline);
             return;
         }
 
-        auto upstream = ConnectUpstream(resolver, authority->host, authority->port, deadline);
+        auto host_text = String::FromBytes(authority->host);
+        if (!host_text) {
+            Send400(client, "invalid CONNECT target", deadline);
+            return;
+        }
+
+        auto upstream = ConnectUpstream(resolver, *host_text, authority->port, deadline);
         if (!upstream) {
             NoteError(upstream.Error());
             Send502(client, upstream.Error().View(), deadline);
@@ -914,9 +926,9 @@ struct EgressProxy::Impl final {
         }
 
         if (config.require_auth) {
-            const auto auth = FindHeaderValue(parsed->headers, "proxy-authorization");
-            const auto user = auth ? ParseBasicAuthUser(*auth)
-                                   : std::optional<std::pair<std::string, std::string>>{};
+            auto auth = FindHeaderValue(parsed->headers, "proxy-authorization");
+            auto user = auth ? ParseBasicAuthUser(*auth)
+                             : std::optional<std::pair<std::string, std::string>>{};
             if (!user || user->first != config.run_id) {
                 Send407(client, deadline);
                 return;
@@ -1017,7 +1029,7 @@ void EgressProxy::Stop() noexcept { impl_->StopAll(); }
 i64 EgressProxy::DownBytes() const noexcept
 {
     auto locked = impl_->down_bytes_.Lock();
-    return i64{*locked};
+    return {*locked};
 }
 
 std::optional<String> EgressProxy::ErrorReason() const noexcept

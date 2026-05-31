@@ -13,14 +13,14 @@ using namespace text::literals;
 
 UTEST(UrlUtils, ParsesUrlWithExistingScheme)
 {
-    const auto url = ParseUrlWithDefaultHttpScheme("https://example.com/path?a=1"_t);
+    auto url = ParseUrlWithDefaultHttpScheme("https://example.com/path?a=1"_t);
     ASSERT_TRUE(url);
     EXPECT_EQ(url->Href(), "https://example.com/path?a=1"_t);
 }
 
 UTEST(UrlUtils, DefaultsMissingSchemeToHttp)
 {
-    const auto url = ParseUrlWithDefaultHttpScheme("example.com/path?a=1"_t);
+    auto url = ParseUrlWithDefaultHttpScheme("example.com/path?a=1"_t);
     ASSERT_TRUE(url);
     EXPECT_EQ(url->Href(), "http://example.com/path?a=1"_t);
 }
@@ -33,12 +33,12 @@ UTEST(UrlUtils, RejectsInvalidUrlEvenAfterDefaultScheme)
 UTEST(UrlUtils, EmptyAndQuestionOnly)
 {
     {
-        const auto v = DecodeQueryString(""_t);
+        auto v = DecodeQueryString(""_t);
         ASSERT_TRUE(v);
         EXPECT_TRUE(v->empty());
     }
     {
-        const auto v = DecodeQueryString("?"_t);
+        auto v = DecodeQueryString("?"_t);
         ASSERT_TRUE(v);
         EXPECT_TRUE(v->empty());
     }

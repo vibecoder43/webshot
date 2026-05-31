@@ -166,7 +166,7 @@ template <typename To, typename From>
 [[nodiscard]] constexpr std::remove_cvref_t<To> NumericCast(From value) noexcept
 {
     using ToValue = std::remove_cvref_t<To>;
-    const auto converted = detail::CheckedNumericCast<ToValue>(value);
+    auto converted = detail::CheckedNumericCast<ToValue>(value);
     if (!converted)
         detail::AbortNumericCastError(converted.Error());
     return *converted;
@@ -185,7 +185,7 @@ NumericCast(const boost::safe_numerics::safe<T, PromotionPolicy, ExceptionPolicy
     requires NumericCastType<To> && (!std::same_as<std::remove_cvref_t<To>, T>)
 {
     using ToValue = std::remove_cvref_t<To>;
-    const auto converted = detail::CheckedNumericCast<ToValue>(value);
+    auto converted = detail::CheckedNumericCast<ToValue>(value);
     if (!converted)
         detail::AbortNumericCastError(converted.Error());
     return *converted;
@@ -203,7 +203,7 @@ struct SSizeFn {
         requires requires(const C &c) { c.size(); }
     [[nodiscard]] constexpr i64 operator()(const C &c) const noexcept
     {
-        return i64{c.size()};
+        return {c.size()};
     }
 };
 
@@ -212,7 +212,7 @@ struct USizeFn {
         requires requires(const C &c) { c.size(); }
     [[nodiscard]] constexpr usize operator()(const C &c) const noexcept
     {
-        return usize{c.size()};
+        return {c.size()};
     }
 };
 
@@ -239,10 +239,10 @@ template <typename T> [[nodiscard]] std::optional<T> Parse(std::string_view byte
     typename detail::ParseStorage<T>::Type parsed{};
     const auto *begin = bytes.data();
     const auto *end = begin + bytes.size();
-    const auto result = std::from_chars(begin, end, parsed);
+    auto result = std::from_chars(begin, end, parsed);
     if (result.ec != std::errc{} || result.ptr != end)
         return {};
-    return T{parsed};
+    return {parsed};
 }
 
 } // namespace integers

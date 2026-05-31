@@ -121,7 +121,7 @@ public:
         auto utf32 = una::utf8to32u(data_);
         std::ranges::reverse(utf32);
 
-        const auto reversed_utf8 = una::utf32to8(utf32);
+        auto reversed_utf8 = una::utf32to8(utf32);
 
         String result;
         result.data_ = una::norm::to_nfc_utf8({reversed_utf8.data(), reversed_utf8.size()});
@@ -161,8 +161,6 @@ template <std::ranges::input_range Range, typename F>
 {
     using ExpectedResult = CollectExpectedResult<Range, F>;
     using Value = typename ExpectedResult::value_type;
-    using Error = typename ExpectedResult::error_type;
-    using Result = Expected<std::vector<Value>, Error>;
 
     std::vector<Value> out;
     if constexpr (std::ranges::sized_range<const Range>)
@@ -171,7 +169,7 @@ template <std::ranges::input_range Range, typename F>
     for (const auto &item : range) {
         out.push_back(TRY(std::invoke(f, item)));
     }
-    return Result{std::move(out)};
+    return {std::move(out)};
 }
 
 } // namespace detail
@@ -203,7 +201,7 @@ template <typename T>
 OptionalString(const std::optional<T> &bytes)
 {
     if (!bytes)
-        return std::optional<String>{};
+        return {};
 
     return String::FromBytes(detail::ByteView(*bytes)).Transform([](String text) {
         return std::optional<String>{std::move(text)};

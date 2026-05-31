@@ -2,19 +2,18 @@ import pytest
 from helper.capture_flow import (
     _assert_missing_job_fields,
     _capture_and_wait,
-    _enable_allowlist_only,
-    _enable_https_only,
     _probe_replay,
     _wacz_archive_text,
     _wacz_cdx_statuses_for_root_url,
     _wacz_cdx_statuses_for_url,
     _wacz_entries,
 )
+from helper.config_hooks import enable_allowlist_only, enable_https_only
 from helper.constants import TEST_HOST, UNTRUSTED_TEST_HOST
 from helper.waiters import wait_for_job_status
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_allowlist_only])
 @pytest.mark.asyncio
 async def test_allowlist_only_blocks_non_allowlisted_redirect_target(
     service_client, monitor_client
@@ -55,7 +54,7 @@ async def test_https_first_succeeds_when_http_fails(
     assert not _wacz_cdx_statuses_for_url(wacz, f"http://{TEST_HOST}/https-first-http-fails")
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_https_only])
 @pytest.mark.asyncio
 async def test_https_only_accepts_http_seed_and_crawls_https(
     service_client, browser_probe, download_wacz, service_baseurl
@@ -94,7 +93,7 @@ async def test_https_first_falls_back_to_http_when_https_no_response(
     assert not _wacz_cdx_statuses_for_url(wacz, f"https://{TEST_HOST}/http-fallback-success")
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_https_only])
 @pytest.mark.asyncio
 async def test_https_only_does_not_fall_back_to_http(service_client):
     link = f"http://{TEST_HOST}/http-fallback-success"

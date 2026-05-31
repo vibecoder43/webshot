@@ -44,11 +44,11 @@ std::string AllowlistCheckHandler::HandleRequestThrowDeadlined(
 
     auto &response = request.GetHttpResponse();
 
-    const auto link = ParseJsonLinkBody(request, config_);
+    auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
 
-    const auto allowed = access_policy_.IsAllowlistedPrefix(prefix::MakePrefixKey(*link));
+    auto allowed = access_policy_.IsAllowlistedPrefix(prefix::MakePrefixKey(*link));
     if (!allowed) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
         return httpu::RespondError(response, kInternalServerError, "internal server error"_t);
@@ -79,12 +79,12 @@ std::string AllowlistAddHandler::HandleRequestThrowDeadlined(
 
     auto &response = request.GetHttpResponse();
 
-    const auto link = ParseJsonLinkBody(request, config_);
+    auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
 
-    const auto prefix_key = prefix::MakePrefixKey(*link);
-    const auto inserted = access_policy_.InsertAllowlistPrefix(prefix_key, "allowlist_add"_t);
+    auto prefix_key = prefix::MakePrefixKey(*link);
+    auto inserted = access_policy_.InsertAllowlistPrefix(prefix_key, "allowlist_add"_t);
     if (!inserted) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
         LOG_ERROR() << std::format("allowlist add failed for {}", prefix_key);
@@ -111,12 +111,12 @@ std::string AllowlistRemoveHandler::HandleRequestThrowDeadlined(
     using enum server::http::HttpStatus;
 
     auto &response = request.GetHttpResponse();
-    const auto link = ParseJsonLinkBody(request, config_);
+    auto link = ParseJsonLinkBody(request, config_);
     if (!link)
         return httpu::RespondError(response, kBadRequest, link.Error());
 
-    const auto prefix_key = prefix::MakePrefixKey(*link);
-    const auto removed = access_policy_.RemoveAllowlistPrefix(prefix_key);
+    auto prefix_key = prefix::MakePrefixKey(*link);
+    auto removed = access_policy_.RemoveAllowlistPrefix(prefix_key);
     if (!removed) {
         metrics_.AccountError(Metrics::Error::kAccessPolicyCheck);
         LOG_ERROR() << std::format("allowlist remove failed for {}", prefix_key);

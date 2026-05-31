@@ -60,7 +60,7 @@ std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
     HandlerRequestSupport request_support{config_};
 
     if (request.GetMethod() == kPost) {
-        const auto req = request_support.ParseJsonBody<dto::CreateCaptureRequest>(request);
+        auto req = request_support.ParseJsonBody<dto::CreateCaptureRequest>(request);
         if (!req)
             return httpu::RespondError(response, kBadRequest, req.Error());
 
@@ -68,7 +68,7 @@ std::string CaptureByLinkHandler::HandleRequestThrowDeadlined(
         if (!parsed)
             return httpu::RespondError(response, kBadRequest, "invalid parameter"_t);
         auto prefix_key = prefix::MakePrefixKey(*parsed);
-        const auto decision = access_policy_.EvaluatePrefix(
+        auto decision = access_policy_.EvaluatePrefix(
             prefix_key,
             config_.AllowlistOnly() ? AccessPolicyMode::kAllowlistOnly : AccessPolicyMode::kRegular
         );

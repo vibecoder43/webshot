@@ -36,22 +36,22 @@ namespace {
 
 UTEST(Cursor, TimePointRoundTrip)
 {
-    const auto tp = Clock::now();
-    const auto micros = TimePointToMicros(tp);
-    const auto tp2 = MicrosToTimePoint(micros);
+    auto tp = Clock::now();
+    auto micros = TimePointToMicros(tp);
+    auto tp2 = MicrosToTimePoint(micros);
     EXPECT_EQ(TimePointToMicros(tp2), micros);
 }
 
 UTEST(Cursor, EncodeDecodePaginationCursor)
 {
-    const auto tp = Clock::time_point(std::chrono::microseconds(123456789));
-    const auto micros = TimePointToMicros(tp);
-    const auto id = us::utils::generators::GenerateBoostUuid();
+    auto tp = Clock::time_point(std::chrono::microseconds(123456789));
+    auto micros = TimePointToMicros(tp);
+    auto id = us::utils::generators::GenerateBoostUuid();
 
     dto::PaginationCursor cur(micros, id, dto::PaginationCursor::D::kNext);
-    const auto token = EncodeToken(cur);
+    auto token = EncodeToken(cur);
 
-    const auto decoded = DecodeToken<dto::PaginationCursor>(token);
+    auto decoded = DecodeToken<dto::PaginationCursor>(token);
     ASSERT_TRUE(decoded);
     if (!decoded)
         return;
@@ -62,18 +62,18 @@ UTEST(Cursor, EncodeDecodePaginationCursor)
 
 UTEST(Cursor, DecodeTokenInvalidReturnsNullopt)
 {
-    const auto decoded = DecodeToken<dto::PaginationCursor>("not-a-token"_t);
+    auto decoded = DecodeToken<dto::PaginationCursor>("not-a-token"_t);
     EXPECT_FALSE(decoded);
 }
 
 UTEST(Cursor, DecodeTokenInvalidJsonReturnsNullopt)
 {
-    const auto decoded = DecodeToken<dto::PaginationCursor>(EncodeRawToken("{"));
+    auto decoded = DecodeToken<dto::PaginationCursor>(EncodeRawToken("{"));
     EXPECT_FALSE(decoded);
 }
 
 UTEST(Cursor, DecodeTokenInvalidShapeReturnsNullopt)
 {
-    const auto decoded = DecodeToken<dto::PaginationCursor>(EncodeRawToken("{\"t\":123}"));
+    auto decoded = DecodeToken<dto::PaginationCursor>(EncodeRawToken("{\"t\":123}"));
     EXPECT_FALSE(decoded);
 }

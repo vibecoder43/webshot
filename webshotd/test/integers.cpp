@@ -39,23 +39,21 @@ UTEST(Integers, NumericCastSupportsSafeIntegerSources)
 
 UTEST(Integers, CheckedNumericCastReportsNegativeToUnsigned)
 {
-    const auto result = integers::detail::CheckedNumericCast<size_t>(-1);
+    auto result = integers::detail::CheckedNumericCast<size_t>(-1);
     ASSERT_FALSE(result);
     EXPECT_EQ(result.Error(), integers::detail::NumericCastError::kNegativeToUnsigned);
 }
 
 UTEST(Integers, CheckedNumericCastReportsNarrowingOverflow)
 {
-    const auto result = integers::detail::CheckedNumericCast<int>(
-        std::numeric_limits<int64_t>::max()
-    );
+    auto result = integers::detail::CheckedNumericCast<int>(std::numeric_limits<int64_t>::max());
     ASSERT_FALSE(result);
     EXPECT_EQ(result.Error(), integers::detail::NumericCastError::kNarrowingOverflow);
 }
 
 UTEST(Integers, CheckedNumericCastReportsEnumUnderlyingOverflow)
 {
-    const auto result = integers::detail::CheckedNumericCast<SmallEnum>(std::uint16_t{256});
+    auto result = integers::detail::CheckedNumericCast<SmallEnum>(std::uint16_t{256});
     ASSERT_FALSE(result);
     EXPECT_EQ(result.Error(), integers::detail::NumericCastError::kEnumUnderlyingOverflow);
 }

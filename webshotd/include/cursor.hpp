@@ -53,8 +53,8 @@ enum class PageDirection {
  */
 template <typename Dto> [[nodiscard]] std::optional<Dto> DecodeToken(const String &token)
 {
-    const auto decoded = TRY(ws::crypto::Base64UrlDecode(token.View(), false));
-    const auto decoded_text = TRY(String::FromBytes(decoded));
+    auto decoded = TRY(ws::crypto::Base64UrlDecode(token.View(), false));
+    auto decoded_text = TRY(String::FromBytes(decoded));
     return TRY(ws::json::Parse<Dto>(decoded_text, false));
 }
 

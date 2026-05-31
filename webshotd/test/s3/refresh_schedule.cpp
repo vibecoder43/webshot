@@ -18,16 +18,16 @@ using namespace std::chrono_literals;
 
 UTEST(RefreshSchedule, FutureExpirationRespectsMargin)
 {
-    const auto now = datetime::Now();
-    const auto expires_at = now + 600s;
-    const auto delay = ComputeRefreshDelay(now, expires_at, 120s);
+    auto now = datetime::Now();
+    auto expires_at = now + 600s;
+    auto delay = ComputeRefreshDelay(now, expires_at, 120s);
     EXPECT_EQ(delay, 480s);
 }
 
 UTEST(RefreshSchedule, PastOrNearExpirationClampsToZero)
 {
-    const auto now = datetime::Now();
-    const auto expires_at = now + 30s;
-    const auto delay = ComputeRefreshDelay(now, expires_at, 60s);
+    auto now = datetime::Now();
+    auto expires_at = now + 30s;
+    auto delay = ComputeRefreshDelay(now, expires_at, 60s);
     EXPECT_EQ(delay, 0s);
 }

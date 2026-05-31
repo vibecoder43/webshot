@@ -1,9 +1,6 @@
 import pytest
+from helper.config_hooks import enable_allowlist_only
 from helper.constants import TEST_ASSET_HOST, TEST_HOST
-
-
-def _enable_allowlist_only(_config_yaml, config_vars):
-    config_vars["allowlist_only"] = True
 
 
 @pytest.mark.asyncio
@@ -87,7 +84,7 @@ async def test_regular_mode_allowlist_overrides_denylist(service_client, monitor
     assert resp.status == 202
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_allowlist_only])
 @pytest.mark.asyncio
 async def test_allowlist_only_blocks_non_allowlisted_seed(service_client):
     resp = await service_client.post(
@@ -98,7 +95,7 @@ async def test_allowlist_only_blocks_non_allowlisted_seed(service_client):
     assert resp.json()["error"]["message"] == "link not in allowlist"
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_allowlist_only])
 @pytest.mark.asyncio
 async def test_allowlist_only_denylist_wins(service_client, monitor_client):
     link = f"https://{TEST_HOST}/allowlist-only-denylist-wins"

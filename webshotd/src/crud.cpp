@@ -145,7 +145,7 @@ template <typename F> [[nodiscard]] Expected<void, std::string> RunS3Operation(F
 [[nodiscard]] dto::CaptureJob
 MakePendingCaptureJob(Uuid uuid, const String &link, const datetime::TimePointTz &created_at)
 {
-    return dto::CaptureJob{
+    return {
         .uuid = uuid,
         .link = link.ToBytes(),
         .status = dto::CaptureJob::Status::kPending,
@@ -218,7 +218,7 @@ ParseJobErrorKind(const std::optional<std::string> &error_category)
 
 [[nodiscard]] dto::CaptureJob MakeCaptureJob(CaptureJobRow row)
 {
-    const auto status = ParseJobStatus(row.status);
+    auto status = ParseJobStatus(row.status);
     dto::CaptureJob job{
         .uuid = row.uuid,
         .link = row.link.ToBytes(),
@@ -587,7 +587,7 @@ public:
             initial_state = GrabValueOf(std::move(fetched_state));
             StartS3RefreshTask();
         } else {
-            const auto static_creds = MakeStaticS3Credentials(
+            auto static_creds = MakeStaticS3Credentials(
                 static_access_key_id, static_secret_access_key
             );
             initial_state = S3ClientState{
@@ -653,7 +653,7 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
 
     auto id_str = us::utils::ToString(id);
     LOG_INFO() << std::format(
-        "RunCrawlJob starting crawler for job {} ({})", id_str, ctx.link.Normalized()
+        "RunCrawlJob starting crawler for job {} ({})", id_str, ctx.link.ToKey()
     );
     {
         auto crawler_result = RunCrawlerForContext(ctx);
@@ -662,15 +662,15 @@ Crud::Impl::RunCrawlJob(Uuid id, Link link)
         TRY(std::move(crawler_result));
     }
     LOG_INFO() << std::format(
-        "RunCrawlJob finished crawler for job {} ({})", id_str, ctx.link.Normalized()
+        "RunCrawlJob finished crawler for job {} ({})", id_str, ctx.link.ToKey()
     );
 
-    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id_str, ctx.link.Normalized());
+    LOG_INFO() << std::format("Persisting metadata for job {} ({})", id_str, ctx.link.ToKey());
     auto stored = PersistMetadataForContext(ctx);
     if (!stored)
         return Unex(errors::CaptureError{.kind = kPersistMetadataFailed, .detail = {}});
-    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id_str, ctx.link.Normalized());
-    return dto::UuidWithTimeLink{stored->id, stored->created_at, ctx.link.Normalized().ToBytes()};
+    LOG_INFO() << std::format("Persisted metadata for job {} ({})", id_str, ctx.link.ToKey());
+    return dto::UuidWithTimeLink{stored->id, stored->created_at, ctx.link.ToKey().ToBytes()};
 }
 
 Expected<datetime::TimePointTz, PgError> Crud::Impl::InsertJob(Uuid id, String link)
@@ -710,8 +710,8 @@ Expected<Crud::Impl::S3ClientState, std::string> Crud::Impl::FetchS3ClientStateF
         std::string{"missing s3_credentials_endpoint while s3_use_sts is enabled"}
     );
     const auto session_uuid = text::Format("{}", us::utils::generators::GenerateBoostUuid());
-    const auto session_name = text::Format("{}", session_uuid);
-    const auto role_arn_description = "ephemeral_s3_credentials"_t;
+    auto session_name = text::Format("{}", session_uuid);
+    auto role_arn_description = "ephemeral_s3_credentials"_t;
 
     const auto policy_json = text::Format(
         "{{\"Version\":\"2012-10-17\",\"Statement\":{{\"Sid\":\"access\",\"Effect\":"
@@ -778,7 +778,7 @@ Crud::Impl::MakeOrReuseCaptureJobLocked(const String &normalized_link)
 void Crud::Impl::StartS3RefreshTask()
 {
     auto snapshot = s3_state.Read();
-    const auto now = datetime::Now();
+    auto now = datetime::Now();
     auto delay = s3refresh::ComputeRefreshDelay(
         now, snapshot->expires_at, s3_credentials_refresh_margin
     );
@@ -798,11 +798,11 @@ void Crud::Impl::RefreshS3CredentialsTask()
     for (;;) {
         if (eng::current_task::ShouldCancel())
             return;
-        const auto new_state = FetchS3ClientStateFromSts();
+        auto new_state = FetchS3ClientStateFromSts();
         if (new_state) {
             s3_state.Assign(*new_state);
 
-            const auto now = datetime::Now();
+            auto now = datetime::Now();
             auto next_delay = s3refresh::ComputeRefreshDelay(
                 now, new_state->expires_at, s3_credentials_refresh_margin
             );
@@ -824,7 +824,7 @@ void Crud::Impl::RefreshS3CredentialsTask()
 
 void Crud::Impl::StartCrawlJobCleanupTask()
 {
-    const auto interval = crawl_job_cleanup_interval;
+    auto interval = crawl_job_cleanup_interval;
     us::utils::PeriodicTask::Settings settings(interval, 0ms);
     settings.task_processor = &purge_task_processor;
 
@@ -847,7 +847,7 @@ CrawlerRunArtifacts Crud::Impl::RunCrawlerAttempt(const String &seed_url)
         "Submitting crawl for {} to crawler with timeout={}s", seed_url, crawler_run_timeout.count()
     );
 
-    const auto run = crawler_runner.Run(seed_url);
+    auto run = crawler_runner.Run(seed_url);
     LOG_INFO() << std::format(
         "Crawler returned for {} (error={}, wacz_exists={})", seed_url,
         run.error ? "true" : "false", run.wacz ? "true" : "false"
@@ -865,7 +865,7 @@ CrawlerRunArtifacts Crud::Impl::RunCrawlerAttempt(const String &seed_url)
     using enum crawler::CrawlerErrorKind;
     using enum errors::CaptureErrorKind;
 
-    return errors::CaptureError{
+    return {
         .kind = error.kind == kArchiveSizeLimit ? kSizeLimit : kCrawler,
         .detail = crawler::FormatCrawlerError(error),
     };
@@ -874,7 +874,7 @@ CrawlerRunArtifacts Crud::Impl::RunCrawlerAttempt(const String &seed_url)
 Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlContext &ctx)
 {
     const auto https_seed_url = ctx.link.HttpsUrl();
-    const auto http_seed_url = ctx.link.HttpUrl();
+    auto http_seed_url = ctx.link.HttpUrl();
 
     const auto try_store_success = [&ctx](const CrawlerRunArtifacts &run) -> bool {
         if (run.error)
@@ -885,7 +885,7 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
         );
         Invariant(ssize(*run.content_sha256) == 32_i64, "content hash must be 32 bytes"_t);
         Invariant(run.replay_url, "crawler did not provide replay_url for a successful capture"_t);
-        const auto replay_url = Url::FromText(*run.replay_url);
+        auto replay_url = Url::FromText(*run.replay_url);
         ctx.wacz_bytes = *run.wacz;
         ctx.content_sha256 = *run.content_sha256;
         ctx.replay_url = *replay_url;
@@ -897,12 +897,12 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
         return {};
     Invariant(https_run.error, "unsuccessful crawler run must include error"_t);
     if (svc_cfg.HttpsOnly()) {
-        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
         LOG_INFO() << ctx.error_message;
         return Unex(MakeCaptureError(*https_run.error));
     }
     if (!crawler::ShouldRetryWithHttp(*https_run.error)) {
-        ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+        ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
         LOG_INFO() << ctx.error_message;
         return Unex(MakeCaptureError(*https_run.error));
     }
@@ -921,7 +921,7 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
         return {};
     }
     Invariant(http_run.error, "unsuccessful HTTP fallback must include error"_t);
-    ctx.error_message = text::Format("Crawler error for {}", ctx.link.Normalized());
+    ctx.error_message = text::Format("Crawler error for {}", ctx.link.ToKey());
     LOG_INFO() << ctx.error_message;
     return Unex(MakeCaptureError(*http_run.error));
 }
@@ -929,7 +929,7 @@ Expected<void, errors::CaptureError> Crud::Impl::RunCrawlerForContext(CrawlConte
 std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext &ctx)
 {
     const auto prefix_key = prefix::MakePrefixKey(ctx.link);
-    const auto prefix_tree = prefix::MakePrefixTree(prefix_key);
+    auto prefix_tree = prefix::MakePrefixTree(prefix_key);
     Invariant(ctx.replay_url, "replayUrl must be set for a successful capture"_t);
 
     const auto allowed = access_policy.IsAllowedPrefix(prefix_key);
@@ -950,12 +950,11 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
     Invariant(ssize(*ctx.content_sha256) == 32_i64, "content hash must be 32 bytes"_t);
 
     auto existing = capture_meta_repo.FindCaptureByLinkHash(
-        ctx.link.Normalized(), std::string_view{*ctx.content_sha256}
+        ctx.link.ToKey(), std::string_view{*ctx.content_sha256}
     );
     if (!existing) {
         LOG_ERROR() << std::format(
-            "DB select capture-by-hash failed for {}: {}", ctx.link.Normalized(),
-            existing.Error().what
+            "DB select capture-by-hash failed for {}: {}", ctx.link.ToKey(), existing.Error().what
         );
         return {};
     }
@@ -975,11 +974,11 @@ std::optional<StoredCapture> Crud::Impl::PersistMetadataForContext(CrawlContext 
     }
 
     auto row = capture_meta_repo.InsertCapture(
-        ctx.id, ctx.link.Normalized(), prefix_key, prefix_tree,
-        std::string_view{*ctx.content_sha256}, ctx.replay_url->Href()
+        ctx.id, ctx.link.ToKey(), prefix_key, prefix_tree, std::string_view{*ctx.content_sha256},
+        ctx.replay_url->Href()
     );
     if (!row) {
-        const auto deleted = DeleteCaptureObject(ctx.s3_key);
+        auto deleted = DeleteCaptureObject(ctx.s3_key);
         if (!deleted) {
             metrics.AccountError(Metrics::Error::kS3DeleteObject);
             LOG_ERROR() << std::format("error deleting {}", ctx.s3_key);
@@ -1012,8 +1011,8 @@ Expected<void, errors::CrudError> Crud::Impl::PurgePrefix(const String &prefix_k
         std::vector<Uuid> single;
         single.reserve(1);
         for (auto &&id : *ids) {
-            const auto key = MakeCaptureObjectKey(svc_cfg.S3Bucket(), id);
-            const auto s3_deleted = DeleteCaptureObject(key);
+            auto key = MakeCaptureObjectKey(svc_cfg.S3Bucket(), id);
+            auto s3_deleted = DeleteCaptureObject(key);
             if (!s3_deleted) {
                 metrics.AccountError(Metrics::Error::kS3DeleteObject);
                 LOG_ERROR() << std::format(
@@ -1052,7 +1051,7 @@ Expected<dto::CaptureJob, errors::CreateJobError> Crud::MakeCaptureJob(Link link
     using enum errors::CreateJobError;
 
     auto *impl_ptr = impl_.get();
-    const auto normalized_link = link.Normalized();
+    const auto normalized_link = link.ToKey();
     dto::CaptureJob job;
     Uuid id;
 
@@ -1217,15 +1216,15 @@ Crud::FindCapturesByLinkPage(const Link &link, String page_token)
 
     Expected<std::vector<CaptureMetaIdRow>, PgError> rows = [&]() {
         if (!cur) {
-            return impl_->capture_meta_repo.GetCapturesByLinkFirst(link.Normalized(), limit);
+            return impl_->capture_meta_repo.GetCapturesByLinkFirst(link.ToKey(), limit);
         }
         if (cur->direction == crud::PageDirection::kPrevious) {
             return impl_->capture_meta_repo.GetCapturesByLinkPrev(
-                link.Normalized(), limit, pg::TimePointTz{cur->created_at}, cur->id
+                link.ToKey(), limit, pg::TimePointTz{cur->created_at}, cur->id
             );
         }
         return impl_->capture_meta_repo.GetCapturesByLinkNext(
-            link.Normalized(), limit, pg::TimePointTz{cur->created_at}, cur->id
+            link.ToKey(), limit, pg::TimePointTz{cur->created_at}, cur->id
         );
     }();
 
@@ -1401,7 +1400,7 @@ Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
     bool has_next_within_link = false;
 
     auto select_rows_for_link = [&](const String &link, i64 idx) {
-        const auto link_limit = impl_->per_link_max + 1_i64;
+        auto link_limit = impl_->per_link_max + 1_i64;
         if (cur && cur->created_at && cur->id && cur->direction == crud::PageDirection::kPrevious &&
             link == cur->link) {
             return impl_->capture_meta_repo.GetCapturesByLinkPrev(
@@ -1426,10 +1425,9 @@ Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
             return Unex(kDbError);
         }
         auto db_rows = GrabValueOf(rows);
-        const auto is_previous_cursor_link = cur &&
-                                             cur->direction == crud::PageDirection::kPrevious &&
-                                             cur->created_at && link == cur->link;
-        const auto is_last_visible_link = idx + 1_i64 == link_count;
+        auto is_previous_cursor_link = cur && cur->direction == crud::PageDirection::kPrevious &&
+                                       cur->created_at && link == cur->link;
+        auto is_last_visible_link = idx + 1_i64 == link_count;
         if (ssize(db_rows) > impl_->per_link_max) {
             db_rows.pop_back();
             if (is_previous_cursor_link)
@@ -1463,7 +1461,7 @@ Crud::FindCapturesByPrefixPage(String normalized_prefix, String page_token)
         if ((cur && cur->direction == crud::PageDirection::kPrevious) || has_next_within_link ||
             has_more_next_links) {
             const auto &last = items.back();
-            const auto last_link = *String::FromBytes(last.link);
+            auto last_link = *String::FromBytes(last.link);
             if (has_next_within_link) {
                 next = crud::EncodePrefixCursor(
                            normalized_prefix, last_link, last.created_at.GetTimePoint(), last.uuid,

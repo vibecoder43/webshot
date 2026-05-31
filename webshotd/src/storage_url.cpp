@@ -36,7 +36,7 @@ struct [[nodiscard]] ParsedHostHeader final {
 
 [[nodiscard]] std::string_view TakeFirstCommaSeparatedValue(std::string_view text) noexcept
 {
-    const auto parts = utext::SplitIntoStringViewVector(text, ",");
+    auto parts = utext::SplitIntoStringViewVector(text, ",");
     if (parts.empty())
         return {};
     return utext::TrimView(parts.front());
@@ -59,12 +59,12 @@ struct [[nodiscard]] ParsedHostHeader final {
     StorageUrlError invalid_error
 )
 {
-    const auto header_value = TRY_OK_OR(header, missing_error);
+    auto header_value = TRY_OK_OR(header, missing_error);
     ENSURE(!header_value.Empty(), missing_error);
 
     const std::string_view first = TakeFirstCommaSeparatedValue(header_value.View());
     ENSURE(!first.empty(), missing_error);
-    const auto parsed = TRY_OK_OR(Url::FromText(text::Format("http://{}", first)), invalid_error);
+    auto parsed = TRY_OK_OR(Url::FromText(text::Format("http://{}", first)), invalid_error);
     ENSURE(parsed.HasHostname(), invalid_error);
     ENSURE(parsed.Pathname() == "/"_t, invalid_error);
     ENSURE(!parsed.HasSearch(), invalid_error);
@@ -81,9 +81,7 @@ struct [[nodiscard]] ParsedHostHeader final {
 [[nodiscard]] Expected<Url, StorageUrlError>
 MakeConfiguredCaptureDownloadUrl(ws::uuid::Uuid uuid, const String &public_base_url)
 {
-    const auto download_url_text = text::Format(
-        "{}/{}.wacz", public_base_url, us::utils::ToString(uuid)
-    );
+    auto download_url_text = text::Format("{}/{}.wacz", public_base_url, us::utils::ToString(uuid));
     return TRY_OK_OR(Url::FromText(download_url_text), kInvalidPublicBaseUrl);
 }
 
@@ -104,7 +102,7 @@ Expected<Url, StorageUrlError> MakeCaptureDownloadUrl(
     ENSURE(base_url.IsHttpOrHttps(), kInvalidPublicBaseUrl);
 
     auto download_url = base_url.WithPathname(AppendCaptureFilename(base_url, uuid))
-                            .Stripped(Url::StripOptions::kQuery | Url::StripOptions::kHash);
+                            .Without(Url::StripOptions::kQuery | Url::StripOptions::kHash);
 
     const auto header_host =
         forwarded_host
@@ -117,13 +115,13 @@ Expected<Url, StorageUrlError> MakeCaptureDownloadUrl(
         if (header_host.port) {
             download_url = download_url.WithPort(*header_host.port);
         } else {
-            download_url = download_url.Stripped(Url::StripOptions::kPort);
+            download_url = download_url.Without(Url::StripOptions::kPort);
         }
     }
 
     if (forwarded_proto) {
         const std::string_view raw = forwarded_proto->View();
-        const auto first = TakeFirstCommaSeparatedValue(raw);
+        auto first = TakeFirstCommaSeparatedValue(raw);
         ENSURE(!first.empty(), kInvalidForwardedProto);
         ENSURE(ICaseEqual(first, "http") || ICaseEqual(first, "https"), kInvalidForwardedProto);
         download_url = download_url.WithProtocol(ICaseEqual(first, "https") ? "https"_t : "http"_t);

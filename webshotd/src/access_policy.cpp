@@ -5,7 +5,7 @@
  */
 #include "prefix_utils.hpp"
 #include "shared_state_repo.hpp"
-#include "text_postgres_formatter.hpp"
+#include "text_postgres_formatter.hpp" // IWYU pragma: keep
 #include "try.hpp"
 
 #include <format>
@@ -72,7 +72,7 @@ Expected<bool, AccessPolicyError> AccessPolicyStore::IsAllowedPrefix(const Strin
 
 Expected<bool, AccessPolicyError> AccessPolicyStore::IsDeniedPrefix(const String &prefix_key)
 {
-    const auto tree = prefix::MakePrefixTree(prefix_key);
+    auto tree = prefix::MakePrefixTree(prefix_key);
     auto denied = impl_->repo.CheckDenylistTree(tree);
     if (!denied)
         LOG_ERROR() << std::format("access policy check failed: {}", denied.Error().what);
@@ -81,7 +81,7 @@ Expected<bool, AccessPolicyError> AccessPolicyStore::IsDeniedPrefix(const String
 
 Expected<bool, AccessPolicyError> AccessPolicyStore::IsAllowlistedPrefix(const String &prefix_key)
 {
-    const auto tree = prefix::MakePrefixTree(prefix_key);
+    auto tree = prefix::MakePrefixTree(prefix_key);
     auto allowlisted = impl_->repo.CheckAllowlistTree(tree);
     if (!allowlisted)
         LOG_ERROR() << std::format("allowlist check failed: {}", allowlisted.Error().what);
@@ -95,21 +95,21 @@ AccessPolicyStore::EvaluatePrefix(const String &prefix_key, AccessPolicyMode mod
     using enum AccessPolicyMode;
 
     if (mode == kRegular) {
-        const auto allowlisted = TRY(IsAllowlistedPrefix(prefix_key));
+        auto allowlisted = TRY(IsAllowlistedPrefix(prefix_key));
         if (allowlisted)
             return AccessDecision{.allowed = true, .reason = kAllowed};
 
-        const auto denied = TRY(IsDeniedPrefix(prefix_key));
+        auto denied = TRY(IsDeniedPrefix(prefix_key));
         if (denied)
             return AccessDecision{.allowed = false, .reason = kDenylisted};
         return AccessDecision{.allowed = true, .reason = kAllowed};
     }
 
-    const auto denied = TRY(IsDeniedPrefix(prefix_key));
+    auto denied = TRY(IsDeniedPrefix(prefix_key));
     if (denied)
         return AccessDecision{.allowed = false, .reason = kDenylisted};
 
-    const auto allowlisted = TRY(IsAllowlistedPrefix(prefix_key));
+    auto allowlisted = TRY(IsAllowlistedPrefix(prefix_key));
     if (!allowlisted)
         return AccessDecision{.allowed = false, .reason = kNotAllowlisted};
     return AccessDecision{.allowed = true, .reason = kAllowed};
@@ -118,8 +118,8 @@ AccessPolicyStore::EvaluatePrefix(const String &prefix_key, AccessPolicyMode mod
 Expected<void, AccessPolicyError>
 AccessPolicyStore::InsertPrefix(const String &prefix_key, const String &reason)
 {
-    const auto tree = prefix::MakePrefixTree(prefix_key);
-    const auto inserted = impl_->repo.InsertDenylistPrefix(prefix_key, tree, reason);
+    auto tree = prefix::MakePrefixTree(prefix_key);
+    auto inserted = impl_->repo.InsertDenylistPrefix(prefix_key, tree, reason);
     if (!inserted) {
         LOG_CRITICAL() << std::format(
             "denylist insert failed for {}: {}", prefix_key, inserted.Error().what
@@ -132,8 +132,8 @@ AccessPolicyStore::InsertPrefix(const String &prefix_key, const String &reason)
 Expected<void, AccessPolicyError>
 AccessPolicyStore::InsertAllowlistPrefix(const String &prefix_key, const String &reason)
 {
-    const auto tree = prefix::MakePrefixTree(prefix_key);
-    const auto inserted = impl_->repo.InsertAllowlistPrefix(prefix_key, tree, reason);
+    auto tree = prefix::MakePrefixTree(prefix_key);
+    auto inserted = impl_->repo.InsertAllowlistPrefix(prefix_key, tree, reason);
     if (!inserted) {
         LOG_ERROR() << std::format(
             "allowlist insert failed for {}: {}", prefix_key, inserted.Error().what
@@ -145,7 +145,7 @@ AccessPolicyStore::InsertAllowlistPrefix(const String &prefix_key, const String 
 
 Expected<void, AccessPolicyError> AccessPolicyStore::RemoveAllowlistPrefix(const String &prefix_key)
 {
-    const auto removed = impl_->repo.DeleteAllowlistPrefix(prefix_key);
+    auto removed = impl_->repo.DeleteAllowlistPrefix(prefix_key);
     if (!removed) {
         LOG_ERROR() << std::format(
             "allowlist remove failed for {}: {}", prefix_key, removed.Error().what

@@ -40,10 +40,10 @@ namespace {
     open.append(tag_bytes.data(), tag_bytes.size()).push_back('>');
     std::string close = "</";
     close.append(tag_bytes.data(), tag_bytes.size()).push_back('>');
-    const auto start_pos = xml_bytes.find(open);
+    auto start_pos = xml_bytes.find(open);
     ENSURE(start_pos != std::string::npos, StsError::kXmlMissingTag);
-    const auto value_pos = start_pos + open.size();
-    const auto end_pos = xml_bytes.find(close, value_pos);
+    auto value_pos = start_pos + open.size();
+    auto end_pos = xml_bytes.find(close, value_pos);
     ENSURE(end_pos != std::string::npos, StsError::kXmlMissingClosingTag);
     return TRY_ERR_AS(
         String::FromBytes(xml_bytes.substr(value_pos, end_pos - value_pos)), StsError::kInvalidUtf8
@@ -102,7 +102,7 @@ Expected<StsCredentials, StsError> detail::FetchStsWithExecutor(
 
     std::vector<std::pair<String, String>> query;
     if (sts_url.HasSearch()) {
-        const auto search = sts_url.Search();
+        auto search = sts_url.Search();
         query = TRY_ERR_AS(s3::DecodeQueryString(search), StsError::kInvalidQuery);
     }
     String body;
@@ -164,7 +164,7 @@ Expected<StsCredentials, StsError> FetchStsCredentials(
                         .headers(headers)
                         .timeout(timeout_ms)
                         .perform();
-        const auto status = NumericCast<int>(resp->status_code());
+        auto status = NumericCast<int>(resp->status_code());
         if (status >= 300) {
             LOG_ERROR() << std::format("STS request failed: url={}, status={}", url_bytes, status);
             return Unex(StsError::kHttpError);

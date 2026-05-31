@@ -12,7 +12,7 @@ namespace {
 
 [[nodiscard]] CrawlerError MakeNavigationError(std::optional<SeedProbe> seed_probe)
 {
-    return CrawlerError{
+    return {
         .kind = CrawlerErrorKind::kNavigation,
         .detail = "navigation error"_t,
         .seed_probe = std::move(seed_probe),
@@ -25,14 +25,14 @@ namespace {
 
 UTEST(CrawlerFallback, NoResponseNavigationErrorRetriesWithHttp)
 {
-    const auto error = MakeNavigationError(SeedProbe{.status = 0, .load_state = 0});
+    auto error = MakeNavigationError(SeedProbe{.status = 0, .load_state = 0});
 
     EXPECT_TRUE(ShouldRetryWithHttp(error));
 }
 
 UTEST(CrawlerFallback, HttpErrorResponseDoesNotRetryWithHttp)
 {
-    const auto error = MakeNavigationError(SeedProbe{.status = 404, .load_state = 0});
+    auto error = MakeNavigationError(SeedProbe{.status = 404, .load_state = 0});
 
     EXPECT_FALSE(ShouldRetryWithHttp(error));
 }

@@ -24,8 +24,8 @@ using namespace text::literals;
 UTEST(PrefixPagination, UpperExclusiveBoundNormal)
 {
     const std::string input = "abc";
-    const auto input_text = *String::FromBytes(input);
-    const auto upper = UpperExclusiveBound(input_text);
+    auto input_text = *String::FromBytes(input);
+    auto upper = UpperExclusiveBound(input_text);
     EXPECT_EQ(upper, "abd");
 }
 
@@ -34,11 +34,11 @@ UTEST(PrefixPagination, EncodeDecodeWithoutTimeOrId)
     const std::string prefix = "example.com/a";
     const std::string link = "example.com/a/b";
 
-    const auto prefix_text = *String::FromBytes(prefix);
-    const auto link_text = *String::FromBytes(link);
+    auto prefix_text = *String::FromBytes(prefix);
+    auto link_text = *String::FromBytes(link);
 
-    const auto token = EncodePrefixCursor(prefix_text, link_text, PageDirection::kNext);
-    const auto decoded = DecodePrefixCursor(token);
+    auto token = EncodePrefixCursor(prefix_text, link_text, PageDirection::kNext);
+    auto decoded = DecodePrefixCursor(token);
 
     ASSERT_TRUE(decoded);
     if (!decoded)
@@ -54,13 +54,13 @@ UTEST(PrefixPagination, EncodeDecodeWithTimeAndIdRoundTrip)
 {
     const std::string prefix = "example.com/p/";
     const std::string link = "example.com/p/resource";
-    const auto tp = Clock::time_point(std::chrono::microseconds(4242424242));
-    const auto id = us::utils::generators::GenerateBoostUuid();
-    const auto prefix_text = *String::FromBytes(prefix);
-    const auto link_text = *String::FromBytes(link);
+    auto tp = Clock::time_point(std::chrono::microseconds(4242424242));
+    auto id = us::utils::generators::GenerateBoostUuid();
+    auto prefix_text = *String::FromBytes(prefix);
+    auto link_text = *String::FromBytes(link);
 
-    const auto token = EncodePrefixCursor(prefix_text, link_text, tp, id, PageDirection::kPrevious);
-    const auto decoded = DecodePrefixCursor(token);
+    auto token = EncodePrefixCursor(prefix_text, link_text, tp, id, PageDirection::kPrevious);
+    auto decoded = DecodePrefixCursor(token);
 
     ASSERT_TRUE(decoded);
     if (!decoded)
@@ -78,6 +78,6 @@ UTEST(PrefixPagination, EncodeDecodeWithTimeAndIdRoundTrip)
 
 UTEST(PrefixPagination, DecodeInvalidTokenReturnsNullopt)
 {
-    const auto decoded = DecodePrefixCursor("invalid-token"_t);
+    auto decoded = DecodePrefixCursor("invalid-token"_t);
     EXPECT_FALSE(decoded);
 }

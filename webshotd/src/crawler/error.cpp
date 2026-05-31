@@ -38,12 +38,12 @@ std::string RetainLogHeadAndTail(std::string bytes, i64 limit_bytes)
     if (limit_bytes <= 0_i64)
         return {};
 
-    const auto limit = NumericCast<size_t>(limit_bytes);
+    auto limit = NumericCast<size_t>(limit_bytes);
     if (bytes.size() <= limit)
         return bytes;
 
-    const auto head_size = limit / 2;
-    const auto tail_size = limit - head_size;
+    auto head_size = limit / 2;
+    auto tail_size = limit - head_size;
     std::string retained;
     retained.reserve(head_size + kSkippedMarker.size() + tail_size);
     retained.append(bytes.data(), head_size);
@@ -54,9 +54,7 @@ std::string RetainLogHeadAndTail(std::string bytes, i64 limit_bytes)
 
 String RetainProcessOutputText(std::string_view bytes)
 {
-    const auto retained = RetainLogHeadAndTail(
-        std::string(bytes), i64{kProcessOutputRetainedBytes}
-    );
+    auto retained = RetainLogHeadAndTail(std::string(bytes), i64{kProcessOutputRetainedBytes});
     return *String::FromBytes(retained);
 }
 
@@ -65,8 +63,8 @@ std::optional<String> FormatProcessOutputDiagnostics(
     const std::string &stderr_path
 )
 {
-    const auto stdout_text = ReadProcessOutputText(fs_task_processor, stdout_path);
-    const auto stderr_text = ReadProcessOutputText(fs_task_processor, stderr_path);
+    auto stdout_text = ReadProcessOutputText(fs_task_processor, stdout_path);
+    auto stderr_text = ReadProcessOutputText(fs_task_processor, stderr_path);
 
     if (!stdout_text && !stderr_text)
         return {};

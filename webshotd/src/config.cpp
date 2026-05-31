@@ -35,7 +35,7 @@ Config::Config(
       allowlist_only_(config["allowlist_only"].As<bool>()),
       https_only_(config["https_only"].As<bool>()),
       state_dir_(config["state_dir"].As<std::string>()), s3_mode_([&config]() {
-          const auto mode = config["s3_mode"].As<std::string>();
+          auto mode = config["s3_mode"].As<std::string>();
           if (mode == "local")
               return Mode::kLocal;
           if (mode == "external")

@@ -53,10 +53,11 @@ std::string JoinSignedHeaders(const std::vector<std::pair<std::string, std::stri
     return out;
 }
 
+// doesn't have an ada:: equivalent
 std::string PercentEncodeBytes(std::string_view s, EncodeSlash encode_slash)
 {
     std::string out;
-    out.reserve(NumericCast<size_t>(ssize(s) * 3_i64));
+    out.reserve(Raw(unsize(s) * 3_u64));
     for (char c : s) {
         if (IsUnreserved(c) || (encode_slash == EncodeSlash::kNo && c == '/')) {
             out.push_back(c);
@@ -148,13 +149,13 @@ CanonicalRequestParts MakeCanonicalRequest(
     std::string_view method, std::string_view canonical_uri,
     const std::vector<std::pair<std::string, std::string>> &query,
     const std::vector<std::pair<std::string, std::string>> &headers_lowercase_trimmed_sorted,
-    std::string_view payload_Sha256Hex
+    std::string_view payload_sha256_hex
 )
 {
     // Canonical URI must be URI-encoded with slash preserved
-    const auto canonical_uri_encoded = PercentEncodeBytes(canonical_uri, EncodeSlash::kNo);
+    auto canonical_uri_encoded = PercentEncodeBytes(canonical_uri, EncodeSlash::kNo);
 
-    const auto canonical_query = CanonicalizeQueryImpl(query);
+    auto canonical_query = CanonicalizeQueryImpl(query);
 
     std::string canonical_headers;
     for (const auto &[k, v] : headers_lowercase_trimmed_sorted) {
@@ -167,7 +168,7 @@ CanonicalRequestParts MakeCanonicalRequest(
 
     auto canonical_request = std::format(
         "{}\n{}\n{}\n{}\n{}\n{}", method, canonical_uri_encoded, canonical_query, canonical_headers,
-        signed_headers, payload_Sha256Hex
+        signed_headers, payload_sha256_hex
     );
 
     return {
@@ -205,7 +206,7 @@ std::unordered_map<std::string, std::string> SignHeaders(
     const SigParams &p, const String &method, const String &canonical_uri,
     const std::vector<std::pair<String, String>> &query,
     const std::vector<std::pair<String, String>> &headers_lower_trimmed,
-    const String &payload_Sha256Hex
+    const String &payload_sha256_hex
 )
 {
     auto query_utf8 = text::ToBytesPairs(query);
@@ -213,7 +214,7 @@ std::unordered_map<std::string, std::string> SignHeaders(
     auto headers = headers_utf8;
     std::unordered_map<std::string, std::string> out{};
 
-    auto payload_hex = payload_Sha256Hex.ToBytes();
+    auto payload_hex = payload_sha256_hex.ToBytes();
     out["x-amz-date"] = p.amz_date;
     out["x-amz-content-sha256"] = payload_hex;
     if (p.session_token)

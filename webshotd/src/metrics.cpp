@@ -112,7 +112,7 @@ Metrics::Metrics(
 
             std::vector<std::string> browser_cgroups;
             {
-                const auto locked = browser_cgroups_.Lock();
+                auto locked = browser_cgroups_.Lock();
                 browser_cgroups = *locked;
             }
 
@@ -172,7 +172,7 @@ void Metrics::RegisterBrowserCgroup(std::string cgroup_path)
 void Metrics::UnregisterBrowserCgroup(const std::string &cgroup_path)
 {
     auto locked = browser_cgroups_.Lock();
-    const auto it = std::ranges::find(*locked, cgroup_path);
+    auto it = std::ranges::find(*locked, cgroup_path);
     if (it != std::end(*locked))
         locked->erase(it);
 }
