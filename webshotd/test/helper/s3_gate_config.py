@@ -10,16 +10,13 @@ def set_s3_gate_port(port: int) -> None:
     _s3_gate_port = port
 
 
-def enable_s3_gate(config_yaml, _config_vars) -> None:
+def enable_s3_gate(config_yaml, config_vars) -> None:
     if _s3_gate_port is None:
         raise RuntimeError("S3 gate port must be selected before enabling S3 gate config")
 
-    components = config_yaml["components_manager"]["components"]
-    cfg = components["config"]
-    cfg["s3_endpoint"] = f"http://{_S3_GATE_HOST}:{_s3_gate_port}"
-    cfg["s3_timeout_ms"] = _S3_GATE_TIMEOUT_MS
+    from helper.config_hooks import set_component_field, set_config_field, set_config_var
 
-    http_client_core = components["http-client-core"]
-    if http_client_core is None:
-        raise RuntimeError("http-client-core component config must be present")
-    http_client_core["testsuite-timeout"] = "1s"
+    set_config_var(config_vars, "s3_endpoint", f"http://{_S3_GATE_HOST}:{_s3_gate_port}")
+    set_config_field(config_yaml, "s3_timeout_ms", _S3_GATE_TIMEOUT_MS)
+
+    set_component_field(config_yaml, "http-client-core", "testsuite-timeout", "1s")

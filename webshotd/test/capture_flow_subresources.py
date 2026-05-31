@@ -1,12 +1,11 @@
 import pytest
 from helper.capture_flow import (
     _capture_and_wait,
-    _enable_allowlist_only,
-    _enable_https_only,
     _probe_replay,
     _wacz_archive_text,
     _wacz_cdx_statuses_for_url,
 )
+from helper.config_hooks import enable_allowlist_only, enable_https_only
 from helper.constants import TEST_ASSET_HOST, TEST_HOST
 from helper.waiters import wait_for_job_status
 
@@ -101,7 +100,7 @@ async def test_regular_mode_allowlist_overrides_denylisted_subresource_fetch(
     assert any("denylist" in entry for entry in replay["console"])
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_allowlist_only])
 @pytest.mark.asyncio
 async def test_allowlist_only_fetches_allowlisted_subresources(
     service_client, monitor_client, browser_probe, download_wacz, service_baseurl
@@ -123,7 +122,7 @@ async def test_allowlist_only_fetches_allowlisted_subresources(
     assert 200 in _wacz_cdx_statuses_for_url(wacz, script)
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_allowlist_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_allowlist_only])
 @pytest.mark.asyncio
 async def test_allowlist_only_blocks_non_allowlisted_subresources(
     service_client, monitor_client, browser_probe, download_wacz, service_baseurl
@@ -159,7 +158,7 @@ async def test_capture_fetches_https_subresource_assets(
     assert any("asset" in entry for entry in replay["console"])
 
 
-@pytest.mark.uservice_oneshot(config_hooks=[_enable_https_only])
+@pytest.mark.uservice_oneshot(config_hooks=[enable_https_only])
 @pytest.mark.asyncio
 async def test_https_only_blocks_http_subresource_fetch(
     service_client, browser_probe, download_wacz, service_baseurl

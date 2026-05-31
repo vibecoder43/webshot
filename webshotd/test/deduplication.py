@@ -5,8 +5,9 @@ from helper.constants import TEST_HOST
 from helper.waiters import wait_for_job_status
 
 
-def _patch_dedup_crawler_timeouts(_config_yaml, config_vars):
+def _patch_dedup_crawler_timeouts(config_yaml, config_vars):
     # Dedup performs two full crawl jobs in one test; give only this test a bit more crawl headroom.
+    del config_yaml
     config_vars["crawler_run_timeout_sec"] = 14
     config_vars["crawler_job_overhead_timeout_sec"] = 8
     config_vars["crawler_devtools_startup_timeout_sec"] = 10

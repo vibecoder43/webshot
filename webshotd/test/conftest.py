@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import pathlib
 import shutil
 import tempfile
@@ -214,7 +215,7 @@ def userver_pg_config(pgsql_local, pg_gate):
     db_uri = {name: conn.get_uri() for name, conn in pgsql_local.items()}
     gate_host, gate_port = pg_gate.get_sockname_for_clients()
 
-    def _patch(config_yaml, _config_vars):
+    def _patch(config_yaml, config_vars):
         components = config_yaml["components_manager"]["components"]
         for component_name in ("capture_meta_db", "shared_state_db"):
             conninfo = db_uri[component_name]
@@ -226,6 +227,9 @@ def userver_pg_config(pgsql_local, pg_gate):
             else:
                 netloc = f"{gate_host}:{gate_port}"
             updated = parsed._replace(netloc=netloc)
+            # Prefer config-vars for templated fields, but also patch the resolved YAML so
+            # the hook remains effective even if config-vars resolution happens earlier.
+            config_vars[f"pg_{component_name}_dsn"] = urlunparse(updated)
             component = components[component_name]
             component["dbconnection"] = urlunparse(updated)
             component.pop("dbalias", None)
@@ -261,7 +265,8 @@ def allowed_url_prefixes_extra(s3_gate_port):
 def patch_s3_config(s3_gate_port):
     del s3_gate_port
 
-    def _patch(config_yaml, _config_vars):
+    def _patch(config_yaml, config_vars):
+        del config_vars
         components = config_yaml["components_manager"]["components"]
         cfg = components["config"]
         cfg["s3_timeout_ms"] = _TESTSUITE_S3_TIMEOUT_MS
@@ -275,16 +280,22 @@ def patch_s3_config(s3_gate_port):
 
 @pytest.fixture(scope="session")
 def service_config_path_temp(
+    daemon_scoped_mark,
     service_tmpdir,
-    _service_config_hooked,
+    service_config_yaml,
+    service_config_vars,
     service_binary: pathlib.Path,
     service_source_dir: pathlib.Path,
     testsuite_webshotd_state_dir: pathlib.Path,
     s3_bucket_name: str,
 ) -> pathlib.Path:
+    # Mark this fixture as per-daemon. For oneshot tests, daemon_scoped_mark changes
+    # and pytest tears down/recreates the whole dependency tree.
+    del daemon_scoped_mark
+
     dst_path = service_tmpdir / "config.yaml"
-    config_yaml = dict(_service_config_hooked.config_yaml)
-    config_vars = dict(_service_config_hooked.config_vars)
+    config_yaml = copy.deepcopy(service_config_yaml)
+    config_vars = copy.deepcopy(service_config_vars)
     runtime_layout = runtime_layout_from_binary(service_binary)
     config_vars["rapidoc_assets_dir"] = str(runtime_layout.rapidoc_assets_dir)
     config_vars["openapi_public_dir"] = str(service_source_dir.parent / "schema" / "public")
@@ -295,6 +306,9 @@ def service_config_path_temp(
     config_vars["state_dir"] = str(testsuite_webshotd_state_dir)
     config_vars["s3_bucket"] = s3_bucket_name
     config_vars["public_base_url"] = f"http://127.0.0.1:8333/{s3_bucket_name}"
+    # Ensure url_bytes_max always exists in config_vars so oneshot config hooks may override it.
+    # static_config.yaml uses $url_bytes_max with a fallback; config vars must be concrete.
+    config_vars.setdefault("url_bytes_max", 32768)
     config_vars.update(task_processor_config_vars(config_yaml))
 
     components = config_yaml["components_manager"]["components"]

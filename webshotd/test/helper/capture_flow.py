@@ -6,16 +6,14 @@ from urllib.parse import urljoin, urlparse
 from zipfile import ZipFile
 
 import pytest
+from helper.config_hooks import enable_allowlist_only, enable_https_only
 from helper.waiters import wait_for_job_status
 from minio import Minio
 
-
-def _enable_allowlist_only(_config_yaml, config_vars):
-    config_vars["allowlist_only"] = True
+_enable_allowlist_only = enable_allowlist_only
 
 
-def _enable_https_only(_config_yaml, config_vars):
-    config_vars["https_only"] = True
+_enable_https_only = enable_https_only
 
 
 def _assert_missing_job_fields(job: dict, *names: str) -> None:
